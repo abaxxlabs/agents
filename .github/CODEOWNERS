@@ -1,0 +1,11 @@
+# Default owner — all files require review from Ian
+*                       @IanAbaxx
+
+# Core library and migrations — also require jdutchak
+/src/                   @IanAbaxx @jdutchak
+/migrations/            @IanAbaxx @jdutchak
+
+# CI and repo config — Ian only
+/.github/               @IanAbaxx
+/CLAUDE.md              @IanAbaxx
+/AGENTS.md              @IanAbaxx
