@@ -1,14 +1,13 @@
 -- ID++ AgentID — Context Entries Table
 -- Phase 2.5: Identity-gated generic document store for StorageBackend.
 --
--- Product decision: Chief (and any future consumer) needs an identity-gated
--- document store that lives inside agent-id's trust boundary. Without this,
--- Chief's context graph becomes a side channel — agents communicate outside
--- the credential-scoped, audited path.
+-- Product decision: consumers need an identity-gated document store that lives
+-- inside the library's trust boundary. Without this, application context
+-- becomes a side channel — agents communicate outside the credential-scoped,
+-- audited path.
 --
 -- The namespace+key pair forms a composite primary key. Consumers use different
--- namespaces for logical partitioning: Chief uses "context-graph", other
--- consumers use their own namespaces without collision.
+-- namespaces for logical partitioning without collision.
 --
 -- Identity gating: every query includes WHERE owner_did = $callerDid (enforced
 -- by PostgresContextStore / SqliteContextStore). The server identity bypass
