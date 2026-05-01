@@ -1,4 +1,4 @@
-# @abaxxlabs/agents
+# Agents++
 
 [![npm](https://img.shields.io/npm/v/@abaxxlabs/agents.svg)](https://www.npmjs.com/package/@abaxxlabs/agents)
 [![CI](https://github.com/abaxxlabs/agents/actions/workflows/ci.yml/badge.svg)](https://github.com/abaxxlabs/agents/actions/workflows/ci.yml)
