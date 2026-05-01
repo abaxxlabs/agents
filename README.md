@@ -4,45 +4,43 @@
 [![CI](https://github.com/abaxxlabs/agents/actions/workflows/ci.yml/badge.svg)](https://github.com/abaxxlabs/agents/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-**Column-level access control for AI agents — enforced in the query layer, not the application.**
+**Agents are an attack surface. Hold yours accountable.**
 
-Two agents query the same table. They get completely different data — not because your code filters it, but because the query layer physically cannot return what the agent isn't credentialed for.
+Open trust infrastructure for autonomous AI agents. Every agent gets a cryptographic identity (DID), scoped credentials (Verifiable Credentials), and a tamper-evident audit trail -- enforced in the query layer, not the application.
 
-## The problem with application-level checks
+---
 
-AI agents get prompt-injected. Permission checks that happen before the query are bypassable — a compromised or manipulated agent can work around them entirely. Once data leaves the database unfiltered, you've already lost.
+Every AI agent is a potential threat actor. A stolen API key is indistinguishable from a legitimate one, a compromised agent can act with the full authority of whoever provisioned it, and there is no audit trail connecting actions to a responsible party.
 
-Agents++ moves enforcement into the query layer. Each agent carries a signed, scoped [Verifiable Credential](https://www.w3.org/TR/vc-data-model/). The ScopeEngine verifies it on every query, enforces the projection boundary, and decrypts only the authorized columns — before results leave the database.
+**Three incidents in seven months tell the same story:**
+
+| Incident | What happened |
+|---|---|
+| **Drift AI** (Aug 2025) | Stolen OAuth tokens impersonated a trusted agent across 700+ enterprise environments. Bearer tokens carry no delegation provenance. |
+| **LiteLLM** (Mar 2026) | Backdoored packages harvested API keys across 95M monthly downloads. Stolen keys worked from attacker servers because they aren't bound to identity. |
+| **Meta confused deputy** (Mar 2026) | An internal agent with valid perimeter credentials autonomously exposed proprietary code and user data. No delegation chain, no scoped authorization. |
+
+The gap is structural: current infrastructure authenticates *applications* but cannot verify *which agent, authorized by whom, for what scope*. Agents++ closes it.
 
 ## How it works
 
 ```mermaid
 flowchart LR
-    H["👤 Human\n(OIDC auth)"]
+    H["Human\n(OIDC auth)"]
     H -->|"issues credential\ncolumns: price, qty"| A
     H -->|"issues credential\ncolumns: instrument"| B
-    A["🤖 Agent A"] -->|query| SE
-    B["🤖 Agent B"] -->|query| SE
+    A["Agent A"] -->|query| SE
+    B["Agent B"] -->|query| SE
     SE["ScopeEngine\n─────────────\n✓ verify credential\n✓ enforce projection\n✓ decrypt columns\n✓ sign audit record"]
     SE --> DB[("PostgreSQL\nAES-256-GCM\nper column")]
     SE --> AL["Audit trail\nEd25519-signed\nhash-chained"]
 ```
 
-Same table. Same SQL. Agent A gets `price` and `quantity` in cleartext. Agent B gets `instrument` only. Querying an out-of-scope encrypted column throws `ScopeViolationError` — it isn't filtered, it's rejected before execution.
-
-## What you get
-
-- **Verifiable Credentials** — W3C-standard, signed, expiring, bound to the agent's DID
-- **Column-level encryption** — AES-256-GCM per column, BYOK master key, atomic key rotation
-- **Tamper-proof audit trail** — Ed25519-signed records, PostgreSQL-enforced append-only, hash-chained
-- **Agent delegation** — supervisors can delegate a strict subset of their scope to workers, TTL-capped
-- **MCP-native** — Claude, GPT, and any MCP-compatible agent works out of the box
-- **Process isolation** — run as a separate process; the agent never touches DB credentials or the master key
-- **Multiple backends** — PostgreSQL, SQLite, or in-memory storage; swap without changing application code
+Same table. Same SQL. Agent A gets `price` and `quantity` in cleartext. Agent B gets `instrument` only. Querying an out-of-scope encrypted column throws `ScopeViolationError` -- it isn't filtered, it's rejected before execution.
 
 ## Before / after
 
-**Before** — trust your agent not to exceed its permissions:
+**Before** -- trust your agent not to exceed its permissions:
 
 ```typescript
 // Application checks before the query — a prompt-injected agent can route around these
@@ -50,10 +48,9 @@ if (!agent.hasPermission('price')) throw new Error('denied');
 const result = await db.query('SELECT instrument, price FROM orders');
 ```
 
-**After** — the query layer makes it structurally impossible:
+**After** -- the query layer makes it structurally impossible:
 
 ```typescript
-// Agent presents a signed credential — ScopeEngine verifies and enforces on every query
 const result = await scope.query({
   agent: agent.did,
   credential,           // VC: { columns: ['orders.instrument'], actions: ['read'] }
@@ -62,6 +59,20 @@ const result = await scope.query({
   // 'price' is encrypted and out of scope → ScopeViolationError before execution
 });
 ```
+
+## Features
+
+**Cryptographic agent identity.** Each agent owns an Ed25519 keypair and a DID. Every action is signed. Every credential chains back to the human who authorized it. Stolen credentials fail owner-binding checks -- possession alone is insufficient.
+
+**Column-level scope enforcement.** The ScopeEngine parses SQL through PostgreSQL's native parser, extracts physical table references (CTE-aware), and rejects any query that touches columns outside the credential's scope -- before the query reaches the database.
+
+**Defense-in-depth encryption.** Sensitive columns are AES-256-GCM encrypted at rest with per-column keys wrapped by a BYOK master key. Even with direct database access, encrypted data is unreadable without authorization. Key rotation and master-key rewrap are atomic, transactional operations.
+
+**Agent-to-agent delegation.** Supervisors delegate subsets of their scope to workers. Columns must be a subset, actions must be a subset, TTL cannot exceed the source. Chains compose under the same rules -- every link narrows, never widens.
+
+**Tamper-evident audit trail.** Every record is Ed25519-signed and SHA-256 hash-chained. PostgreSQL triggers block UPDATE and DELETE at the database level. Chain integrity is verifiable offline by anyone with the signing public keys.
+
+**MCP and REST surfaces.** Ship as a library, an MCP server (stdio + HTTPS), or a REST API. Same enforcement everywhere. AI agents (Claude, GPT, etc.) connect through MCP; web apps and cross-language clients use REST. Master key and DB credentials never cross the wire.
 
 ## Install
 
@@ -74,18 +85,6 @@ Peer dependencies for SQL enforcement:
 ```bash
 npm install pg libpg-query
 ```
-
-## Subpath exports
-
-| Import | What it provides |
-|--------|-----------------|
-| `@abaxxlabs/agents` | AgentIdentity, auth, credentials, crypto, storage interfaces |
-| `@abaxxlabs/agents/sql` | AgentScope, ScopeEngine, column-key management |
-| `@abaxxlabs/agents/mcp` | MCP server factory and `agents mcp` CLI |
-| `@abaxxlabs/agents/storage` | Storage backend composition |
-| `@abaxxlabs/agents/sqlite` | SQLite backend (bun:sqlite / better-sqlite3) |
-| `@abaxxlabs/agents/bootstrap` | `resolveMasterKeyFromEnv()` helper |
-| `@abaxxlabs/agents/id-sdk-mcp` | Platform identity adapter (AbaxxOne) |
 
 ## Quick start
 
@@ -126,6 +125,29 @@ const result = await scope.query({
 // Requesting 'price' or 'counterparty' → ScopeViolationError
 ```
 
+## How Agents++ compares
+
+| Capability | Typical approach | Agents++ |
+|---|---|---|
+| Agent identity | API keys, no provenance | Verifiable credential chain (DID + VC) |
+| Scope enforcement | Row-Level Security or app-level filtering | Column-level, credential-based, works with connection pools |
+| Cross-org trust | Not addressed | Federated bilateral trust via AbaxxOne |
+| Audit trail | Application logs | Cryptographically signed, hash-chained, externally verifiable |
+| Delegation | Manual RBAC per agent | Credential delegation with automatic subset enforcement |
+| Key management | Shared secrets, env vars | BYOK master key, per-column encryption, branded types prevent leaks |
+
+## Subpath exports
+
+| Import | What it provides |
+|---|---|
+| `@abaxxlabs/agents` | AgentIdentity, auth, credentials, crypto, storage interfaces |
+| `@abaxxlabs/agents/sql` | AgentScope, ScopeEngine, column-key management |
+| `@abaxxlabs/agents/mcp` | MCP server factory and `agents mcp` CLI |
+| `@abaxxlabs/agents/storage` | Storage backend composition |
+| `@abaxxlabs/agents/sqlite` | SQLite backend (bun:sqlite / better-sqlite3) |
+| `@abaxxlabs/agents/bootstrap` | `resolveMasterKeyFromEnv()` helper |
+| `@abaxxlabs/agents/id-sdk-mcp` | Platform identity adapter (AbaxxOne) |
+
 ## MCP server
 
 AI agents connect directly via the [Model Context Protocol](https://modelcontextprotocol.io):
@@ -152,7 +174,7 @@ agents mcp --db postgresql://localhost/mydb --transport http --port 8443 \
 }
 ```
 
-Use HTTP transport for production — the agent calls over the network and never has direct access to the database or master key.
+Use HTTP transport for production -- the agent calls over the network and never has direct access to the database or master key.
 
 ## Delegation
 
@@ -169,14 +191,14 @@ const workerCred = scope.delegateCredential(supervisor.did, supervisorCred, {
 
 ## Security model
 
-- **Ed25519 only** — no algorithm agility, no downgrade surface
-- **BYOK master key** — Agents++ never reads `process.env`; you pass the key explicitly. `MasterKey` is a branded type that blocks the buffer from leaking into untyped sinks at compile time
-- **Wrong-key boots fail loud** — `AgentScope.create` throws `MasterKeyMismatchError` immediately if existing column keys can't be decrypted; no silent `[ENCRYPTED]` placeholders
-- **Column encryption** — AES-256-GCM per column; `rotateColumnKey()` re-encrypts all rows atomically; `rewrapColumnKey()` migrates to a new master key without touching row data
-- **Append-only audit trail** — PostgreSQL triggers block UPDATE/DELETE; every record is Ed25519-signed and hash-chained against the previous
-- **VP audience binding** — credentials can be bound to a specific server DID, preventing replay across instances
+- **Ed25519 only** -- no algorithm agility, no downgrade surface
+- **BYOK master key** -- Agents++ never reads `process.env`; you pass the key explicitly. `MasterKey` is a branded type that blocks the buffer from leaking into untyped sinks at compile time
+- **Wrong-key boots fail loud** -- `AgentScope.create` throws `MasterKeyMismatchError` immediately if existing column keys can't be decrypted
+- **Column encryption** -- AES-256-GCM per column; `rotateColumnKey()` re-encrypts all rows atomically; `rewrapColumnKey()` migrates to a new master key without touching row data
+- **Append-only audit trail** -- PostgreSQL triggers block UPDATE/DELETE; every record is Ed25519-signed and hash-chained
+- **VP audience binding** -- credentials can be bound to a specific server DID, preventing replay across instances
 - **PKCE S256** on all OIDC flows; SSRF guards on discovered endpoints
-- **Mock auth gated** — `mockHumanDid` only works in `NODE_ENV=development` or `test`
+- **Mock auth gated** -- `mockHumanDid` only works in `NODE_ENV=development` or `test`
 
 See [`docs/DECISIONS.md`](docs/DECISIONS.md) for architecture decision records.
 
@@ -186,7 +208,7 @@ Requires Node.js 20+ and PostgreSQL 16 for the full test suite (Postgres-gated t
 
 ```bash
 npm install
-npm test          # 1,287 tests, ~15s
+npm test          # vitest, ~15s
 npm run build     # TypeScript → dist/
 npm run typecheck
 ```
@@ -204,4 +226,4 @@ DATABASE_URL=... npm test
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE).
+Apache 2.0 -- see [LICENSE](LICENSE).
