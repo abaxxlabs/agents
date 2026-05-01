@@ -8,15 +8,11 @@
 
 Two agents query the same table. They get completely different data — not because your code filters it, but because the query layer physically cannot return what the agent isn't credentialed for.
 
----
-
 ## The problem with application-level checks
 
 AI agents get prompt-injected. Permission checks that happen before the query are bypassable — a compromised or manipulated agent can work around them entirely. Once data leaves the database unfiltered, you've already lost.
 
-`@abaxxlabs/agents` moves enforcement into the query layer. Each agent carries a signed, scoped [Verifiable Credential](https://www.w3.org/TR/vc-data-model/). The ScopeEngine verifies it on every query, enforces the projection boundary, and decrypts only the authorized columns — before results leave the database.
-
----
+Agents++ moves enforcement into the query layer. Each agent carries a signed, scoped [Verifiable Credential](https://www.w3.org/TR/vc-data-model/). The ScopeEngine verifies it on every query, enforces the projection boundary, and decrypts only the authorized columns — before results leave the database.
 
 ## How it works
 
@@ -34,19 +30,15 @@ flowchart LR
 
 Same table. Same SQL. Agent A gets `price` and `quantity` in cleartext. Agent B gets `instrument` only. Querying an out-of-scope encrypted column throws `ScopeViolationError` — it isn't filtered, it's rejected before execution.
 
----
-
 ## What you get
 
 - **Verifiable Credentials** — W3C-standard, signed, expiring, bound to the agent's DID
 - **Column-level encryption** — AES-256-GCM per column, BYOK master key, atomic key rotation
 - **Tamper-proof audit trail** — Ed25519-signed records, PostgreSQL-enforced append-only, hash-chained
 - **Agent delegation** — supervisors can delegate a strict subset of their scope to workers, TTL-capped
-- **MCP-native** — Claude, GPT, and any MCP-compatible agent works out of the box via `@abaxxlabs/agents/mcp`
+- **MCP-native** — Claude, GPT, and any MCP-compatible agent works out of the box
 - **Process isolation** — run as a separate process; the agent never touches DB credentials or the master key
 - **Multiple backends** — PostgreSQL, SQLite, or in-memory storage; swap without changing application code
-
----
 
 ## Before / after
 
@@ -71,8 +63,6 @@ const result = await scope.query({
 });
 ```
 
----
-
 ## Install
 
 ```bash
@@ -85,8 +75,6 @@ Peer dependencies for SQL enforcement:
 npm install pg libpg-query
 ```
 
----
-
 ## Subpath exports
 
 | Import | What it provides |
@@ -98,8 +86,6 @@ npm install pg libpg-query
 | `@abaxxlabs/agents/sqlite` | SQLite backend (bun:sqlite / better-sqlite3) |
 | `@abaxxlabs/agents/bootstrap` | `resolveMasterKeyFromEnv()` helper |
 | `@abaxxlabs/agents/id-sdk-mcp` | Platform identity adapter (AbaxxOne) |
-
----
 
 ## Quick start
 
@@ -140,8 +126,6 @@ const result = await scope.query({
 // Requesting 'price' or 'counterparty' → ScopeViolationError
 ```
 
----
-
 ## MCP server
 
 AI agents connect directly via the [Model Context Protocol](https://modelcontextprotocol.io):
@@ -170,8 +154,6 @@ agents mcp --db postgresql://localhost/mydb --transport http --port 8443 \
 
 Use HTTP transport for production — the agent calls over the network and never has direct access to the database or master key.
 
----
-
 ## Delegation
 
 Supervisors can delegate a strict subset of their scope to workers:
@@ -185,12 +167,10 @@ const workerCred = scope.delegateCredential(supervisor.did, supervisorCred, {
 });
 ```
 
----
-
 ## Security model
 
 - **Ed25519 only** — no algorithm agility, no downgrade surface
-- **BYOK master key** — the library never reads `process.env`; you pass the key explicitly. `MasterKey` is a branded type that blocks the buffer from leaking into untyped sinks at compile time
+- **BYOK master key** — Agents++ never reads `process.env`; you pass the key explicitly. `MasterKey` is a branded type that blocks the buffer from leaking into untyped sinks at compile time
 - **Wrong-key boots fail loud** — `AgentScope.create` throws `MasterKeyMismatchError` immediately if existing column keys can't be decrypted; no silent `[ENCRYPTED]` placeholders
 - **Column encryption** — AES-256-GCM per column; `rotateColumnKey()` re-encrypts all rows atomically; `rewrapColumnKey()` migrates to a new master key without touching row data
 - **Append-only audit trail** — PostgreSQL triggers block UPDATE/DELETE; every record is Ed25519-signed and hash-chained against the previous
@@ -199,8 +179,6 @@ const workerCred = scope.delegateCredential(supervisor.did, supervisorCred, {
 - **Mock auth gated** — `mockHumanDid` only works in `NODE_ENV=development` or `test`
 
 See [`docs/DECISIONS.md`](docs/DECISIONS.md) for architecture decision records.
-
----
 
 ## Development
 
@@ -223,8 +201,6 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres \
 
 DATABASE_URL=... npm test
 ```
-
----
 
 ## License
 
