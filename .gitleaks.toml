@@ -1,0 +1,12 @@
+# Gitleaks configuration — allowlists for known false positives.
+# Demo fixtures, test fixtures, and vendor bundles contain sample
+# JWTs, DIDs, and encoded data that trigger generic secret rules.
+# None of these paths contain active credentials.
+
+[allowlist]
+  description = "Test and demo fixtures"
+  paths = [
+    '''demo/''',
+    '''test/fixtures/''',
+    '''vendor/''',
+  ]
