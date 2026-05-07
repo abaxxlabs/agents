@@ -10,7 +10,7 @@ Open trust infrastructure for autonomous AI agents. Every agent gets a cryptogra
 
 ---
 
-The problem: Every AI agent is a potential threat actor. A stolen API key is indistinguishable from a legitimate one, a compromised agent can act with the full authority of whoever provisioned it, and there is no audit trail connecting actions to a responsible party.
+The problem: Every AI agent is a potential attack surface. A stolen API key is indistinguishable from a legitimate one, a compromised agent can act with the full authority of whoever provisioned it, and there is no audit trail connecting actions to a responsible party.
 
 **Three incidents in seven months tell the same story:**
 
