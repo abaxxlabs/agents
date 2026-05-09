@@ -36,6 +36,17 @@ import { generateDidKeyFromSeed } from './did-key.js';
 import { base58Encode } from '../crypto/base58.js';
 import type { Logger } from '../logger.js';
 import { defaultLogger } from '../logger.js';
+import { expiresInToMs } from '../config.js';
+
+function assertExpiresInBound(
+  expiresIn: string | number,
+  maxTtlMs: number,
+): void {
+  if (expiresInToMs(expiresIn) > maxTtlMs) {
+    const maxSeconds = Math.floor(maxTtlMs / 1_000);
+    throw new Error(`expiresIn exceeds maximum credential TTL of ${maxSeconds}s`);
+  }
+}
 
 function revokeCredentialHelper(
   verifier: VcVerifier,
@@ -110,6 +121,9 @@ export function createSessionFromDid(
         ceiling,
         { humanDid, requestedAt: new Date() },
       );
+      if (ceiling.credentialMaxTtlMs !== undefined) {
+        assertExpiresInBound(options.expiresIn, ceiling.credentialMaxTtlMs);
+      }
 
       if (
         parentConfig?.credentialExp &&
@@ -206,6 +220,9 @@ export function createMockSession(
         ceiling,
         { humanDid, requestedAt: new Date() },
       );
+      if (ceiling.credentialMaxTtlMs !== undefined) {
+        assertExpiresInBound(options.expiresIn, ceiling.credentialMaxTtlMs);
+      }
       if (sdk) {
         const jwt = await issueCredentialWithSdk(sdk, humanDid, options).catch<null>(() => null);
         if (jwt !== null) return jwt;
@@ -276,6 +293,9 @@ export function createOidcSession(
         ceiling,
         { humanDid, requestedAt: new Date() },
       );
+      if (ceiling.credentialMaxTtlMs !== undefined) {
+        assertExpiresInBound(options.expiresIn, ceiling.credentialMaxTtlMs);
+      }
       if (sdk) {
         const jwt = await issueCredentialWithSdk(sdk, humanDid, options).catch<null>(() => null);
         if (jwt !== null) return jwt;

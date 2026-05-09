@@ -31,14 +31,14 @@
  */
 
 import { inspect } from 'node:util';
-import type { MasterKey } from './crypto/master-key.js';
+import { asMasterKey, type MasterKey } from './crypto/master-key.js';
 import { REDACTED_MASTER_KEY } from './crypto/redact.js';
 import { VcVerifier, decodeJwt } from './vc-verifier.js';
 import type { StorageBackend } from './storage/types.js';
 import { AuthUnavailableError } from './errors.js';
 import { AuditLogger } from './audit-logger.js';
 import type { Logger } from './logger.js';
-import { defaultLogger } from './logger.js';
+import { getLogger } from './logger.js';
 import {
   createAgent,
   restoreAgents,
@@ -49,6 +49,8 @@ import {
 } from './auth/index.js';
 import { AbaxxOneOidcProvider } from './auth/abaxx-one.js';
 import { createSessionFromDid } from './auth/session-factory.js';
+import type { ScopeCeiling } from './auth/ceiling.js';
+import { expiresInToMs } from './config.js';
 import type {
   AuthOptions,
   AuthenticatedSession,
@@ -105,6 +107,9 @@ export interface AgentIdentityConfig {
    */
   keystore?: {
     path?: string;
+  };
+  delegation?: {
+    maxDepth?: number; // default: 2 (human→agent→worker)
   };
   /**
    * Dev-mode opt-in. See AgentScopeConfig.devMode for full docs.
@@ -167,7 +172,8 @@ export class AgentIdentity {
     this.storage = opts.storage;
     this.verifier = opts.verifier;
     this.auditLogger = opts.auditLogger;
-    this.masterKey = opts.masterKey;
+    // Copy on intake so close() can zero our own memory without mutating the caller's buffer.
+    this.masterKey = asMasterKey(Buffer.from(opts.masterKey));
     this.sdk = opts.sdk;
     this.verifierDid = opts.serverIdentity.did;
     this._verifierPublicKey = opts.serverIdentity.publicKey;
@@ -197,8 +203,14 @@ export class AgentIdentity {
     config: AgentIdentityConfig,
     injections: AgentIdentityInjections,
   ): Promise<[AgentIdentity, AgentIdentityInternals]> {
-    const { storage, masterKey, sdk, serverIdentity: injectedIdentity, logger: injectedLogger } = injections;
-    const logger = injectedLogger ?? defaultLogger;
+    const {
+      storage,
+      masterKey,
+      sdk,
+      serverIdentity: injectedIdentity,
+      logger: injectedLogger,
+    } = injections;
+    const logger = getLogger(injectedLogger);
 
     // 1. Build VcVerifier
     const verifier = new VcVerifier({
@@ -236,17 +248,14 @@ export class AgentIdentity {
         instance.agents.set(did, agent);
       }
     } else {
-      console.info(
-        JSON.stringify({
+      logger.warn(
+        '[agents] Agents schema not initialized — the next operation will fail with ' +
+          `'relation "agents" does not exist'. Run: agents init --db <url>`,
+        {
           event: 'restore_agents_schema_missing',
-          level: 'INFO',
-          schema: 'public',
           table: 'agents',
-          agentCount: 0,
-          reason: 'table_not_found',
-          message: 'Agents table does not exist; skipping agent restore. Run migrations to initialize.',
-          nextStep: 'npx @abaxxtech/agents migrate',
-        }),
+          nextStep: 'agents init --db <url>',
+        },
       );
     }
 
@@ -272,6 +281,30 @@ export class AgentIdentity {
     this.verifier.setSdk(sdk);
   }
 
+  /** Merge config.credential.maxTtl into a caller-supplied ceiling. */
+  private effectiveCeiling(callerCeiling?: ScopeCeiling): ScopeCeiling | undefined {
+    const configMaxTtl = this.config.credential?.maxTtl;
+    if (!configMaxTtl && !callerCeiling) return undefined;
+    if (!configMaxTtl) return callerCeiling;
+
+    const configMs = expiresInToMs(configMaxTtl);
+
+    if (callerCeiling) {
+      return {
+        ...callerCeiling,
+        credentialMaxTtlMs: Math.min(configMs, callerCeiling.credentialMaxTtlMs ?? Infinity),
+      };
+    }
+
+    return {
+      columns: ['*'],
+      actions: ['*'],
+      source: 'mock-unrestricted' as const,
+      resolvedFrom: [],
+      credentialMaxTtlMs: configMs,
+    };
+  }
+
   /**
    * Authenticate via OIDC or mock (dev/test only).
    * Paths: mockHumanDid (dev/test), oidcIdentity (pre-obtained), or AbaxxOne redirect.
@@ -287,11 +320,22 @@ export class AgentIdentity {
             'Set NODE_ENV appropriately, or use real OIDC authentication.',
         );
       }
-      return createMockSession(this.verifier, options.mockHumanDid, this.sdk, options.scopeCeiling);
+      return createMockSession(
+        this.verifier,
+        options.mockHumanDid,
+        this.sdk,
+        this.effectiveCeiling(options.scopeCeiling),
+      );
     }
 
     if (options.oidcIdentity) {
-      return createOidcSession(this.verifier, options.oidcIdentity, this.sdk, options.scopeCeiling, this.logger);
+      return createOidcSession(
+        this.verifier,
+        options.oidcIdentity,
+        this.sdk,
+        this.effectiveCeiling(options.scopeCeiling),
+        this.logger,
+      );
     }
 
     if (this.config.abaxxOne) {
@@ -329,12 +373,26 @@ export class AgentIdentity {
     }
     const provider = this.ensureAbaxxOneProvider();
     const identity = await provider.exchangeCode(authorizationCode, state, codeVerifier);
-    return createSessionFromDid(identity.humanDid, identity.email, this.verifier, this.sdk, undefined, undefined, undefined, undefined, this.logger);
+    return createSessionFromDid(
+      identity.humanDid,
+      identity.email,
+      this.verifier,
+      this.sdk,
+      undefined,
+      undefined,
+      this.effectiveCeiling(),
+      undefined,
+      this.logger,
+    );
   }
 
-  /** Create a new agent identity (DID + key pair). `ownerDid` is required. */
   async createAgent(options: CreateAgentOptions): Promise<RegisteredAgent> {
     this.assertOpen();
+    if (!options.name || typeof options.name !== 'string' || options.name.trim() === '') {
+      throw new Error(
+        'createAgent() requires name. Pass a non-empty string identifying the agent.',
+      );
+    }
     if (!options.ownerDid) {
       throw new Error(
         "createAgent() requires ownerDid. Pass the authenticated human's DID " +
@@ -409,6 +467,7 @@ export class AgentIdentity {
         actions: options.actions,
         expiresIn: options.expiresIn,
         maxExpSeconds,
+        operatorMaxDepth: this.config.delegation?.maxDepth ?? 2,
         metadata: options.metadata,
       },
     );

@@ -48,7 +48,7 @@ class VcApi {
     }
     async verifyJWT(jwt) {
         try {
-            credential_js_1.VerifiableCredential.verify(jwt);
+            await credential_js_1.VerifiableCredential.verify(jwt);
             return true;
         }
         catch (e) {

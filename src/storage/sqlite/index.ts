@@ -19,7 +19,7 @@
  *   - Bun: uses the built-in `bun:sqlite` (no install needed).
  *   - Node.js: falls back to `better-sqlite3` (optional peer dep).
  *
- * Importable only via the `@abaxxtech/agents/sqlite` subpath export — the main
+ * Importable only via the `@abaxxlabs/agents/sqlite` subpath export — the main
  * entry never loads this file, keeping the native dep optional.
  */
 
@@ -32,6 +32,7 @@ import type {
   RevocationStore,
   SessionStore,
 } from '../types.js';
+import { SqliteRuntimeUnavailableError } from '../../errors.js';
 import { SqliteAgentStore } from './agent-store.js';
 import { SqliteAuditStore } from './audit-store.js';
 import { SqliteContextStore } from './context-store.js';
@@ -72,7 +73,7 @@ interface SqliteDatabase {
  * Resolve the Database constructor for the current runtime.
  * Tries bun:sqlite first (Bun built-in); falls back to better-sqlite3 (Node.js).
  *
- * @throws {Error} if neither runtime provides a SQLite implementation.
+ * @throws {SqliteRuntimeUnavailableError} if neither runtime provides a SQLite implementation.
  */
 async function loadSqliteDatabaseCtor(): Promise<new (path: string) => SqliteDatabase> {
   try {
@@ -87,11 +88,7 @@ async function loadSqliteDatabaseCtor(): Promise<new (path: string) => SqliteDat
     const mod = await import('better-sqlite3');
     return mod.default;
   } catch {
-    throw new Error(
-      'SqliteStorageBackend requires a SQLite runtime. ' +
-        'Under Bun, bun:sqlite is built in (no install needed). ' +
-        'Under Node.js, install the peer dependency: npm install better-sqlite3',
-    );
+    throw new SqliteRuntimeUnavailableError();
   }
 }
 

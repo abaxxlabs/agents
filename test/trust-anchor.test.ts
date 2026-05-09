@@ -75,9 +75,7 @@ describe('LocalTrustAnchorStore — constructor', () => {
   });
 
   it('loads initialTrustedServers on construction', () => {
-    // Session 7 / ABXAGNTS-244: replaces the prior `AGENTS_TRUSTED_SERVERS`
-    // env-driven shape. Library no longer reads env directly; consumers pass
-    // the parsed list in via the constructor option.
+    // Library no longer reads env directly; consumers pass the parsed list in via the constructor option.
     const store = new LocalTrustAnchorStore({
       ownServerDid: OWN_DID,
       initialTrustedServers: [PEER_DID_1, PEER_DID_2],
@@ -116,7 +114,7 @@ describe('LocalTrustAnchorStore — constructor', () => {
   });
 
   it('does NOT honor AGENTS_TRUSTED_SERVERS env var (library no longer reads it)', () => {
-    // Drift-prevention regression for ABXAGNTS-244. Two-direction assertion
+    // Drift-prevention regression: two-direction assertion
     // (matches the -248 hardening pattern):
     //
     //   (a) env set, no initialTrustedServers passed → store has only own DID.
@@ -338,15 +336,13 @@ describe('persist and load — keystore round-trip', () => {
   });
 
   it('env anchors are NOT persisted (source: env excluded from keystore write)', async () => {
-    // Session 7 / ABXAGNTS-244 — anchors loaded via initialTrustedServers carry
+    // Anchors loaded via initialTrustedServers carry
     // source: 'env' for audit-trail continuity, but they are NOT written to the
     // keystore. After "restart" (re-construct without initialTrustedServers),
     // the previously env-loaded peer should be absent — only the own-DID
     // (source: 'local') should round-trip via persist/load.
     //
-    // Pre-v0.10.0 this test set AGENTS_TRUSTED_SERVERS env directly. After the
-    // env-read removal, the same exclusion invariant is now exercised through
-    // the explicit ctor option (more honest about what's being tested).
+    // The same exclusion invariant is exercised through the explicit ctor option.
     const ks = makeKeystore();
     const store1 = new LocalTrustAnchorStore({
       ownServerDid: OWN_DID,

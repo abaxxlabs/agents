@@ -4,9 +4,8 @@
 
 | Version | Supported          |
 |---------|--------------------|
-| 0.11.x  | Yes                |
-| 0.10.x  | Yes                |
-| < 0.10  | No                 |
+| 0.9.x   | Yes                |
+| < 0.9   | No                 |
 
 ## Reporting a Vulnerability
 
@@ -44,6 +43,16 @@ The following are considered security issues for this library:
 - **Scope enforcement** -- accessing columns or actions outside a credential's authorized scope
 - **Delegation chain** -- privilege escalation through credential delegation
 
+## Scope enforcement
+
+The projection boundary rejects any SQL reference to columns outside the credential scope (CWE-285). `'projection'` is the only supported `scopeMode`. The legacy `encryption-only` mode (which only guarded encrypted columns, leaving plaintext columns unprotected) was removed along with the `AGENTS_ALLOW_LEGACY_SCOPE_MODE` env gate.
+
+## JSON keystore file permissions
+
+On Linux and macOS, the `JsonFileBackend` creates keystore files using `O_CREAT|O_EXCL|O_WRONLY` with mode `0600` (owner read/write only). The exclusive-create flag ensures the file never exists with wider permissions at any observable instant, and prevents symlink-based attacks in the temp-file path. A post-creation `stat` verifies the mode as defense in depth.
+
+On Windows, Node.js POSIX file-mode arguments are not enforced by the OS. The keystore file inherits the parent directory's default ACL. **Deployment recommendation**: restrict the keystore directory (`%USERPROFILE%\.agents\`) ACL to the service principal running the agent process.
+
 ## Out of Scope
 
 - Vulnerabilities in upstream dependencies (pg, zod, libpg-query, etc.) -- please report those to the respective maintainers
@@ -54,3 +63,7 @@ The following are considered security issues for this library:
 ## Bug Bounty
 
 There is no bug bounty program at this time. We appreciate responsible disclosure and will credit reporters in release notes (unless you prefer to remain anonymous).
+
+## AbaxxOne OIDC — HIGH-1 closeout
+
+A white-box security audit identified **HIGH-1**: the legacy module-level functions `authenticateWithOidc` and `completeOidcFlow` left CSRF state validation as an unenforced obligation on every consumer (CWE-352, CWE-639; OWASP API4:2023, ASVS V4.2.2 / V13.2.3). These entry points, the `VerifiedAuthState` brand machinery, and `src/auth/legacy-oidc.ts` / `src/auth/verified-auth-state.ts` were **removed in v1.0**. All AbaxxOne OIDC flows now go through `AbaxxOneOidcProvider`, which validates state end-to-end against its internal `PendingFlowStore` before any token exchange.

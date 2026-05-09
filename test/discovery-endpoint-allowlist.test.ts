@@ -16,7 +16,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { validateDiscoveredEndpoint } from '../src/auth/discovery-utils.js';
 import { DiscoveryEndpointBlockedError } from '../src/errors.js';
 
-describe('validateDiscoveredEndpoint — cross-origin allowlist (ABXAGNTS-378)', () => {
+describe('validateDiscoveredEndpoint — cross-origin allowlist', () => {
   let origNodeEnv: string | undefined;
 
   beforeEach(() => {

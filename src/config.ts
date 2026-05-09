@@ -190,3 +190,24 @@ export function parseDuration(duration: string): number {
 
   return Math.round(ms);
 }
+
+/**
+ * Convert an `expiresIn` value (string duration or integer seconds) to milliseconds.
+ *
+ * @param expiresIn - Duration string ('4h', '30m') or positive integer seconds.
+ * @returns Milliseconds.
+ * @throws {Error} if the value is not a positive integer (when numeric) or a valid duration string.
+ */
+export function expiresInToMs(expiresIn: string | number): number {
+  if (typeof expiresIn === 'number') {
+    if (!Number.isFinite(expiresIn) || expiresIn <= 0 || !Number.isInteger(expiresIn)) {
+      throw new Error(`Invalid expiresIn: ${expiresIn}. Must be a positive integer (seconds).`);
+    }
+    return expiresIn * 1_000;
+  }
+  const ms = parseDuration(expiresIn);
+  if (ms <= 0) {
+    throw new Error(`Invalid expiresIn: ${expiresIn}. Duration must be positive.`);
+  }
+  return ms;
+}

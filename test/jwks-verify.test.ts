@@ -13,7 +13,7 @@
 // limitations under the License.
 
 /**
- * JWKS Verify — Unit Tests (PR #16)
+ * JWKS Verify — Unit Tests
  *
  * Covers the security hardening additions to src/auth/jwks-verify.ts:
  *   1. Algorithm allowlist — rejects disallowed algorithms (none, HS256, etc.)
@@ -97,7 +97,7 @@ if (!shouldRunLoopbackHttpTests) {
   });
 }
 
-describeLoopback('JWKS Verify — PR #16 security hardening', () => {
+describeLoopback('JWKS Verify — security hardening', () => {
   let server: Server;
   let jwksUri: string;
   let currentJwks: { keys: ReturnType<typeof generateEdKey>['jwk'][] };

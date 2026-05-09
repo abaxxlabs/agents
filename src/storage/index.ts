@@ -94,16 +94,20 @@ import type { StorageBackend, StorageBackendOptions } from './types.js';
  * before using sub-stores.
  *
  * @example
+ *   const macKey = await deriveSessionMacKey(masterKey);
+ *
  *   // Postgres (production)
  *   const backend = await createStorageBackend({
  *     type: 'postgres',
  *     connectionString: process.env.DATABASE_URL!,
+ *     sessionMacKey: macKey,
  *   });
  *
  *   // SQLite
  *   const backend = await createStorageBackend({
  *     type: 'sqlite',
  *     path: './local.db',
+ *     sessionMacKey: macKey,
  *   });
  *
  *   await backend.initialize();
@@ -114,14 +118,11 @@ export async function createStorageBackend(
   switch (options.type) {
     case 'postgres': {
       const { PostgresStorageBackend } = await import('./postgres/index.js');
-      return new PostgresStorageBackend(options);
+      return new PostgresStorageBackend(options, { sessionMacKey: options.sessionMacKey });
     }
     case 'sqlite': {
       const { SqliteStorageBackend } = await import('./sqlite/index.js');
-      return SqliteStorageBackend.create(
-        options,
-        options.sessionMacKey ? { sessionMacKey: options.sessionMacKey } : undefined,
-      );
+      return SqliteStorageBackend.create(options, { sessionMacKey: options.sessionMacKey });
     }
     default: {
       // Exhaustiveness check — TypeScript should catch this at compile time,

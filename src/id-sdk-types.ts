@@ -24,7 +24,7 @@
 export interface IdSdkVcApi {
   createCredential(issuer: string, subject: string, data: unknown, type?: string): Promise<unknown>;
   signCredential(vc: unknown, options: unknown): Promise<string>;
-  getSignerOptions(did: string): Promise<{
+  getSignerOptions(did: string, subjectDid?: string): Promise<{
     kid: string;
     issuerDid: string;
     subjectDid: string;

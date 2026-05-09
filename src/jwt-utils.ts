@@ -16,12 +16,12 @@ import { sign as ed25519Sign, verify as ed25519Verify } from 'node:crypto';
 import { CredentialMalformedError } from './errors.js';
 import type { CredentialScope } from './types.js';
 
-function base64UrlDecode(str: string): Buffer {
+export function base64UrlDecode(str: string): Buffer {
   const padded = str.replace(/-/g, '+').replace(/_/g, '/');
   return Buffer.from(padded, 'base64');
 }
 
-function base64UrlEncode(buf: Buffer): string {
+export function base64UrlEncode(buf: Buffer): string {
   return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 

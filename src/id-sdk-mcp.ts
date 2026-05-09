@@ -283,6 +283,38 @@ export function createIdSdkMcpAdapter(
 }
 
 /**
+ * Optional vendor deps that ship under `optionalDependencies` so the main
+ * package still installs on platforms where their native build steps fail.
+ * If the MCP server fails to start, the most likely culprit is one of these
+ * being absent — we surface that in the thrown error so consumers get a
+ * pointed message instead of a raw `ERR_MODULE_NOT_FOUND`.
+ */
+const OPTIONAL_VENDOR_DEPS: Array<{ name: string; feature: string }> = [
+  { name: 'level', feature: 'DWN local storage' },
+  { name: '@mattrglobal/bbs-signatures', feature: 'BBS+ credential proofs' },
+];
+
+function describeMissingOptionalDeps(serverPath: string): string[] {
+  const missing: string[] = [];
+  let probe: ReturnType<typeof createRequire>;
+  try {
+    probe = createRequire(serverPath);
+  } catch {
+    return missing;
+  }
+
+  for (const dep of OPTIONAL_VENDOR_DEPS) {
+    try {
+      probe.resolve(dep.name);
+    } catch {
+      missing.push(`${dep.name} (${dep.feature})`);
+    }
+  }
+
+  return missing;
+}
+
+/**
  * Start an id-sdk-mcp server over stdio, call `connect`, and return an
  * `IdSdkInstance`-compatible adapter.
  */
@@ -302,7 +334,21 @@ export async function connectIdSdkMcp(
     version: '0.1.0',
   });
 
-  await client.connect(transport);
+  try {
+    await client.connect(transport);
+  } catch (err) {
+    const missing = describeMissingOptionalDeps(serverPath);
+    if (missing.length > 0) {
+      const message =
+        '[agents] id-sdk-mcp server failed to start. ' +
+        `Missing optional dependencies: ${missing.join(', ')}. ` +
+        'Install them manually if you need the corresponding features ' +
+        '(they are listed under optionalDependencies because their native ' +
+        'build can fail on some platforms).';
+      throw new Error(message, { cause: err });
+    }
+    throw err;
+  }
 
   const callTool: IdSdkMcpToolCaller = async (name, args) => {
     const result = await client.callTool({ name, arguments: args });

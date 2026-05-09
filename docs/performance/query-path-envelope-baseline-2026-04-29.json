@@ -1,0 +1,247 @@
+{
+  "schemaVersion": "abxagnts.query-path-benchmark.v1",
+  "generatedAt": "2026-04-29T19:26:29.982Z",
+  "benchmark": {
+    "name": "query-service-scope-engine",
+    "ticket": "",
+    "packageName": "@abaxxlabs/agents",
+    "packageVersion": "0.11.3",
+    "git": {
+      "branch": "release-review-8-abxagnts-316-317",
+      "commit": "3f20d3a",
+      "dirty": true
+    }
+  },
+  "environment": {
+    "node": "v25.8.0",
+    "platform": "darwin 24.6.0",
+    "arch": "arm64",
+    "cpuModel": "Apple M4",
+    "cpuCount": 10,
+    "totalMemoryMb": 24576
+  },
+  "config": {
+    "rows": 5000,
+    "iterations": 200,
+    "warmupIterations": 20,
+    "concurrency": 1,
+    "maxRows": 250,
+    "scopeMode": "projection",
+    "queryPath": "createQueryService -> ScopeEngine.query",
+    "database": "synthetic in-process pg.Pool fixture",
+    "audit": "AuditLogger enabled with in-memory AuditStore",
+    "sqlParser": "libpg-query",
+    "credentialMode": "raw VC input; ScopeEngine wraps a fresh VP per query"
+  },
+  "dataset": {
+    "table": "order_book",
+    "rowCount": 5000,
+    "rowShape": "Capital-markets order book rows with public execution fields and three encrypted sensitive fields.",
+    "columns": [
+      {
+        "name": "order_id",
+        "type": "integer",
+        "encrypted": false
+      },
+      {
+        "name": "instrument",
+        "type": "text",
+        "encrypted": false
+      },
+      {
+        "name": "side",
+        "type": "text",
+        "encrypted": false
+      },
+      {
+        "name": "price",
+        "type": "numeric",
+        "encrypted": false
+      },
+      {
+        "name": "quantity",
+        "type": "integer",
+        "encrypted": false
+      },
+      {
+        "name": "venue",
+        "type": "text",
+        "encrypted": false
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp",
+        "encrypted": false
+      },
+      {
+        "name": "account_id",
+        "type": "text",
+        "encrypted": true
+      },
+      {
+        "name": "counterparty",
+        "type": "text",
+        "encrypted": true
+      },
+      {
+        "name": "trader_note",
+        "type": "text",
+        "encrypted": true
+      }
+    ],
+    "encryptedColumns": [
+      "order_book.account_id",
+      "order_book.counterparty",
+      "order_book.trader_note"
+    ]
+  },
+  "patterns": [
+    {
+      "name": "public_projection_100_rows",
+      "description": "Narrow public projection with WHERE and LIMIT; exercises credential verification, parser checks, pool call, and audit.",
+      "table": "order_book",
+      "sql": "SELECT order_id, instrument, side, price, quantity FROM order_book WHERE instrument = $1 LIMIT 100",
+      "params": [
+        "LNG-MAY26"
+      ],
+      "selectedColumns": [
+        "order_id",
+        "instrument",
+        "side",
+        "price",
+        "quantity"
+      ],
+      "referencedColumns": [
+        "order_id",
+        "instrument",
+        "side",
+        "price",
+        "quantity"
+      ],
+      "expectedReturnedRows": 100,
+      "measurement": {
+        "iterations": 200,
+        "warmupIterations": 20,
+        "concurrency": 1,
+        "totalMs": 82.16,
+        "throughputQps": 2434.284,
+        "rowsPerQuery": 100,
+        "rowsPerSecond": 243428.445,
+        "latencyMs": {
+          "min": 0.339,
+          "mean": 0.41,
+          "p50": 0.362,
+          "p90": 0.523,
+          "p95": 0.639,
+          "p99": 1.007,
+          "max": 1.341
+        }
+      }
+    },
+    {
+      "name": "encrypted_projection_100_rows",
+      "description": "Sensitive projection decrypting three encrypted columns per row after the projection boundary passes.",
+      "table": "order_book",
+      "sql": "SELECT order_id, instrument, account_id, counterparty, trader_note FROM order_book WHERE venue = $1 LIMIT 100",
+      "params": [
+        "SGX"
+      ],
+      "selectedColumns": [
+        "order_id",
+        "instrument",
+        "account_id",
+        "counterparty",
+        "trader_note"
+      ],
+      "referencedColumns": [
+        "order_id",
+        "instrument",
+        "account_id",
+        "counterparty",
+        "trader_note",
+        "venue"
+      ],
+      "expectedReturnedRows": 100,
+      "measurement": {
+        "iterations": 200,
+        "warmupIterations": 20,
+        "concurrency": 1,
+        "totalMs": 177.631,
+        "throughputQps": 1125.929,
+        "rowsPerQuery": 100,
+        "rowsPerSecond": 112592.933,
+        "latencyMs": {
+          "min": 0.762,
+          "mean": 0.887,
+          "p50": 0.822,
+          "p90": 1.013,
+          "p95": 1.3,
+          "p99": 1.522,
+          "max": 2.879
+        }
+      }
+    },
+    {
+      "name": "service_row_cap_1000_to_max_rows",
+      "description": "Wide query returning 1000 scoped rows from ScopeEngine, then applying QueryService maxRows response shaping.",
+      "table": "order_book",
+      "sql": "SELECT order_id, instrument, side, price, quantity, venue, updated_at, account_id, counterparty, trader_note FROM order_book WHERE side = $1 LIMIT 1000",
+      "params": [
+        "BUY"
+      ],
+      "selectedColumns": [
+        "order_id",
+        "instrument",
+        "side",
+        "price",
+        "quantity",
+        "venue",
+        "updated_at",
+        "account_id",
+        "counterparty",
+        "trader_note"
+      ],
+      "referencedColumns": [
+        "order_id",
+        "instrument",
+        "side",
+        "price",
+        "quantity",
+        "venue",
+        "updated_at",
+        "account_id",
+        "counterparty",
+        "trader_note"
+      ],
+      "expectedReturnedRows": 250,
+      "measurement": {
+        "iterations": 200,
+        "warmupIterations": 20,
+        "concurrency": 1,
+        "totalMs": 1293.878,
+        "throughputQps": 154.574,
+        "rowsPerQuery": 250,
+        "rowsPerSecond": 38643.506,
+        "latencyMs": {
+          "min": 5.469,
+          "mean": 6.467,
+          "p50": 6.04,
+          "p90": 7.208,
+          "p95": 8.291,
+          "p99": 10.287,
+          "max": 45.802
+        }
+      }
+    }
+  ],
+  "summary": {
+    "fastestPatternByP95": "public_projection_100_rows",
+    "slowestPatternByP95": "service_row_cap_1000_to_max_rows",
+    "bottlenecks": [
+      "Every query performs credential verification, libpg-query parsing/projection checks, and audit signing.",
+      "AuditLogger serializes audit-chain updates; concurrent runs measure that lock as part of the query path.",
+      "Encrypted projection p95 was 2.034x the public projection p95 in this run.",
+      "Row cap is applied after ScopeEngine processing; the wide pattern still decrypts up to 1000 rows before returning 250."
+    ]
+  }
+}

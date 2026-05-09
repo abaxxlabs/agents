@@ -81,6 +81,8 @@ export interface ScopeCeiling {
    * unwrapped session that callers can hold onto.
    */
   rules?: IssuanceRule[];
+  /** Max credential TTL in milliseconds. Enforced at issuance time across all paths. */
+  credentialMaxTtlMs?: number;
 }
 
 /**

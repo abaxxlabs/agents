@@ -1,15 +1,7 @@
 <!--
-  Pre-merge checklist for breaking-change PRs (D36, Session 6 / ABXAGNTS-197).
-
   This template is shown for EVERY PR. Most PRs check only the "all PRs"
   section. Breaking-change PRs (semver minor on 0.x, semver major post-1.0)
   must clear the additional checklist below.
-
-  Why this exists: Session 3's revocation drift (advertised JSDoc injection
-  path that no code wired up) shipped through human review for ~4 minor
-  versions. The structural drift-prevention (JSDoc CI workflow, type-level
-  required parameters, end-to-end injection tests) closes that class. This
-  checklist is the soft-discipline backing the structural gates.
 -->
 
 ## Summary
@@ -37,7 +29,7 @@
 - [ ] An end-to-end test exists for any new injection seam, capturing the "this would have failed pre-change" regression case (template: `test/regression/injection-drift.test.ts`)
 - [ ] Migration guide added at `docs/migration-<feature>.md` if consumers must change their bootstrap or types
 - [ ] Rollback procedure documented at `docs/rollback-<version>.md` if any DB schema, persisted-state, or configuration shape changed
-- [ ] Pre-ship notification template prepared in `demo/hackathon/findings/session-plans/session-N-release/` if external partners or design-partner integrations exist
+- [ ] External partners or design-partner integrations notified if they are affected by the change
 
 ## Test plan
 

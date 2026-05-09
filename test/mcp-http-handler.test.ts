@@ -429,7 +429,7 @@ describe('createMcpHttpHandler — multi-session routing', () => {
     }
   });
 
-  describe('security headers (ABXAGNTS-379)', () => {
+  describe('security headers', () => {
     const EXPECTED_BASELINE: Array<[string, string]> = [
       ['X-Content-Type-Options', 'nosniff'],
       ['Cache-Control', 'no-store'],

@@ -44,7 +44,7 @@ import { ScopeEngine } from './scope-engine.js';
 import { AgentIdentity } from '../agent-identity.js';
 import type { AgentIdentityConfig } from '../agent-identity.js';
 import { DbConnectionFailedError } from '../errors.js';
-import { defaultLogger } from '../logger.js';
+import { getLogger } from '../logger.js';
 import type {
   AgentScopeConfig,
   AuthOptions,
@@ -160,7 +160,7 @@ export class AgentScope implements AgentScopeInstance {
 
     // ── Storage setup ──────────────────────────────────────────────────────
     const masterKey = injections.masterKey;
-    const logger = injections.logger ?? defaultLogger;
+    const logger = getLogger(injections.logger);
 
     let storage: StorageBackend;
     let ownsStorage: boolean;
@@ -193,6 +193,7 @@ export class AgentScope implements AgentScopeInstance {
       log: config.log,
       orgBoundary: config.orgBoundary,
       keystore: config.keystore,
+      delegation: config.delegation,
       devMode: config.devMode,
     };
 

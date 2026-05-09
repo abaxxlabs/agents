@@ -104,12 +104,12 @@ describe('VC Verifier', () => {
         expiresIn: '1s',
       });
 
-      // Wait for expiry (1s credential + margin)
-      await new Promise((resolve) => setTimeout(resolve, 1100));
+      // Wait for expiry (1s credential + 1s clockSkew + margin)
+      await new Promise((resolve) => setTimeout(resolve, 2200));
 
-      // Create a verifier with very small clock skew
+      // Create a verifier with minimal clock skew
       const strictVerifier = new VcVerifier({
-        clockSkew: '0s',
+        clockSkew: '1s',
         revocationStore: new InMemoryRevocationStore(),
       });
       strictVerifier.registerKey(human.did, human.publicKey);

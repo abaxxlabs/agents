@@ -19,7 +19,7 @@ import type { AgentScope } from '../sql/index.js';
 import type { AuditLogger } from '../audit-logger.js';
 import { normalizeDomainError, toMcpErrorBody } from '../transport/index.js';
 import type { Logger } from '../logger.js';
-import { defaultLogger } from '../logger.js';
+import { getLogger } from '../logger.js';
 
 export interface ResourceDependencies {
   scope: AgentScope;
@@ -29,7 +29,7 @@ export interface ResourceDependencies {
 
 export function registerResources(server: McpServer, deps: ResourceDependencies): void {
   const { scope, auditLogger, logger: injectedLogger } = deps;
-  const log = injectedLogger ?? defaultLogger;
+  const log = getLogger(injectedLogger);
 
   // agent://{did} — Agent metadata (template resource)
   server.resource(
@@ -187,7 +187,8 @@ export function registerResources(server: McpServer, deps: ResourceDependencies)
   );
 }
 
-function renderResourceError(err: unknown, logger: Logger = defaultLogger): string {
+function renderResourceError(err: unknown, injectedLogger?: Logger): string {
+  const logger = getLogger(injectedLogger);
   const normalized = normalizeDomainError(err);
   if (normalized.code === 'INTERNAL_ERROR' && err instanceof Error) {
     logger.error('[agents] Internal error in MCP resource handler: ' + err.message, {

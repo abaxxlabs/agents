@@ -15,8 +15,9 @@
 import { randomUUID } from 'node:crypto';
 import type { IssueCredentialOptions, AgentSigner } from '../types.js';
 import { createJwt } from '../vc-verifier.js';
-import { validateScope, validateExpiry } from './delegation-policy.js';
-import { parseDuration } from '../config.js';
+import { decodeJwt } from '../jwt-utils.js';
+import { validateScope, validateExpiry, validateChain } from './delegation-policy.js';
+import { expiresInToMs } from '../config.js';
 import {
   assertScopeFitsInCeiling,
   type ScopeCeiling,
@@ -24,21 +25,6 @@ import {
 } from './ceiling.js';
 import type { IdSdkInstance } from '../id-sdk-types.js';
 
-
-/** Convert expiresIn (string duration or integer seconds) to milliseconds. */
-function expiresInToMs(expiresIn: string | number): number {
-  if (typeof expiresIn === 'number') {
-    if (!Number.isFinite(expiresIn) || expiresIn <= 0 || !Number.isInteger(expiresIn)) {
-      throw new Error(`Invalid expiresIn: ${expiresIn}. Must be a positive integer (seconds).`);
-    }
-    return expiresIn * 1_000;
-  }
-  const ms = parseDuration(expiresIn);
-  if (ms <= 0) {
-    throw new Error(`Invalid expiresIn: ${expiresIn}. Duration must be positive.`);
-  }
-  return ms;
-}
 
 /**
  * Issue a scoped Verifiable Credential via the platform identity SDK.
@@ -138,10 +124,22 @@ export function issueDelegatedCredential(
     actions: 'read'[];
     expiresIn: string | number;
     maxExpSeconds?: number;
+    operatorMaxDepth?: number;
     metadata?: Record<string, unknown>;
   },
 ): string {
   validateScope(sourceScope, { columns: options.columns, actions: options.actions });
+
+  const sourcePayload = decodeJwt(sourceCredentialJwt).payload;
+  const sourceChain = sourcePayload.delegationChain;
+  if (Array.isArray(sourceChain) && sourceChain.length === 0) {
+    throw new Error(
+      'Delegation error: source credential has an empty delegationChain. ' +
+        'A delegated credential must have at least one ancestor in the chain.',
+    );
+  }
+  const effectiveDepth = Array.isArray(sourceChain) ? sourceChain.length + 1 : 1;
+  validateChain(effectiveDepth, options.operatorMaxDepth ?? 2);
 
   const now = Math.floor(Date.now() / 1000);
   const requestedMs = expiresInToMs(options.expiresIn);
@@ -205,6 +203,13 @@ export async function issueCredentialFromParent(
       opts.ceiling,
       opts.context,
     );
+    if (opts.ceiling.credentialMaxTtlMs !== undefined) {
+      const requestedMs = expiresInToMs(options.expiresIn);
+      if (requestedMs > opts.ceiling.credentialMaxTtlMs) {
+        const maxSeconds = Math.floor(opts.ceiling.credentialMaxTtlMs / 1_000);
+        throw new Error(`expiresIn exceeds maximum credential TTL of ${maxSeconds}s`);
+      }
+    }
   }
   return provider.requestAgentCredential(accessToken, agentDid, options);
 }

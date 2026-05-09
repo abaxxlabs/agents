@@ -26,6 +26,7 @@ import { MasterKeyMismatchError } from '../src/errors.js';
 import { PostgresStorageBackend } from '../src/storage/postgres/index.js';
 import { InMemoryRevocationStore } from '../src/storage/memory/revocation-store.js';
 import { composeStorageBackend } from '../src/storage/compose.js';
+import { deterministicSessionMacKey } from './support/deterministic-session-mac-key.js';
 
 const { Pool } = pg;
 
@@ -82,7 +83,7 @@ describeFn('wrong-master-key safety (live Postgres required)', () => {
    * wrong-key gate, not Postgres-side revocation.
    */
   async function createScope(masterKey: Buffer): Promise<AgentScope> {
-    const base = PostgresStorageBackend.fromPool(pool, false);
+    const base = PostgresStorageBackend.fromPool(pool, false, { sessionMacKey: deterministicSessionMacKey() });
     const storage = composeStorageBackend(base, { revocation: new InMemoryRevocationStore() });
     return AgentScope.create(
       {
