@@ -45,7 +45,7 @@ The following are considered security issues for this library:
 
 ## Scope enforcement
 
-The projection boundary rejects any SQL reference to columns outside the credential scope (CWE-285). `'projection'` is the only supported `scopeMode`. The legacy `encryption-only` mode (which only guarded encrypted columns, leaving plaintext columns unprotected -- HIGH-5, Danny Chrastil, 2026-04-30) was removed along with the `AGENTS_ALLOW_LEGACY_SCOPE_MODE` env gate.
+The projection boundary rejects any SQL reference to columns outside the credential scope (CWE-285). `'projection'` is the only supported `scopeMode`. The legacy `encryption-only` mode (which only guarded encrypted columns, leaving plaintext columns unprotected) was removed along with the `AGENTS_ALLOW_LEGACY_SCOPE_MODE` env gate.
 
 ## JSON keystore file permissions
 
@@ -66,4 +66,4 @@ There is no bug bounty program at this time. We appreciate responsible disclosur
 
 ## AbaxxOne OIDC — HIGH-1 closeout
 
-The v0.5.0 white-box audit (Danny Chrastil, 2026-04-30) identified **HIGH-1**: the legacy module-level functions `authenticateWithOidc` and `completeOidcFlow` left CSRF state validation as an unenforced obligation on every consumer (CWE-352, CWE-639; OWASP API4:2023, ASVS V4.2.2 / V13.2.3). These entry points, the `VerifiedAuthState` brand machinery, and `src/auth/legacy-oidc.ts` / `src/auth/verified-auth-state.ts` were **removed in v1.0**. All AbaxxOne OIDC flows now go through `AbaxxOneOidcProvider`, which validates state end-to-end against its internal `PendingFlowStore` before any token exchange.
+A white-box security audit identified **HIGH-1**: the legacy module-level functions `authenticateWithOidc` and `completeOidcFlow` left CSRF state validation as an unenforced obligation on every consumer (CWE-352, CWE-639; OWASP API4:2023, ASVS V4.2.2 / V13.2.3). These entry points, the `VerifiedAuthState` brand machinery, and `src/auth/legacy-oidc.ts` / `src/auth/verified-auth-state.ts` were **removed in v1.0**. All AbaxxOne OIDC flows now go through `AbaxxOneOidcProvider`, which validates state end-to-end against its internal `PendingFlowStore` before any token exchange.

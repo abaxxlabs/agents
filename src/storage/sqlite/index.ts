@@ -19,7 +19,7 @@
  *   - Bun: uses the built-in `bun:sqlite` (no install needed).
  *   - Node.js: falls back to `better-sqlite3` (optional peer dep).
  *
- * Importable only via the `@abaxxtech/agents/sqlite` subpath export — the main
+ * Importable only via the `@abaxxlabs/agents/sqlite` subpath export — the main
  * entry never loads this file, keeping the native dep optional.
  */
 

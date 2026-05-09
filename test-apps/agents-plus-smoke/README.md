@@ -1,6 +1,6 @@
 # Agents++ Smoke Test App
 
-This app is a consumer-facing test harness for `@abaxxtech/agents`. It exists to
+This app is a consumer-facing test harness for `@abaxxlabs/agents`. It exists to
 catch integration regressions that unit tests can miss: package subpath exports,
 local file dependency resolution, Postgres schema setup, `AgentScope` query
 scoping, column encryption, overscope rejection, and audit/status reporting.
@@ -49,5 +49,5 @@ harness at `http://localhost:3210` with a button that runs the same smoke flow
 and renders the result.
 
 The scripts build the parent package first because this app imports
-`@abaxxtech/agents` through the published `dist` exports, matching a real
+`@abaxxlabs/agents` through the published `dist` exports, matching a real
 consumer install.

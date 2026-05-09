@@ -11,12 +11,12 @@
  */
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { AgentScope } from '@abaxxtech/agents/sql';
+import { AgentScope } from '@abaxxlabs/agents/sql';
 import {
   asMasterKey,
   ScopeViolationError,
   type MasterKey,
-} from '@abaxxtech/agents';
+} from '@abaxxlabs/agents';
 import {
   DEFAULT_DATABASE_URL,
   ENCRYPTED_COLUMNS,

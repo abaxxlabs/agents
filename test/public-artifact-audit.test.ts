@@ -108,7 +108,7 @@ describe('public artifact audit policy', () => {
         '.mcp.json',
         'docs/plan-v0.11.1-prelanding-fixes.md',
         'docs/support-runbook-v0.9.10.0.md',
-        'demo/hackathon/findings/matias/01-createagent-missing-returning.md',
+        'demo/hackathon/findings/example-finding.md',
         '.env.local',
         'client_secret.json',
       ],
@@ -121,7 +121,7 @@ describe('public artifact audit policy', () => {
       '.mcp.json: forbidden path (.mcp.json)',
       'docs/plan-v0.11.1-prelanding-fixes.md: forbidden path (docs/plan-*.md)',
       'docs/support-runbook-v0.9.10.0.md: forbidden path (docs/support-runbook-*.md)',
-      'demo/hackathon/findings/matias/01-createagent-missing-returning.md: forbidden path (demo/hackathon/findings/**)',
+      'demo/hackathon/findings/example-finding.md: forbidden path (demo/hackathon/findings/**)',
       '.env.local: forbidden path (**/.env.*)',
       'client_secret.json: forbidden path (**/client_secret.json)',
     ]);

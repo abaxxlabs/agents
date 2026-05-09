@@ -132,6 +132,6 @@ Format: each entry states the decision, the reason it was made, and what it mean
 
 **Decision:** `src/mcp/http-handler.ts` owns a `Map<sessionId, SSEServerTransport>` keyed by the SDK-generated UUID. Concurrent SSE clients are routed independently; `POST /messages?sessionId=<uuid>` returns `400 invalid_session` on missing or unknown IDs. The MCP process remains single-human-DID per boot.
 
-**Why:** the prior closure-scoped single transport reference (`let sseTransport`) overwrote on every reconnect and routed every `/messages` POST to the last connector, producing cross-client message leakage and a session-hijack path on bearer rotation (CWE-384, CWE-863). Audit closeout for HIGH-3 in ABXAGNTS-370.
+**Why:** the prior closure-scoped single transport reference (`let sseTransport`) overwrote on every reconnect and routed every `/messages` POST to the last connector, producing cross-client message leakage and a session-hijack path on bearer rotation (CWE-384, CWE-863). Audit closeout for HIGH-3 in [internal ref].
 
 **For consumers:** multiple MCP clients per human are supported within one process (CLI plus IDE under the same identity). Different humans require different processes. A strict single-connection mode (409 on second `/sse`) is deferred behind a future config flag. See `docs/adr-mcp-http-session-model.md` for the full rationale.

@@ -227,9 +227,9 @@ describe('session factories enforce credentialMaxTtlMs ceiling on credential iss
   });
 });
 
-// ── ABXAGNTS-420: clockSkew error message does not leak config value ──
 
-describe('ABXAGNTS-420: clockSkew error message does not leak config value', () => {
+
+describe('clockSkew error message does not leak config value', () => {
   it('error message omits the raw clockSkew value', () => {
     try {
       new VcVerifier({ clockSkew: '999h', revocationStore: new InMemoryRevocationStore() });
@@ -241,9 +241,9 @@ describe('ABXAGNTS-420: clockSkew error message does not leak config value', () 
   });
 });
 
-// ── ABXAGNTS-421: resolveDidKeyFallback rejects wrong-length keys ─────
 
-describe('ABXAGNTS-421: resolveDidKeyFallback rejects wrong-length Ed25519 keys', () => {
+
+describe('resolveDidKeyFallback rejects wrong-length Ed25519 keys', () => {
   it('rejects a DID with correct prefix but truncated key', () => {
     // 0xed01 prefix + only 16 bytes instead of 32 = 18 bytes total
     const shortKey = new Uint8Array([0xed, 0x01, ...new Array(16).fill(0x42)]);
@@ -270,9 +270,9 @@ describe('ABXAGNTS-421: resolveDidKeyFallback rejects wrong-length Ed25519 keys'
   });
 });
 
-// ── ABXAGNTS-422: VcVerifier rejects clockSkew of zero ────────────────
 
-describe('ABXAGNTS-422: VcVerifier rejects zero clockSkew', () => {
+
+describe('VcVerifier rejects zero clockSkew', () => {
   it('rejects clockSkew of 0s', () => {
     expect(
       () => new VcVerifier({ clockSkew: '0s', revocationStore: new InMemoryRevocationStore() }),
@@ -286,7 +286,7 @@ describe('ABXAGNTS-422: VcVerifier rejects zero clockSkew', () => {
   });
 });
 
-// ── ABXAGNTS-418 gap 2: config.credential.maxTtl wires into ceiling ──
+
 
 function buildTestStorage(): StorageBackend {
   const testMasterKey = asMasterKey(Buffer.alloc(32, 0x99));
@@ -332,7 +332,7 @@ function buildTestStorage(): StorageBackend {
   };
 }
 
-describe('ABXAGNTS-418 gap 2: config.credential.maxTtl merges into effective ceiling', () => {
+describe('config.credential.maxTtl merges into effective ceiling', () => {
   it('enforces config maxTtl when no caller ceiling is provided', async () => {
     const storage = buildTestStorage();
     const identity = await AgentIdentity.create(
@@ -441,9 +441,9 @@ describe('ABXAGNTS-418 gap 2: config.credential.maxTtl merges into effective cei
   });
 });
 
-// ── ABXAGNTS-417: delegation depth hardening ──────────────────────────
 
-describe('ABXAGNTS-417: delegation depth hardening', () => {
+
+describe('delegation depth hardening', () => {
   const human = generateDidKey();
   const supervisor = generateDidKey();
   const worker = generateDidKey();

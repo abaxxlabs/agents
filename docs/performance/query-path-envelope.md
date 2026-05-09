@@ -1,12 +1,12 @@
 # Query Path Performance Envelope
 
-ABXAGNTS-316 publishes a repeatable benchmark for the shared query path:
+[internal ref] publishes a repeatable benchmark for the shared query path:
 `createQueryService -> ScopeEngine.query`. The goal is release-readiness
 evidence, not optimization. The benchmark documents the current latency,
 throughput, and bottleneck profile for representative scoped-query behavior so
 future changes can be compared against a known envelope.
 
-This benchmark intentionally avoids ABXAGNTS-317 territory. It does not add
+This benchmark intentionally avoids [internal ref] territory. It does not add
 server route logging, operational telemetry, REST instrumentation, or mounted
 MCP telemetry. It uses an in-process synthetic `pg.Pool` fixture so the measured
 cost is the library path: credential verification, VP wrapping, `libpg-query`

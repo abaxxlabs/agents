@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (ABXAGNTS-370, audit closeout for HIGH-3 from the v0.5.0 white-box audit).
+Accepted ([internal ref], audit closeout for HIGH-3 from the v0.5.0 white-box audit).
 
 ## Context
 
@@ -20,6 +20,6 @@ A `singleSessionMode` config flag on `McpHttpHandlerOptions` is available for co
 
 ## Consequences
 
-Routing is correct under concurrent clients and during bearer token rotation overlap. Cross-session message leakage is no longer reachable. Memory under load is bounded by the OS / proxy `close` semantics on long-idle SSE responses. The handler is extracted into `src/mcp/http-handler.ts` so the routing logic is unit-testable without booting an `http.Server`. The bearer-auth posture is unchanged by this decision; HIGH-4 (`fail closed when bearer auth is absent`) is tracked separately as ABXAGNTS-371.
+Routing is correct under concurrent clients and during bearer token rotation overlap. Cross-session message leakage is no longer reachable. Memory under load is bounded by the OS / proxy `close` semantics on long-idle SSE responses. The handler is extracted into `src/mcp/http-handler.ts` so the routing logic is unit-testable without booting an `http.Server`. The bearer-auth posture is unchanged by this decision; HIGH-4 (`fail closed when bearer auth is absent`) is tracked separately as [internal ref].
 
 A consumer that mixes MCP clients across multiple humans must run multiple MCP processes. There is no in-process tenancy boundary other than the bearer token itself, and the bearer token's authority is bound to the boot-time human.

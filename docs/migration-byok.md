@@ -464,4 +464,4 @@ The `demo/showcase/` consumer was used as the migration dry-run for this release
   - `rewrapColumnKey({ pool, agentDid, tableName, columnName, oldMasterKey, newMasterKey })` — `src/column-encryption.ts`
   - `composeStorageBackend(base, overrides)` — `src/storage/compose.ts`
 - **Diagnostic CLI**: `npx @abaxxlabs/agents migrate-check` (read-only codebase scanner).
-- **Issue / discussion**: Jira `ABXAGNTS-189` (BYOK), `ABXAGNTS-180` (revocation enforcement).
+- **Issue / discussion**: Jira `[internal ref]` (BYOK), `[internal ref]` (revocation enforcement).

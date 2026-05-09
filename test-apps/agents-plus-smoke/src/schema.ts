@@ -20,7 +20,7 @@ import {
   generateColumnKey,
   wrapColumnKey,
   type MasterKey,
-} from '@abaxxtech/agents';
+} from '@abaxxlabs/agents';
 
 const { Pool } = pg;
 

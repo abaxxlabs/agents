@@ -2,9 +2,9 @@
 
 **Status:** Accepted for implementation planning
 **Date:** 2026-04-29
-**Jira:** ABXAGNTS-310
-**Epic context:** ABXAGNTS-296 release readiness; downstream implementation under ABXAGNTS-297 server readiness
-**Related tickets:** ABXAGNTS-311, ABXAGNTS-312, ABXAGNTS-313, ABXAGNTS-314, ABXAGNTS-315, ABXAGNTS-316, ABXAGNTS-252, ABXAGNTS-295
+**Jira:** [internal ref]
+**Epic context:** [internal ref] release readiness; downstream implementation under [internal ref] server readiness
+**Related tickets:** [internal ref], [internal ref], [internal ref], [internal ref], [internal ref], [internal ref], [internal ref], [internal ref]
 
 ## Context
 
@@ -18,7 +18,7 @@ The release risk is drift: public MCP tool behavior could lock before REST harde
 
 Use transport-neutral application services as the shared boundary. REST routes and MCP tools should validate transport shape, resolve transport authentication/session context, call shared services, and render transport-specific responses. The shared services, not REST endpoints, are the canonical implementation surface.
 
-The selected direction is to replace the REST bridge with shared services. Do not wire `src/mcp/rest-bridge.ts` as the default MCP implementation before publish. Under ABXAGNTS-311, either delete the bridge stub and its tests or keep a clearly marked REST-backed adapter only for future gateway deployments. It must not be the canonical path for in-process MCP.
+The selected direction is to replace the REST bridge with shared services. Do not wire `src/mcp/rest-bridge.ts` as the default MCP implementation before publish. Under [internal ref], either delete the bridge stub and its tests or keep a clearly marked REST-backed adapter only for future gateway deployments. It must not be the canonical path for in-process MCP.
 
 ## Target Shape
 
@@ -66,7 +66,7 @@ The normalizer must preserve schema-oracle protections already present in `Scope
 
 ## Shared Rate Limiting
 
-Rate limits belong at the operation/principal level, not inside a transport closure. The current REST server has per-session rate buckets for `sign` and `challenge`; MCP `sign` keeps counters in tool-handler closure state. ABXAGNTS-312 should introduce a shared limiter abstraction used by the identity service.
+Rate limits belong at the operation/principal level, not inside a transport closure. The current REST server has per-session rate buckets for `sign` and `challenge`; MCP `sign` keeps counters in tool-handler closure state. [internal ref] should introduce a shared limiter abstraction used by the identity service.
 
 Recommended key shape:
 
@@ -99,7 +99,7 @@ MCP may still receive session/principal context at server construction time, but
 
 ## REST Modularization
 
-`packages/server/src/index.ts` should become a thin bootstrap. ABXAGNTS-313 should split it into focused modules before or alongside broad REST hardening:
+`packages/server/src/index.ts` should become a thin bootstrap. [internal ref] should split it into focused modules before or alongside broad REST hardening:
 
 - configuration and environment bridging
 - app factory and base middleware
@@ -128,21 +128,21 @@ Do not encode REST URLs, REST status codes, or REST route names as required MCP 
 
 ## Implementation Ticket Map
 
-ABXAGNTS-311 should introduce the shared service facade, move active MCP and REST domain paths onto it, and replace or retire `src/mcp/rest-bridge.ts`. It should specifically remove MCP-owned SQL parsing and narrow MCP tool dependencies.
+[internal ref] should introduce the shared service facade, move active MCP and REST domain paths onto it, and replace or retire `src/mcp/rest-bridge.ts`. It should specifically remove MCP-owned SQL parsing and narrow MCP tool dependencies.
 
-ABXAGNTS-312 should introduce shared validation schemas, shared error normalization, and shared rate limiting. It should cover equivalent REST/MCP query, sign, challenge, and representative error tests.
+[internal ref] should introduce shared validation schemas, shared error normalization, and shared rate limiting. It should cover equivalent REST/MCP query, sign, challenge, and representative error tests.
 
-ABXAGNTS-313 should modularize the REST server so route modules can consume the shared services and tests can import real route/session/rate-limit modules instead of duplicating logic.
+[internal ref] should modularize the REST server so route modules can consume the shared services and tests can import real route/session/rate-limit modules instead of duplicating logic.
 
-ABXAGNTS-314 should build on the shared error and audit rules to harden REST public errors and audit behavior without diverging from MCP.
+[internal ref] should build on the shared error and audit rules to harden REST public errors and audit behavior without diverging from MCP.
 
-ABXAGNTS-315 should split liveness/readiness in the modular REST server without affecting shared domain services.
+[internal ref] should split liveness/readiness in the modular REST server without affecting shared domain services.
 
-ABXAGNTS-316 should benchmark the query path after the shared service boundary lands and publish the performance envelope for direct MCP, REST, and mounted MCP paths.
+[internal ref] should benchmark the query path after the shared service boundary lands and publish the performance envelope for direct MCP, REST, and mounted MCP paths.
 
-ABXAGNTS-252 remains relevant for shared boot logic. If the service factory requires common `AgentScope`/storage/session construction, reuse that spike's inventory rather than adding another boot abstraction.
+[internal ref] remains relevant for shared boot logic. If the service factory requires common `AgentScope`/storage/session construction, reuse that spike's inventory rather than adding another boot abstraction.
 
-ABXAGNTS-295 is relevant to packaging. Any new service subpath or internal import path needed by `packages/server` must be covered by CJS and ESM pack smoke tests before publish.
+[internal ref] is relevant to packaging. Any new service subpath or internal import path needed by `packages/server` must be covered by CJS and ESM pack smoke tests before publish.
 
 ## Consequences
 
@@ -155,9 +155,9 @@ Benefits:
 
 Tradeoffs:
 
-- ABXAGNTS-311 must define a careful service facade before moving handlers.
+- [internal ref] must define a careful service facade before moving handlers.
 - The REST bridge stub becomes historical until deliberately rewritten or removed.
-- `packages/server` may need a package export or build arrangement to import shared services; ABXAGNTS-295 requires that any such packaging change be smoke-tested in both ESM and CJS.
+- `packages/server` may need a package export or build arrangement to import shared services; [internal ref] requires that any such packaging change be smoke-tested in both ESM and CJS.
 - Standalone stdio MCP will still need a local session/principal construction path because it does not have REST's HTTP session handshake.
 
 ## Verification
@@ -171,4 +171,4 @@ This ADR was prepared after reviewing:
 - `packages/server/src/openapi.ts`
 - `test/server-rest-hardening.test.ts`
 - `test/rest-hardening.test.ts`
-- Jira tickets ABXAGNTS-252, ABXAGNTS-295, ABXAGNTS-310, ABXAGNTS-311, ABXAGNTS-312, ABXAGNTS-313, ABXAGNTS-314, ABXAGNTS-315, and ABXAGNTS-316
+- Jira tickets [internal ref], [internal ref], [internal ref], [internal ref], [internal ref], [internal ref], [internal ref], [internal ref], and [internal ref]

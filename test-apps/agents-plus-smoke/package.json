@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@abaxxtech/agents": "file:../..",
+    "@abaxxlabs/agents": "file:../..",
     "pg": "8.13.3"
   },
   "devDependencies": {

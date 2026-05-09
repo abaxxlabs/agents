@@ -4,8 +4,7 @@ All notable changes to this project will be documented in this file.
 
 Starting with 0.11.3, package metadata uses npm-publishable SemVer. Legacy
 four-segment human release labels are kept in release headings when needed.
-The public npm package identity is `@abaxxlabs/agents`; older changelog
-entries may mention pre-public internal package names for historical context.
+The public npm package identity is `@abaxxlabs/agents`.
 
 ## [Unreleased]
 
@@ -87,7 +86,7 @@ entries may mention pre-public internal package names for historical context.
   `VerifiedAuthState` brand machinery no longer exist. `AgentIdentity` delegates
   all AbaxxOne OIDC flows through `AbaxxOneOidcProvider`. The public auth barrel
   no longer exports `verifyAuthState`, `CsrfStateRejectedError`,
-  `VerifiedAuthState`, or `OidcConfig`. Supersedes ABXAGNTS-368.
+  `VerifiedAuthState`, or `OidcConfig`.
 - **Legacy `scopeMode` construction gate** (audit HIGH-5). `AgentScope.create` / `loadConfig` now throw `LegacyScopeModeNotAllowedError` when `scopeMode` is `encryption-only-LEGACY-DO-NOT-USE` unless `AGENTS_ALLOW_LEGACY_SCOPE_MODE=1` is set. `getServerStatus()` includes `scopeMode` (defaults to `projection` when omitted from config).
 
 ### BREAKING
@@ -126,29 +125,29 @@ imports preserved via barrel re-exports. No behavioral changes.
 
 ### Refactored
 
-- **scope-engine.ts split** (ABXAGNTS-359, ABXAGNTS-360). SQL query validation
-  extracted to `src/sql/query-policy.ts`; delegation validation extracted to
+- **scope-engine.ts split.** SQL query validation extracted to
+  `src/sql/query-policy.ts`; delegation validation extracted to
   `src/sql/delegation-policy.ts`. scope-engine.ts is now orchestration-only.
-- **vc-verifier.ts split** (ABXAGNTS-362). JWT parsing/signing extracted to
+- **vc-verifier.ts split.** JWT parsing/signing extracted to
   `src/jwt-utils.ts`; DID resolution and caching extracted to
   `src/did-resolver.ts`. vc-verifier.ts now handles credential verification only.
-- **auth/agent.ts split** (ABXAGNTS-361). Decomposed into `agent-crud.ts`,
+- **auth/agent.ts split.** Decomposed into `agent-crud.ts`,
   `credential-issuance.ts`, `session-factory.ts`, and `did-key.ts`. Barrel
   re-exports preserve the `auth/agent.js` import path.
-- **storage/types.ts split** (ABXAGNTS-363). Storage interfaces decomposed into
+- **storage/types.ts split.** Storage interfaces decomposed into
   `audit-store.ts`, `revocation-store.ts`, `session-store.ts`, and
   `storage-backend.ts`. Barrel re-exports preserve the `storage/types.js` path.
-- **IdSdkInstance converged** (ABXAGNTS-365). Replaced weak `any`-typed inline
+- **IdSdkInstance converged.** Replaced weak `any`-typed inline
   interface in `types.ts` with strongly-typed canonical definition in
   `src/id-sdk-types.ts`. MCP adapter uses type assertions at transport boundary.
-- **legacy-oidc.ts marked `@deprecated`** (ABXAGNTS-358). Target removal: v1.0.
+- **legacy-oidc.ts marked `@deprecated`.** Target removal: v1.0.
 
 ### Added
 
-- **Branded domain types** (ABXAGNTS-364). `Did`, `ColumnName`, `TableName`,
+- **Branded domain types.** `Did`, `ColumnName`, `TableName`,
   `Jti`, `IssuerUrl` in `src/domain-types.ts` with factory functions for
   boundary validation.
-- **Architecture guidelines in CLAUDE.md** (ABXAGNTS-357). 500-line file limit,
+- **Architecture guidelines in CLAUDE.md.** 500-line file limit,
   single responsibility, policy vs orchestration split, strategy over branching,
   domain types at boundaries, Result types, no env reads in library code.
 - **Test coverage for extracted modules.** `did-cache.test.ts` (5 tests),
@@ -172,16 +171,16 @@ transitively import `storage/postgres`) were unusable under `require()`.
 
 ### Fixed
 
-- **CJS `SyntaxError` on `/sql` and `/mcp` subpaths** (ABXAGNTS-295).
+- **CJS `SyntaxError` on `/sql` and `/mcp` subpaths.**
   Replaced the bare `import.meta.url` access in `src/storage/postgres/index.ts`
   with an indirect `eval` that defers parsing to runtime. CJS consumers never
   reach the eval (they resolve `__dirname` first); under ESM the eval also
   throws (Script context cannot access `import.meta`) and falls through to
   `process.cwd()`. All six subpaths now load under both CJS and ESM.
-- **Published package bin artifact restored** (ABXAGNTS-301). The build no
+- **Published package bin artifact restored.** The build no
   longer deletes `dist/cli`, so the documented `agents` npm bin points at a
   real tarball artifact after a clean build.
-- **Stale test assumptions cleaned up** (ABXAGNTS-319). Tests now assert the
+- **Stale test assumptions cleaned up.** Tests now assert the
   current wrong-master-key behavior and the current `src/sql` scope-engine path
   instead of older source-layout assumptions.
 
@@ -190,35 +189,35 @@ transitively import `storage/postgres`) were unusable under `require()`.
 - **CI smoke test for CJS + ESM subpath loading.** `npm pack` + fresh-consumer
   `require()` and `import()` of every subpath runs on every PR. Catches
   packaging regressions that vitest (ESM source mode) cannot.
-- **Package metadata artifact assertion** (ABXAGNTS-301). CI now fails when
+- **Package metadata artifact assertion.** CI now fails when
   `main`, `module`, `types`, `exports`, or `bin` references a missing build
   artifact, and the tarball smoke test verifies installed npm bins as well as
   package subpaths.
-- **npm cache ownership guard** (ABXAGNTS-300). Release verification now checks
+- **npm cache ownership guard.** Release verification now checks
   npm cache ownership before pack, publish dry-run, and tarball smoke installs.
-- **Public artifact audit** (ABXAGNTS-308, ABXAGNTS-321). Package artifacts and
+- **Public artifact audit.** Package artifacts and
   explicit public-repo candidate roots/lists can now be audited for forbidden
   internal paths, oversized text files, and high-confidence secret patterns.
-- **Deterministic default test gate** (ABXAGNTS-305). Keychain, loopback HTTP,
+- **Deterministic default test gate.** Keychain, loopback HTTP,
   and local Abaxx One tests are excluded from default `npm test` and remain
   available through the explicit e2e command with opt-in environment variables.
-- **REST/MCP shared API ADR** (ABXAGNTS-310). The release plan now records
+- **REST/MCP shared API ADR.** The release plan now records
   transport-neutral services, shared validation, shared errors, shared rate
   limits, and MCP dependency narrowing as the preferred implementation path.
-- **Public API snapshot gate** (ABXAGNTS-302). CI now snapshots exported names
+- **Public API snapshot gate.** CI now snapshots exported names
   for the six supported package subpaths: root, `/sql`, `/mcp`, `/storage`,
   `/sqlite`, and `/bootstrap`.
-- **MCP no-peer import smoke test** (ABXAGNTS-302). Fresh tarball consumers now
+- **MCP no-peer import smoke test.** Fresh tarball consumers now
   import `@abaxxlabs/agents/mcp` under both CJS and ESM without manually adding
   SQL peers; SQL-backed startup paths still name the required peer set.
 
 ### Changed
 
-- **AbaxxLabs public package identity pinned** (ABXAGNTS-298). Active package
+- **AbaxxLabs public package identity pinned.** Active package
   metadata, registry config, public docs, release smokes, server/scaffold
   consumers, and showcase demo imports now target `@abaxxlabs/agents` on the
   public npm registry.
-- **Public package dependencies pinned for release** (ABXAGNTS-302). Runtime,
+- **Public package dependencies pinned for release.** Runtime,
   optional, and peer dependency ranges are exact-pinned to the audited
   lockfile versions for 0.11.3.
 
@@ -261,27 +260,27 @@ as the actual security boundary (brands are erased at compile time).
   constructor; the runtime gate is retained as defense-in-depth for JS callers
   and `as`-cast bypasses.
 
-- **Cleaned Jira ticket references from code comments.** Removed
-  project-specific ticket IDs from test describe blocks and inline comments
+- **Cleaned internal references from code comments.** Removed
+  project-specific identifiers from test describe blocks and inline comments
   to keep documentation audience-neutral.
 
-## [0.11.1] — Internal pre-public — Hackathon-finding follow-ups
+## [0.11.1] — QA review follow-ups
 
-A small follow-up release closing three loose ends from the hackathon-finding
-arc and adversarial review on PR #24. Pure additions and a bug fix; no
+A small follow-up release closing three loose ends from the QA review
+arc and adversarial code review. Pure additions and a bug fix; no
 breaking changes.
 
 ### Added
 
-- **`parseDuration` accepts compound, fractional, and millisecond strings
-  (ABXAGNTS-256).** Previously rejected anything that did not match
+- **`parseDuration` accepts compound, fractional, and millisecond strings.**
+  Previously rejected anything that did not match
   `/^(\d+)(s|m|h|d)$/`. Now accepts `'500ms'`, `'1.5s'`, `'1m30s'`,
   `'2h15m'`, `'1.5d'`, etc. Bare numbers, unknown units, trailing garbage,
   and duplicate units (`'1m1m'`) still throw. Purely additive — existing
   callers (`clockSkew`, `resolverCacheTtl`, VP `lifetime`) are unaffected.
 
-- **`CreatePresentationOptions.audience` accepts `string | string[]`
-  (ABXAGNTS-255).** Single DID for point-to-point presentation, array for
+- **`CreatePresentationOptions.audience` accepts `string | string[]`.**
+  Single DID for point-to-point presentation, array for
   multi-verifier scenarios (multi-region, primary + failover). Per RFC 7519
   §4.1.3, `aud` MAY be a string or array of case-sensitive strings — the
   verifier already handled both shapes; this widens the signer to match.
@@ -289,7 +288,7 @@ breaking changes.
 ### Fixed
 
 - **`verifyAuditChain()` no longer always returns `ok: false` on filtered
-  subsets (ABXAGNTS-292).** The verification algorithm previously required
+  subsets.** The verification algorithm previously required
   the first record's `previousHash` to equal `'GENESIS'`, so any call with
   an `agentDid`, `since`, or `orgId` filter that started mid-chain returned
   `ok: false` regardless of tampering. Filtered calls now anchor at the
@@ -301,9 +300,8 @@ breaking changes.
   rather than tampering — call without a filter for absolute root-of-chain
   proof.
 
-- **`parseDuration` rejects out-of-range values (~100-year cap).** Cross-
-  model adversarial review on PR #41 (Codex + Claude) flagged that huge
-  inputs like `'99999999999d'` produced numbers above
+- **`parseDuration` rejects out-of-range values (~100-year cap).** Adversarial
+  review flagged that huge inputs like `'99999999999d'` produced numbers above
   `Number.MAX_SAFE_INTEGER` or `Infinity`. Without a cap, `clockSkew`
   fed such a string would have allowed expired credentials to be accepted
   indefinitely; `lifetime` on `createPresentation` would have produced a
@@ -312,8 +310,8 @@ breaking changes.
   above ~100 years, on `Infinity`, and on negative results.
 
 - **`AuditLogger.export()` and `verifyAuditChain()` preserve `orgId`
-  through alias expansion.** Pre-existing bug surfaced during Codex
-  review of ABXAGNTS-292: when the alias-expansion branch fired (a
+  through alias expansion.** Pre-existing bug surfaced during adversarial
+  code review: when the alias-expansion branch fired (a
   migrated agent with multiple equivalent DIDs in the registry), the
   rebuilt store query silently dropped `orgId`. An operator running
   `verifyAuditChain({ agentDid, orgId: 'org-A' })` against an agent
@@ -322,7 +320,7 @@ breaking changes.
 
 ### Reverted
 
-- **ABXAGNTS-263 branded migration credential types (commit `123a84d`).**
+- **Branded migration credential types (commit `123a84d`).**
   First implementation correctly added `TrustedMigrationCredential` /
   `VerifiedParentCredential` branded types and smart constructors, but
   deleted the runtime defense-in-depth trust check from
@@ -330,9 +328,9 @@ breaking changes.
   types are erased at compile time; JS callers, `as` casts, and any future
   RPC bridge that constructs the call dynamically would have bypassed the
   gate. Reverted in commit `10fc575`. Redo planned as additive: keep the
-  runtime check AND add the brands. Full plan: `docs/abxagnts-263-redo-plan.md`.
+  runtime check AND add the brands.
 
-## [0.11.0] — Internal pre-public — AgentScope / AgentIdentity split (ABXAGNTS-279)
+## [0.11.0] — AgentScope / AgentIdentity split
 
 ### Breaking changes
 
@@ -388,14 +386,13 @@ breaking changes.
 - `ScopeEngine` takes an `agentStore: AgentStore` param for owner-lookup
   fallback. `pool.query` is used solely for data-plane query execution.
 
-## [0.10.1] — Internal pre-public — VP lifetime tightening
+## [0.10.1] — VP lifetime tightening
 
-A focused patch sized at the hackathon QA finding from Donnie Navarro: the
-`createPresentation()` default expiry of 300s was a five-minute first-mover
-replay window for any captured VP. The `seenJtis` cache catches the *second*
-redeem of a captured presentation, not the first — so the VP's `exp` IS the
-attack window. At machine-speed RPC, five minutes is far longer than the
-operation needs.
+A focused patch addressing a QA finding: the `createPresentation()` default
+expiry of 300s was a five-minute first-mover replay window for any captured VP.
+The `seenJtis` cache catches the *second* redeem of a captured presentation,
+not the first — so the VP's `exp` IS the attack window. At machine-speed RPC,
+five minutes is far longer than the operation needs.
 
 ### Behavior change
 
@@ -424,24 +421,17 @@ operation needs.
   `clockSkew` knob is applied symmetrically to BOTH credential and presentation
   timestamp checks (VC `nbf`/`exp` and VP `nbf`/`exp`) and also extends the
   JTI replay-cache TTL by `clockSkew` past `exp`. Closes the doc gap exposed
-  during hackathon QA — reviewers had to read the verify path to discover
+  during QA review — reviewers had to read the verify path to discover
   the symmetric coverage.
 
-### Acknowledgements
+## [0.10.0] — 2026-04-26 — Library-shrink follow-up
 
-Donnie Navarro flagged the 30s `clockSkew` as a concern only for very
-short-lived credentials during hackathon QA on 2026-04-24. Investigation
-surfaced the larger architectural decision: VP lifetime, not skew, was the
-load-bearing knob — and it was hardcoded.
-
-## [0.10.0] — 2026-04-26 — Session 7 / Library-shrink follow-up
-
-Session 7 (ABXAGNTS-243) — eight sub-tasks promoting the remaining implicit
-library env-reads to explicit consumer-supplied configuration. v0.10.0 closes
-the library-shrink arc: post-Session-7, the library reads exactly two env vars
-inside `src/` (`NODE_ENV` and `CI` — both intentional runtime-shape gates,
-documented in `docs/support-runbook-v0.9.10.0.md` § "Environment variables
-read by the library"). The five Session-6-era `AGENTS_*` env-reads are gone.
+Eight sub-tasks promoting the remaining implicit library env-reads to explicit
+consumer-supplied configuration. v0.10.0 closes the library-shrink arc:
+post-v0.10.0, the library reads exactly two env vars inside `src/` (`NODE_ENV`
+and `CI` — both intentional runtime-shape gates, documented in
+`docs/support-runbook-v0.9.10.0.md` § "Environment variables read by the
+library"). The five v0.9.10.0-era `AGENTS_*` env-reads are gone.
 
 ### Breaking changes
 
@@ -504,7 +494,7 @@ read by the library"). The five Session-6-era `AGENTS_*` env-reads are gone.
   `AGENTS_TRUSTED_SERVERS` env-loading inside their `LocalTrustAnchorStore`
   construction MUST migrate to the bootstrap helper.
 - **Library no longer reads `AGENTS_ALLOW_LEGACY_SCOPE_MODE` from the
-  environment.** The env-coupled gate (added in ABXAGNTS-178) was removed.
+  environment.** The env-coupled gate was removed.
   The legacy `ScopeMode` value was renamed from `'encryption-only'` to
   `'encryption-only-LEGACY-DO-NOT-USE'` — the verbose value name preserves
   the "make this annoying to opt into" friction the env var previously
@@ -554,34 +544,23 @@ read by the library"). The five Session-6-era `AGENTS_*` env-reads are gone.
 - `packages/server/src/index.ts`, `src/mcp/index.ts`, and the
   `npm create @abaxxlabs/agents` scaffold (`packages/create-agents/template/src/index.ts`)
   all bridge `AGENTS_DEV_MODE` from env at their own boundaries with a
-  `NODE_ENV !== 'production'` fallback (audit Matrix 3 row 3). Existing
+  `NODE_ENV !== 'production'` fallback. Existing
   `NODE_ENV` security gates inside the library are untouched.
 
-### Sub-tasks
-
-- ABXAGNTS-246 — LIB-CONFIG: `AGENTS_DEV_MODE` → `AgentScopeConfig.devMode`.
-- ABXAGNTS-247 — LIB-CONFIG: `AGENTS_KEYSTORE_PATH` → `AgentScopeConfig.keystore.path`.
-- ABXAGNTS-248 — LIB-CONFIG: `AGENTS_ALLOW_LEGACY_SCOPE_MODE` removed; `ScopeMode` legacy value renamed to `'encryption-only-LEGACY-DO-NOT-USE'`.
-- ABXAGNTS-244 — LIB-MIGRATE: `AGENTS_TRUSTED_SERVERS` → `resolveTrustedServersFromEnv()` bootstrap helper + `LocalTrustAnchorStore({ initialTrustedServers })` constructor option.
-- ABXAGNTS-245 — LIB-MIGRATE: `AGENTS_CONSUMER_DOMAINS` → `AgentScopeConfig.orgBoundary.extraConsumerDomains` + `OrgBoundary.*(...,extraConsumerDomains?)` static-method param + `GenericOidcProvider({ extraConsumerDomains })` constructor option. Dual-read surface unified.
-- ABXAGNTS-249 — DOCS: `NODE_ENV` and `CI` documented as library-implicit env reads. Both retained intentionally — `NODE_ENV` is a defense-in-depth runtime gate against booting mock auth in production; `CI` is a universal CI convention that lets the keystore skip the macOS Keychain prompt unattended. JSDoc on the four read sites (`src/auth/agent.ts`, `src/index.ts`, `src/auth/discovery-utils.ts`, `src/identity/keystore.ts`) cross-references the new "Environment variables read by the library" section in `docs/support-runbook-v0.9.10.0.md`.
-- ABXAGNTS-250 — OBS: MCP CLI now emits a structured `WARNING` at startup when booting with `NODE_ENV=production` and no explicit `injections.storage` (the default-backend path has cross-instance revocation coherency poll OFF). Mirrors the API server's `SESSION_STORE_MODE=dual` warning pattern. New `docs/support-runbook-v0.9.10.0.md` § "MCP multi-instance revocation coherency" explains the trade-off and migration path for operators running multi-instance MCP.
-- ABXAGNTS-251 — TESTS: new `test/regression/env-isolation.test.ts` is the unified regression suite asserting the post-Session-7 contract that the library does NOT read any of the five migrated `AGENTS_*` env vars (`AGENTS_DEV_MODE`, `AGENTS_KEYSTORE_PATH`, `AGENTS_ALLOW_LEGACY_SCOPE_MODE`, `AGENTS_TRUSTED_SERVERS`, `AGENTS_CONSUMER_DOMAINS`). 11 tests covering both directions for each variable (env set + no consumer wiring → env content does NOT leak; env set + EXPLICIT consumer wiring with different value → env loses, explicit wins) plus a cross-cutting "all 5 set simultaneously" worst-case scenario. Catches drift if a future maintainer reintroduces any env-read.
-
-## [0.9.10.0] — 2026-04-25 — Session 6 / Library-shrinking arc complete
+## [0.9.10.0] — 2026-04-25 — Library-shrinking arc complete
 
 ### Security posture
 
-- **Revocation enforcement gap (pre-existing, v0.9.6.0–v0.9.9.x)**: versions v0.9.6.0 through v0.9.9.x advertised an injection path for `IRevocationStore` that no code implemented; all deployments ran on process-local in-memory revocation. The `IRevocationStore` interface and three adapters (`InMemoryRevocationStore`, `SqliteRevocationStore`, `PostgresRevocationStore`) shipped in v0.9.6.0, but `AgentScope.create` had no parameter to receive an injected store — the `VcVerifier` silently defaulted to `InMemoryRevocationStore` in every deployment. Multi-instance deployments and deployments relying on cross-restart durability were enforcing revocation only within a single process lifetime. This release wires the injection path (via the new `injections` parameter), structurally prevents recurrence (the type system now rejects a `VcVerifier` constructed without a `revocationStore`), and ships a default `PostgresRevocationStore` wiring in `packages/server/` when `DATABASE_URL` is set. **If you operate multi-instance or rely on revocation durability across restarts, read `docs/migration-byok.md` before upgrading.** Bounded by `credential.maxTtl` (default 24h). No CVE (pre-1.0, no external users known).
+- **Revocation enforcement gap (pre-existing, v0.9.6.0–v0.9.9.x)**: versions v0.9.6.0 through v0.9.9.x advertised an injection path for `RevocationStore` that no code implemented; all deployments ran on process-local in-memory revocation. The `RevocationStore` interface and three adapters (`InMemoryRevocationStore`, `SqliteRevocationStore`, `PostgresRevocationStore`) shipped in v0.9.6.0, but `AgentScope.create` had no parameter to receive an injected store — the `VcVerifier` silently defaulted to `InMemoryRevocationStore` in every deployment. Multi-instance deployments and deployments relying on cross-restart durability were enforcing revocation only within a single process lifetime. This release wires the injection path (via the new `injections` parameter), structurally prevents recurrence (the type system now rejects a `VcVerifier` constructed without a `revocationStore`), and ships a default `PostgresRevocationStore` wiring in `packages/server/` when `DATABASE_URL` is set. **If you operate multi-instance or rely on revocation durability across restarts, read `docs/migration-byok.md` before upgrading.** Bounded by `credential.maxTtl` (default 24h). No CVE (pre-1.0, no external users known).
 
-- **BYOK — master key as a first-class injection (ABXAGNTS-189)**: the library no longer reads `AGENTS_MASTER_KEY` from the environment. Master key flows through `injections.masterKey: MasterKey` as a required constructor argument. Consumers who source keys from KMS / Vault / Secrets Manager get a clean injection point; the library itself holds zero opinions about how key material is sourced. Env-var loading is now an opt-in convenience helper in the `@abaxxlabs/agents/bootstrap` subpath, used by `packages/server/`, the CLI, and the `npm create @abaxxlabs/agents` scaffold. ESLint rules (lib + server) statically prevent the env-read pattern from re-entering the library or being re-introduced via destructure / computed-key bypass. Closes the six-session library-shrinking arc: the core library holds no infrastructure opinions (no env reads, no stores, no transports fetched from environment).
+- **BYOK — master key as a first-class injection**: the library no longer reads `AGENTS_MASTER_KEY` from the environment. Master key flows through `injections.masterKey: MasterKey` as a required constructor argument. Consumers who source keys from KMS / Vault / Secrets Manager get a clean injection point; the library itself holds zero opinions about how key material is sourced. Env-var loading is now an opt-in convenience helper in the `@abaxxlabs/agents/bootstrap` subpath, used by `packages/server/`, the CLI, and the `npm create @abaxxlabs/agents` scaffold. ESLint rules (lib + server) statically prevent the env-read pattern from re-entering the library or being re-introduced via destructure / computed-key bypass. Closes the library-shrinking arc: the core library holds no infrastructure opinions (no env reads, no stores, no transports fetched from environment).
 
 ### Breaking changes
 
 - **`AgentScope.create(config, injections)` is now a two-parameter factory.** First parameter carries declarative material (`database`, `oidc`, `audit`, `credential`, `encryption.columns`, `log`, `scopeMode`). Second parameter carries pre-constructed and secret material (`masterKey`, `storage?`, `sdk?`, `pool?`, `serverIdentity?`). Both parameters are required because `injections.masterKey` is required.
 - **`injections.masterKey: MasterKey` is required.** Removed from `AgentScopeConfig.encryption`. `AgentScopeConfig.encryption` becomes `{ algorithm?, columns? }` only.
 - **`VcVerifierOptions.revocationStore` is required.** No silent fallback to `InMemoryRevocationStore` at the verifier layer. `AgentScope.create` supplies the default explicitly at the factory layer when `injections.storage` is omitted, so consumers who don't think about revocation get the same default they got before — but the verifier itself now refuses to be constructed without one.
-- **`registerColumn()` re-registration on an already-registered column throws.** (Already shipped in v0.9.9.0; restated here because Session 6's BYOK protocol intersects with column-key persistence.) Use `rotateColumnKey` or `rewrapColumnKey`.
+- **`registerColumn()` re-registration on an already-registered column throws.** Use `rotateColumnKey` or `rewrapColumnKey`.
 - **`MasterKeyMissingError` message changed.** New text points callers at `injections.masterKey` and `docs/migration-byok.md`.
 
 ### Added
@@ -598,10 +577,10 @@ read by the library"). The five Session-6-era `AGENTS_*` env-reads are gone.
   - `parseMasterKeyHex(hex: string): MasterKey` — same strict parse for any non-env hex source (CLI flag, config field, KMS callback that returns hex). `resolveMasterKeyFromEnv` delegates to it.
 - `verifyAllColumnKeys(pool, masterKey: MasterKey): Promise<{ ok: number, failed: Array<{ table, col, error }> }>` — read-only diagnostic for the `rewrapColumnKey` migration protocol (steps 3 + 5). Iterates `agent_keys` and reports per-row unwrap success/failure under the supplied master key. Does not throw on per-row failure; aggregates the full report. Schema-missing returns `{ ok: 0, failed: [] }` consistent with `loadColumnKeys`. Does not guess old-vs-new — the caller passes the specific key to test.
 - `packages/server/` default-injects `PostgresRevocationStore` when `DATABASE_URL` is set. `REVOCATION_STORE` env var (`auto` | `memory` | `postgres` | `sqlite`, default `auto`) overrides. Single INFO log line on startup names the active store and durability claim.
-- ESLint trust-boundary rules (D16, ABXAGNTS-231 / ABXAGNTS-232) — currently `warn` severity, will promote to `error` after Lane D/E lands cleanly across consumers:
+- ESLint trust-boundary rules — currently `warn` severity, will promote to `error` after consumer migration is complete:
   - **Library core (`src/**/*.ts`, excluding `src/bootstrap/` and `src/cli/`)**: bans the bare string literal `'AGENTS_MASTER_KEY'` (Literal + TemplateLiteral, also covers `process.env['AGENTS_MASTER_KEY']` bracket access); bans broad `process.env.*` member access (dot + bracket notation), with an explicit justification-comment escape (`// eslint-disable-next-line no-restricted-syntax -- with-justification: <reason>`). Sanctioned env reads belong in `src/bootstrap/`.
-  - **Server (`packages/server/src/**/*.ts`)**: bans the same literal patterns, plus `process.env.AGENTS_MASTER_KEY` member access specifically, plus the C1-review-driven destructure form (`const { AGENTS_MASTER_KEY } = process.env`). Other env reads (`DATABASE_URL`, `OIDC_*`, `SESSION_STORE`, `REVOCATION_STORE`) remain unrestricted — server is consumer-boundary code.
-- JSDoc↔type CI workflow (`.github/workflows/jsdoc-types.yml` + `scripts/extract-jsdoc-examples.ts`). Walks `src/**/*.ts` AST, extracts \`\`\`ts blocks from `@example` annotations, type-checks the concatenation against the actual type surface. Structurally prevents the aspirational-JSDoc drift class that masked the Session 3 revocation gap for ~4 minor versions.
+  - **Server (`packages/server/src/**/*.ts`)**: bans the same literal patterns, plus `process.env.AGENTS_MASTER_KEY` member access specifically, plus the destructure form (`const { AGENTS_MASTER_KEY } = process.env`). Other env reads (`DATABASE_URL`, `OIDC_*`, `SESSION_STORE`, `REVOCATION_STORE`) remain unrestricted — server is consumer-boundary code.
+- JSDoc↔type CI workflow (`.github/workflows/jsdoc-types.yml` + `scripts/extract-jsdoc-examples.ts`). Walks `src/**/*.ts` AST, extracts \`\`\`ts blocks from `@example` annotations, type-checks the concatenation against the actual type surface. Structurally prevents aspirational-JSDoc drift.
 
 ### Changed
 
@@ -614,8 +593,8 @@ read by the library"). The five Session-6-era `AGENTS_*` env-reads are gone.
 
 ### Library / SDK boundary
 
-- The library no longer reads `AGENTS_MASTER_KEY` from the environment. Every active `AGENTS_MASTER_KEY` site is in consumer-boundary code (`@abaxxlabs/agents/bootstrap`, `packages/server/`, `src/cli/`, demos, scaffolds) — the lint rule enforces this structurally. (Other library env reads — `NODE_ENV` for dev defaults, `AGENTS_TRUSTED_SERVERS`, `AGENTS_CONSUMER_DOMAINS`, etc. — are unaffected by this release; they remain pending broader review under D16.)
-- `StorageBackend.sessions` retained. Removing it would introduce a second breaking change for marginal symmetry; Session 5's contract stays intact.
+- The library no longer reads `AGENTS_MASTER_KEY` from the environment. Every active `AGENTS_MASTER_KEY` site is in consumer-boundary code (`@abaxxlabs/agents/bootstrap`, `packages/server/`, `src/cli/`, demos, scaffolds) — the lint rule enforces this structurally. (Other library env reads — `NODE_ENV` for dev defaults, `AGENTS_TRUSTED_SERVERS`, `AGENTS_CONSUMER_DOMAINS`, etc. — are unaffected by this release; they remain pending broader review.)
+- `StorageBackend.sessions` retained. Removing it would introduce a second breaking change for marginal symmetry.
 - `AgentScope.verifierInstance` getter retained (testing-ergonomics tradeoff). The `revocationStore` field on the verifier is now fully `private`; the new public `VcVerifier.isRevoked()` proxy is the sanctioned read path. `AgentScope.pruneRevocations()` is the sanctioned admin path. Full deletion of the `verifierInstance` getter is deferred until a concrete friction point surfaces.
 
 ### Upgrade path
@@ -623,8 +602,8 @@ read by the library"). The five Session-6-era `AGENTS_*` env-reads are gone.
 - See `docs/migration-byok.md` for the full migration guide: 5-question decision tree, environment audit checklist, four worked examples (env-only/same-key, env-only/new-key, config-hex/same-key, new-key-with-rewrap), and the `rewrapColumnKey` migration protocol.
 - **Diagnostic CLI** (`agents migrate-check`, also available via `npx @abaxxlabs/agents migrate-check`): read-only scanner. Walks the CWD, detects `process.env.AGENTS_MASTER_KEY` reads/writes, `encryption.masterKey` references, and `AgentScope.create(` call sites. Categorizes the project into one of the four migration cases (or the trap state where env was silently winning) and points at the relevant doc section. Useful for triaging codebases with many consumer projects. Read-only by design — no edits, no telemetry, no network calls.
 - **MAC-key co-rotation note**: BYOK key change requires a server restart (or explicit MAC-key re-derivation) for session-envelope coherency. Documented in the migration guide as a planned user-visible side effect.
-- **Rollback procedure**: `docs/rollback-v0.9.10.0.md`. No DB schema rollback (Session 6 ships zero new migrations). Code + bootstrap revert only. Data-loss risk only if the master key was rotated during the v0.9.10.0 upgrade window (the rollback doc explains both rotate-back and keep-new-key options).
-- **Support runbook**: `docs/support-runbook-v0.9.10.0.md`. Operational diagnostics for what's new in v0.9.10.0 — revocation-enforcement post-upgrade verification (which store am I actually running?), wrong-key boot triage (`MasterKeyMismatchError` decision tree), and admin operations (mass revoke, manual prune, audit queries). The pre-existing session-3 / session-5 runbooks remain authoritative for ongoing Postgres revocation-store and session-store CRUD operations.
+- **Rollback procedure**: `docs/rollback-v0.9.10.0.md`. No DB schema rollback (this release ships zero new migrations). Code + bootstrap revert only. Data-loss risk only if the master key was rotated during the v0.9.10.0 upgrade window (the rollback doc explains both rotate-back and keep-new-key options).
+- **Support runbook**: `docs/support-runbook-v0.9.10.0.md`. Operational diagnostics for what's new in v0.9.10.0 — revocation-enforcement post-upgrade verification (which store am I actually running?), wrong-key boot triage (`MasterKeyMismatchError` decision tree), and admin operations (mass revoke, manual prune, audit queries).
 
 ### Dependencies
 
@@ -640,12 +619,12 @@ read by the library"). The five Session-6-era `AGENTS_*` env-reads are gone.
 
 ### Security posture
 
-- **ABXAGNTS-183**: Column-key rotation is now a first-class, correct primitive. Before this release, the only way to change a column's key material was to re-call `registerColumn()`, whose `ON CONFLICT DO UPDATE` silently overwrote the wrapped key and left all existing row ciphertext permanently unreadable — a silent data-loss footgun flagged during the hackathon review. Rotation now decrypts every row under the old key, re-encrypts under a new key, and swaps the wrapped key atomically in a single transaction. Failure at any step rolls back cleanly; the column is never in a partially-migrated state. Every rotation emits an `agent_audit` entry inside the transaction — the record answering "who rotated what when" exists if and only if the rotation committed. The footgun in `registerColumn()` is now closed: re-registration throws a clear error pointing callers to the rotation primitives.
+- **Column-key rotation is now a first-class, correct primitive.** Before this release, the only way to change a column's key material was to re-call `registerColumn()`, whose `ON CONFLICT DO UPDATE` silently overwrote the wrapped key and left all existing row ciphertext permanently unreadable — a silent data-loss footgun. Rotation now decrypts every row under the old key, re-encrypts under a new key, and swaps the wrapped key atomically in a single transaction. Failure at any step rolls back cleanly; the column is never in a partially-migrated state. Every rotation emits an `agent_audit` entry inside the transaction — the record answering "who rotated what when" exists if and only if the rotation committed. The footgun in `registerColumn()` is now closed: re-registration throws a clear error pointing callers to the rotation primitives.
 
 ### Added
 
 - `rotateColumnKey({ pool, agentDid, tableName, columnName, masterKey })` — decrypts all rows with the old column key, generates a new column key, re-encrypts every row under it, updates the wrapped key in `agent_keys`, and appends an audit entry — all in one transaction. Row updates happen BEFORE the wrapped-key swap, so a mid-pass failure leaves the column entirely on the old key (readable). `SELECT ... FOR UPDATE` on the `agent_keys` row serializes concurrent rotations of the same column without reaching across the boundary to lock consumer data tables.
-- `rewrapColumnKey({ pool, agentDid, tableName, columnName, oldMasterKey, newMasterKey })` — re-wraps the existing column key under a new master key. Column key and row ciphertext are unchanged; only the wrapped form in `agent_keys.encrypted_key` is rewritten. Shipped alongside rotation so Session 6 (BYOK) inherits the primitive instead of introducing new crypto surface.
+- `rewrapColumnKey({ pool, agentDid, tableName, columnName, oldMasterKey, newMasterKey })` — re-wraps the existing column key under a new master key. Column key and row ciphertext are unchanged; only the wrapped form in `agent_keys.encrypted_key` is rewritten.
 - `KeyRotationFailedError` with `phase` tag (`unwrap-old-key` | `decrypt-row` | `encrypt-row` | `wrap-new-key` | `update-agent-keys` | `audit-append`). Underlying cause preserved as `cause`. Operators can distinguish wrong-master-key from pre-existing row corruption without reading stack traces.
 - `KeyRotationPhase` public type export.
 - **21 new tests** — rotation happy path (multi-row, empty table), mid-rotation rollback semantics, wrong master key, repeated rotation, rewrap happy path, rewrap wrong old master key, audit entry emission for both primitives, `registerColumn` re-registration throws, `registerColumn` first registration succeeds, concurrent-rotation serialization via mocked `FOR UPDATE`.
@@ -656,10 +635,9 @@ read by the library"). The five Session-6-era `AGENTS_*` env-reads are gone.
 
 ### Library / SDK boundary
 
-- **No LOCK TABLE.** A prior draft proposed holding a table-level lock inside the rotation transaction. Rejected by eng-review F-1: the library does not hold infrastructure opinions on consumer write paths. Write-quiescence is a caller-owned policy (maintenance flag, read-only mode, external advisory lock, queue pause). The JSDoc on both primitives documents the invariant explicitly; any future maintainer reaching for `LOCK TABLE` must re-read F-1 first.
+- **No LOCK TABLE.** A prior draft proposed holding a table-level lock inside the rotation transaction. Rejected: the library does not hold infrastructure opinions on consumer write paths. Write-quiescence is a caller-owned policy (maintenance flag, read-only mode, external advisory lock, queue pause). The JSDoc on both primitives documents the invariant explicitly; any future maintainer reaching for `LOCK TABLE` must re-read this rationale first.
 - **No streaming read.** Per-row SELECT → decrypt → re-encrypt → UPDATE is O(rows) round-trips (~15–25s for 10,000 rows on local Postgres). Batched multi-row UPDATE is an optional future optimization for consumers with hot paths over millions of encrypted rows; not shipped preemptively.
 - **No embedded authz.** The primitives take `agentDid` for audit attribution only. Who is authorized to rotate is a consumer concern; the library stays out.
-- Session 6 (BYOK, v0.9.10.0) now needs no new crypto primitive — it threads the existing `masterKey` parameter into the rewrap entry point.
 
 ### Dependencies
 
@@ -674,39 +652,39 @@ read by the library"). The five Session-6-era `AGENTS_*` env-reads are gone.
 
 ### Security posture
 
-- **ABXAGNTS-182**: Session state no longer pinned to a single server process. Before this release, a user who authenticated against instance A and hit instance B on their next request was rejected because the session map was process-local. Session envelopes are now persisted via `ISessionStore`; on cross-instance hit, the target instance re-establishes a live `AuthenticatedSession` from the envelope + its local keystore + OIDC claims. **No raw private key material is persisted.** HMAC-SHA256 protects envelope integrity (HKDF-derived key from master key). Scope ceiling and parent credentials are re-derived / re-verified on every re-establishment; envelope bytes are never trusted as authority. Paid-tier sessions that require an OAuth access token fall back to silent re-auth on cross-instance hit (no token persistence in v0.9.8.0).
+- **Session state no longer pinned to a single server process.** Before this release, a user who authenticated against instance A and hit instance B on their next request was rejected because the session map was process-local. Session envelopes are now persisted via `SessionStore`; on cross-instance hit, the target instance re-establishes a live `AuthenticatedSession` from the envelope + its local keystore + OIDC claims. **No raw private key material is persisted.** HMAC-SHA256 protects envelope integrity (HKDF-derived key from master key). Scope ceiling and parent credentials are re-derived / re-verified on every re-establishment; envelope bytes are never trusted as authority. Paid-tier sessions that require an OAuth access token fall back to silent re-auth on cross-instance hit (no token persistence in v0.9.8.0).
 
 ### Added
 
-- `ISessionStore` — fifth sub-store under `StorageBackend` (alongside `IAgentStore`, `IAuditStore`, `IContextStore`, `IRevocationStore`). Interface in `src/storage/types.ts`. Adapters: `PostgresSessionStore` (durable, multi-instance, 10s read-through cache), `SqliteSessionStore` (file-backed, Chief/local, WAL mode), `InMemorySessionStore` (zero-config default, single-instance).
+- `SessionStore` — fifth sub-store under `StorageBackend` (alongside `AgentStore`, `AuditStore`, `ContextStore`, `RevocationStore`). Interface in `src/storage/types.ts`. Adapters: `PostgresSessionStore` (durable, multi-instance, 10s read-through cache), `SqliteSessionStore` (file-backed, local, WAL mode), `InMemorySessionStore` (zero-config default, single-instance).
 - `SessionEnvelope` type — re-establishment metadata (DID, OIDC claims, compact parent JWT, lifecycle fields). Explicitly omits `humanPrivateKey`, `parentAccessToken`, refresh tokens, and derived column keys.
 - Migration 008 — `sessions` table with `mac BYTEA`, `expires_at TIMESTAMPTZ NOT NULL`, `human_did` denormalized for GDPR Article 17 deletes. Idempotent (`IF NOT EXISTS`).
-- `envelope-mac` primitive — HMAC-SHA256 over RFC 8785 (JCS) canonical JSON encoding of the envelope. HKDF-derived key from library master key. Exported context strings (`HKDF_CONTEXT_SESSION_MAC`) so Session 6 (BYOK) reuses the pattern without reverse-engineering constants (RY-7).
-- `MAX_ENVELOPE_BYTES = 32768` (32KB) size cap measured on canonical-encoded output (RY-6). Defense against unbounded `oidcGroupClaims` from self-hosted Keycloak tenants.
-- `pruneExpired(beforeTs?, limit?)` on `ISessionStore` — consumer-scheduled; library does not run a background loop.
-- `deleteByHumanDid(did)` on `ISessionStore` — GDPR Article 17 one-liner. `human_did` indexed in migration 008.
+- `envelope-mac` primitive — HMAC-SHA256 over RFC 8785 (JCS) canonical JSON encoding of the envelope. HKDF-derived key from library master key. Exported context strings (`HKDF_CONTEXT_SESSION_MAC`) so BYOK migration reuses the pattern without reverse-engineering constants.
+- `MAX_ENVELOPE_BYTES = 32768` (32KB) size cap measured on canonical-encoded output. Defense against unbounded `oidcGroupClaims` from self-hosted Keycloak tenants.
+- `pruneExpired(beforeTs?, limit?)` on `SessionStore` — consumer-scheduled; library does not run a background loop.
+- `deleteByHumanDid(did)` on `SessionStore` — GDPR Article 17 one-liner. `human_did` indexed in migration 008.
 - `DELETE /admin/sessions/:token` endpoint — admin API key auth (fail-closed when unset); emits `session.revoked` audit.
 - Structured session audit vocabulary (JSON-line, grep `[audit] session.*`): `session.rehydrated`, `session.rehydrate_rejected_integrity`, `session.rehydrate_rejected_provider`, `session.rehydrate_rejected_other`, `session.revoked`. Raw tokens NEVER logged (only SHA-256 hashes).
 - `SESSION_STORE` env var: `memory` (default), `postgres`, `sqlite`.
-- `SESSION_STORE_MODE=dual` opt-in for zero-re-auth rolling upgrades (D17).
-- `OIDC_ALLOWED_ISSUERS` env var — fail-closed default (D19). Multi-instance deployments MUST configure.
+- `SESSION_STORE_MODE=dual` opt-in for zero-re-auth rolling upgrades.
+- `OIDC_ALLOWED_ISSUERS` env var — fail-closed default. Multi-instance deployments MUST configure.
 - `ADMIN_API_KEY` env var — required to enable `DELETE /admin/sessions/:token`.
-- `PostgresSessionStore` 10s per-instance read-through cache (D15) with enforced invariants: cache TTL = min(configured, envelope.expiresAt − now); evicts on `put()` and `delete()`; never authoritative on deletion; never short-circuits MAC verification.
-- Per-instance singleflight coalescer (D13) on `get()`: concurrent calls for the same token join one in-flight promise.
-- Release artifacts: support runbook, migration 008 rollback doc, data retention policy (GDPR Article 5(1)(e) / Article 17), upgrade-path doc (5th artifact — Session 5 replaces an existing mechanism).
+- `PostgresSessionStore` 10s per-instance read-through cache with enforced invariants: cache TTL = min(configured, envelope.expiresAt − now); evicts on `put()` and `delete()`; never authoritative on deletion; never short-circuits MAC verification.
+- Per-instance singleflight coalescer on `get()`: concurrent calls for the same token join one in-flight promise.
+- Release artifacts: support runbook, migration 008 rollback doc, data retention policy (GDPR Article 5(1)(e) / Article 17), upgrade-path doc.
 - **69 new tests** — envelope-mac unit (19), in-memory adapter (13), SQLite adapter (9), Postgres adapter live-DB (9), cross-backend contract parity (16), library-factories-stateless regression guard (3).
 
 ### Changed
 
-- `packages/server/src/index.ts` no longer holds a process-local `Map<token, SessionEntry>`. Session lifecycle goes through the injected `ISessionStore`. A small per-instance `liveSessions` cache still holds the non-serializable `AuthenticatedSession` closure for hot-path lookups, but it is not authoritative — misses fall through to durable store + rehydrate.
-- `requireSession` middleware is now async to support cross-instance rehydrate. Mapping: `EnvelopeIntegrityError` → 401 `SESSION_INTEGRITY_FAILED`, `ProviderNotAllowedError` → 401 `PROVIDER_NOT_ALLOWED`, other store errors → 503 `SESSION_STORE_UNAVAILABLE` (D14, no silent fallback).
-- SQLite migrations add `PRAGMA synchronous = NORMAL` alongside existing `PRAGMA journal_mode = WAL` (NF-7). Retroactively applied to all SQLite adapters under `StorageBackend`.
+- `packages/server/src/index.ts` no longer holds a process-local `Map<token, SessionEntry>`. Session lifecycle goes through the injected `SessionStore`. A small per-instance `liveSessions` cache still holds the non-serializable `AuthenticatedSession` closure for hot-path lookups, but it is not authoritative — misses fall through to durable store + rehydrate.
+- `requireSession` middleware is now async to support cross-instance rehydrate. Mapping: `EnvelopeIntegrityError` → 401 `SESSION_INTEGRITY_FAILED`, `ProviderNotAllowedError` → 401 `PROVIDER_NOT_ALLOWED`, other store errors → 503 `SESSION_STORE_UNAVAILABLE` (no silent fallback).
+- SQLite migrations add `PRAGMA synchronous = NORMAL` alongside existing `PRAGMA journal_mode = WAL`. Retroactively applied to all SQLite adapters under `StorageBackend`.
 
 ### Library / SDK boundary
 
 - Session storage is a public, stable contract in core + three shipped adapters. Non-default adapters (Redis, DynamoDB, sticky-sessions-with-local-cache) are consumer territory — the interface accepts them.
-- Library `src/auth/` factories confirmed stateless (Task 3 verification test). Session 6 inherits this.
-- HKDF context-string pattern established for master-key derivation. Session 6 reuses via `HKDF_CONTEXT_SESSION_MAC` as the precedent constant.
+- Library `src/auth/` factories confirmed stateless.
+- HKDF context-string pattern established for master-key derivation.
 
 ### Dependencies
 
@@ -715,37 +693,37 @@ read by the library"). The five Session-6-era `AGENTS_*` env-reads are gone.
 ### Not breaking
 
 - Single-instance deployments (`SESSION_STORE=memory`, default): behavior is identical to v0.9.7.x / v0.9.6.x.
-- Consumers who ignore `ISessionStore` and don't set `SESSION_STORE`: no change.
+- Consumers who ignore `SessionStore` and don't set `SESSION_STORE`: no change.
 - Library `src/auth/` factories: unchanged.
 
 ### Deferred to v0.9.8.1+
 
-- **Parent-IdP re-verification on rehydrate (D11 / RY-4 / RY-5):** in v0.9.8.0 we do not persist or re-verify the compact parent JWT during re-establishment. The envelope type reserves a `parentJwt` field for this purpose; if a session's `issueCredential` call needs a live parent access token, it falls back to re-auth-on-miss per D5. If the parent-cred re-verify path is wired in a future release, RY-4 (error body doesn't leak parent topology) and RY-5 (30s closed-state circuit breaker) must land alongside it.
+- **Parent-IdP re-verification on rehydrate:** in v0.9.8.0 we do not persist or re-verify the compact parent JWT during re-establishment. The envelope type reserves a `parentJwt` field for this purpose; if a session's `issueCredential` call needs a live parent access token, it falls back to re-auth-on-miss. If the parent-cred re-verify path is wired in a future release, error body topology protection and circuit-breaker behavior must land alongside it.
 
 ## [0.9.6.0] — 2026-04-23
 
 ### Security posture
 
-- **ABXAGNTS-180**: Credential revocations now survive process restart and are coherent across instances (default 30-second cross-instance staleness bound). Previously, revocations were process-local — they disappeared on restart and were invisible to other instances. This was a security-posture gap flagged during the Session 3 review. A revocation performed on instance A is visible on instance B within `pollIntervalMs` (default 30s).
+- **Credential revocations now survive process restart and are coherent across instances** (default 30-second cross-instance staleness bound). Previously, revocations were process-local — they disappeared on restart and were invisible to other instances. A revocation performed on instance A is visible on instance B within `pollIntervalMs` (default 30s).
 
 ### Added
 
-- `IRevocationStore` — fourth sub-store under `StorageBackend` (alongside `IAgentStore`, `IAuditStore`, `IContextStore`). Interface in `src/storage/types.ts`. Adapters: `PostgresRevocationStore` (durable, cross-instance coherent), `SqliteRevocationStore` (file-backed, Chief/local), `InMemoryRevocationStore` (zero-config default).
+- `RevocationStore` — fourth sub-store under `StorageBackend` (alongside `AgentStore`, `AuditStore`, `ContextStore`). Interface in `src/storage/types.ts`. Adapters: `PostgresRevocationStore` (durable, cross-instance coherent), `SqliteRevocationStore` (file-backed, local), `InMemoryRevocationStore` (zero-config default).
 - `InMemoryRevocationStore` — process-local default for zero-config backward compatibility. Exported from the public API for consumers who want to inject their own instance.
 - `PostgresRevocationStore` in `src/storage/postgres/revocation-store.ts` — configurable poll coherency (default 30s), LISTEN/NOTIFY opt-in documented.
-- `SqliteRevocationStore` in `src/storage/sqlite/revocation-store.ts` — BEGIN IMMEDIATE for write serialization (D7 pattern from ABXAGNTS-181).
+- `SqliteRevocationStore` in `src/storage/sqlite/revocation-store.ts` — BEGIN IMMEDIATE for write serialization.
 - Migration 007 — `revoked_credentials` table with `expires_at TIMESTAMPTZ` + partial index. Idempotent (IF NOT EXISTS).
-- `VcVerifier.revokeAsync()` — D5-compliant async revocation that throws on storage failure. Call sites in `src/auth/agent.ts` use this instead of the deprecated `revokeLocally()`.
+- `VcVerifier.revokeAsync()` — async revocation that throws on storage failure. Call sites in `src/auth/agent.ts` use this instead of the deprecated `revokeLocally()`.
 - Background pruning — 24h `pruneExpired()` job in the server package deletes revocations whose underlying credential expired >30 days ago.
-- Row-level locking on `isRevoked()` reads — mirrors ABXAGNTS-181 audit-chain pattern.
+- Row-level locking on `isRevoked()` reads — mirrors audit-chain pattern.
 - HTTP authz: `DELETE /credentials/:id` now verifies caller session matches credential issuer DID (default deny). Previously any authenticated session could revoke any credential.
 - Release artifacts: support runbook, migration 007 rollback doc, data retention policy (GDPR Article 5(1)(e) / SOC 2 CC7.1).
-- **26 new tests** — InMemoryRevocationStore unit (11), SqliteRevocationStore integration (2), D10 regression (3 from parent-credential.test.ts + 3 new), D7 race sequencing (2), migration 007 format (2), VcVerifier integration (3).
+- **26 new tests** — InMemoryRevocationStore unit (11), SqliteRevocationStore integration (2), parent-credential regression (6), race sequencing (2), migration 007 format (2), VcVerifier integration (3).
 
 ### Changed
 
-- `revokeCredential()` in `AuthenticatedSession` now returns `Promise<{ sdkNotificationFailed?: Error }>` instead of `Promise<void>`. Local `IRevocationStore` write is the canonical revocation authority. SDK call (`sdk.vc.revokeCredential`) is a best-effort outbound notification — SDK failure does NOT fail the call; it is surfaced in `sdkNotificationFailed`.
-- Revocation authority model: local store is canonical (D6). SDK call is notification only.
+- `revokeCredential()` in `AuthenticatedSession` now returns `Promise<{ sdkNotificationFailed?: Error }>` instead of `Promise<void>`. Local `RevocationStore` write is the canonical revocation authority. SDK call (`sdk.vc.revokeCredential`) is a best-effort outbound notification — SDK failure does NOT fail the call; it is surfaced in `sdkNotificationFailed`.
+- Revocation authority model: local store is canonical. SDK call is notification only.
 
 ### Breaking
 
@@ -756,26 +734,26 @@ read by the library"). The five Session-6-era `AGENTS_*` env-reads are gone.
 
 ### Fixed
 
-- **ABXAGNTS-181**: serialized audit chain-head read prevents hash chain fork under concurrent init. `IAuditStore` now exposes `loadLastRecordLocked()` — Postgres uses `pg_advisory_xact_lock(1234567890)` inside a transaction; SQLite uses `BEGIN IMMEDIATE` (better-sqlite3 `.immediate()`) to acquire a RESERVED lock before the SELECT executes. `AuditLogger.initialize()` calls `loadLastRecordLocked()` instead of `loadLastRecord()`, preventing two processes from reading the same chain-head and forking the hash chain on concurrent startup.
-- **ABXAGNTS-187**: `verifyAuditChain` now uses `crypto.timingSafeEqual` for hash comparison via a `hashesEqual()` helper that length-checks first (mismatched lengths → false, no `timingSafeEqual` call). Closes the timing channel leak when the endpoint is invoked over an authenticated HTTP session.
+- **Serialized audit chain-head read prevents hash chain fork under concurrent init.** `AuditStore` now exposes `loadLastRecordLocked()` — Postgres uses `pg_advisory_xact_lock(1234567890)` inside a transaction; SQLite uses `BEGIN IMMEDIATE` (better-sqlite3 `.immediate()`) to acquire a RESERVED lock before the SELECT executes. `AuditLogger.initialize()` calls `loadLastRecordLocked()` instead of `loadLastRecord()`, preventing two processes from reading the same chain-head and forking the hash chain on concurrent startup.
+- **`verifyAuditChain` now uses `crypto.timingSafeEqual` for hash comparison** via a `hashesEqual()` helper that length-checks first (mismatched lengths → false, no `timingSafeEqual` call). Closes the timing channel leak when the endpoint is invoked over an authenticated HTTP session.
 
 ### Added
 
-- **ABXAGNTS-184**: `GET /credentials?agentDid=&issuedAfter=` endpoint in the server product. Returns credential records (credentialId, agentDid, ownerDid, issuedAt) derived from the audit trail for the authenticated caller's agents. Both query params are optional; they compose with AND semantics. Unauthenticated requests return 401. OpenAPI spec updated.
-- **29 new unit tests** — ABXAGNTS-181 (SQLite + Postgres-style mock: loadLastRecordLocked serializes init read, initialize() calls locked variant), ABXAGNTS-187 (mismatch at byte 0, last byte, middle byte, non-hex hash — all detected), ABXAGNTS-184 (unauthenticated 401, authenticated list, agentDid filter, issuedAfter filter, both params AND, invalid issuedAfter 400, empty result is [] not 403).
+- **`GET /credentials?agentDid=&issuedAfter=` endpoint** in the server product. Returns credential records (credentialId, agentDid, ownerDid, issuedAt) derived from the audit trail for the authenticated caller's agents. Both query params are optional; they compose with AND semantics. Unauthenticated requests return 401. OpenAPI spec updated.
+- **29 new unit tests** — concurrent init serialization (SQLite + Postgres-style mock: loadLastRecordLocked serializes init read, initialize() calls locked variant), timing-safe hash comparison (mismatch at byte 0, last byte, middle byte, non-hex hash — all detected), credential listing (unauthenticated 401, authenticated list, agentDid filter, issuedAfter filter, both params AND, invalid issuedAfter 400, empty result is [] not 403).
 
 ## [0.9.4.0] — 2026-04-23
 
 ### Fixed
 
-- **ABXAGNTS-178**: `scopeMode='encryption-only'` now throws on `ScopeEngine` construction unless `AGENTS_ALLOW_LEGACY_SCOPE_MODE=true` is set in the environment. Prevents silent opt-in to a weaker security posture. Existing tests that exercise this mode set the env var in `beforeAll`/`afterAll` blocks.
-- **ABXAGNTS-185**: `timeOfDayRule` validates caller-supplied `context.timezone` against `Intl.supportedValuesOf('timeZone')` before use. Invalid strings throw the new `InvalidTimezoneError`. The supported timezone set is memoised — one allocation per process lifetime. UTC and GMT are handled via an explicit alias set (omitted from `supportedValuesOf` in some ICU versions but accepted by `Intl.DateTimeFormat`).
-- **ABXAGNTS-186**: `issueCredentialFromParent` accepts optional `{ ceiling?, context? }` as a fifth parameter. When `ceiling` is supplied, `assertScopeFitsInCeiling` is called before the provider is contacted — the provider is never called if the ceiling rejects. Fully backwards-compatible: existing callers that omit the parameter see no behaviour change.
-- **ABXAGNTS-188**: `createMockSession` throws unless `NODE_ENV` is `'development'` or `'test'`. Unset `NODE_ENV` is treated as production. The guard lives inside the function (not in a caller wrapper) to prevent bypass by direct SDK consumers.
+- **`scopeMode='encryption-only'` now throws on `ScopeEngine` construction** unless `AGENTS_ALLOW_LEGACY_SCOPE_MODE=true` is set in the environment. Prevents silent opt-in to a weaker security posture. Existing tests that exercise this mode set the env var in `beforeAll`/`afterAll` blocks.
+- **`timeOfDayRule` validates caller-supplied `context.timezone`** against `Intl.supportedValuesOf('timeZone')` before use. Invalid strings throw the new `InvalidTimezoneError`. The supported timezone set is memoised — one allocation per process lifetime. UTC and GMT are handled via an explicit alias set (omitted from `supportedValuesOf` in some ICU versions but accepted by `Intl.DateTimeFormat`).
+- **`issueCredentialFromParent` accepts optional `{ ceiling?, context? }` as a fifth parameter.** When `ceiling` is supplied, `assertScopeFitsInCeiling` is called before the provider is contacted — the provider is never called if the ceiling rejects. Fully backwards-compatible: existing callers that omit the parameter see no behaviour change.
+- **`createMockSession` throws unless `NODE_ENV` is `'development'` or `'test'`.** Unset `NODE_ENV` is treated as production. The guard lives inside the function (not in a caller wrapper) to prevent bypass by direct SDK consumers.
 
 ### Added
 
-- **18 new unit tests** — ABXAGNTS-178 (3 cases: throw without env, pass with env, projection unaffected), ABXAGNTS-185 (7 cases: valid IANA, UTC, invalid string, EST5EDT abbreviation, empty string, undefined, memoisation), ABXAGNTS-186 (4 cases: no opts, ceiling accepts, ceiling rejects + provider not called, ceiling without context), ABXAGNTS-188 (4 cases: test, development, production, unset — each with env restore).
+- **18 new unit tests** — legacy scopeMode guard (3 cases: throw without env, pass with env, projection unaffected), timezone validation (7 cases: valid IANA, UTC, invalid string, EST5EDT abbreviation, empty string, undefined, memoisation), credential ceiling (4 cases: no opts, ceiling accepts, ceiling rejects + provider not called, ceiling without context), mock session guard (4 cases: test, development, production, unset — each with env restore).
 
 ## [0.9.3.0] — 2026-04-23
 
@@ -799,8 +777,8 @@ read by the library"). The five Session-6-era `AGENTS_*` env-reads are gone.
 
 ### Fixed
 
-- **Showcase demo stability** — resolved all 11 findings from Anto's hackathon
-  dry-run: scoped queries per-agent credentials, Beat 5/7 audit schema and chain
+- **Showcase demo stability** — resolved all 11 issues from dry-run testing:
+  scoped queries per-agent credentials, Beat 5/7 audit schema and chain
   integrity, column decryption error handling, mock auth DID stability (now
   deterministic from human name seed), DB isolation, return-to-Beat-1 on reset.
 
@@ -817,7 +795,7 @@ read by the library"). The five Session-6-era `AGENTS_*` env-reads are gone.
   the JWT themselves.
 
 - **run.sh hardening** — Docker preflight, nested `npm install`, guarded `open`
-  calls, and OpenClaw sandbox resilience for the hackathon demo script.
+  calls, and OpenClaw sandbox resilience for the demo script.
 
 ### Changed
 
@@ -984,12 +962,10 @@ read by the library"). The five Session-6-era `AGENTS_*` env-reads are gone.
   VP replay across servers. A VP captured from Server X cannot be presented to
   Server Y. New `WRONG_AUDIENCE` status in `VerificationResult`.
 
-- **Hackathon one-command bring-up** (`demo/hackathon/run.sh`) — single script
   starts Postgres, seeds data, launches Keycloak OIDC, login page, showcase demo,
   OpenClaw sandbox with port forwarding, and the REST server. Test users:
   analyst/analyst (scoped) and admin/admin (full access).
 
-- **OpenClaw agent skill** (`demo/hackathon/SKILL-openclaw.md`) — teaches a
   sandboxed AI agent to use the agents REST API via curl. Covers session
   creation, credential issuance, scoped queries, and delegation using the
   Park/Torres capital markets personas.
@@ -1007,7 +983,6 @@ read by the library"). The five Session-6-era `AGENTS_*` env-reads are gone.
 - **Sandbox network policy** (`demo/nemoclaw/sandbox-policy.yaml`) — L7 HTTP
   proxy rules for Venice AI inference API access and agents REST API ports.
 
-- **Hackathon cheatsheet** (`demo/hackathon/CHEATSHEET.md`) — port map, test
   users, directory reference, and quick commands.
 
 ### Changed
@@ -1105,7 +1080,6 @@ read by the library"). The five Session-6-era `AGENTS_*` env-reads are gone.
 - **fetchUserInfo failure logging** — OIDC userinfo fetch failures are now
   logged with `console.warn` instead of being silently swallowed.
 
-- Review decisions documented in `demo/hackathon/REVIEW-DECISIONS.md` covering
   all 14 findings from testing, security, and adversarial review passes.
 
 - **Delegation chain verification** — `delegateCredential()` is now async with
@@ -1120,9 +1094,6 @@ read by the library"). The five Session-6-era `AGENTS_*` env-reads are gone.
 - **Three adversarial findings closed** — provider confusion hostname check
   tightened, session sweep interval hardened, credential delegation gaps
   documented and addressed.
-
-- **Venice API key notice** — internal-only documentation strengthened for the
-  Venice AI inference API key used in sandbox environments.
 
 - **VP replay cache bounded** — `VcVerifier.seenJtis` Map now enforces a
   `maxReplayCacheSize` (default 100K entries). When the cache reaches capacity,
@@ -1162,7 +1133,7 @@ read by the library"). The five Session-6-era `AGENTS_*` env-reads are gone.
 
 ### REST Hardening
 
-Six-phase hardening pass closing all gaps identified in the pre-hackathon
+Six-phase hardening pass closing all gaps identified in the pre-release
 review. Every change is fail-closed: new code rejects by default, and
 rejection events are auditable.
 
@@ -1296,15 +1267,13 @@ rejection events are auditable.
   return 403 with code `SCOPE_EXCEEDS_CEILING`, naming the exact excess.
   Server-side rejection logging for operator visibility during rollout.
 
-- **Developer handoff pack** (`demo/hackathon/`) — scenarios, challenges,
-  upstream-candidate template, and one-command bring-up for an internal
-  developer test session. Reuses the Park/Torres capital-markets
-  narrative from the AgentScope showcase so both demos tell one story.
-  Includes `run.sh` (Postgres bring-up + order_book seed + REST server
-  launch with correct env), three adversarial review reports that
-  shaped the content, and six open challenges covering credential ops,
-  policy-as-code, delegation, non-Node REST access, adversarial scope
-  attacks, and the AbaxxOne upgrade path.
+  upstream-candidate template, and one-command bring-up. Reuses the Park/Torres
+  capital-markets narrative from the AgentScope showcase so both demos tell one
+  story. Includes `run.sh` (Postgres bring-up + order_book seed + REST server
+  launch with correct env), three adversarial review reports that shaped the
+  content, and six open challenges covering credential ops, policy-as-code,
+  delegation, non-Node REST access, adversarial scope attacks, and the AbaxxOne
+  upgrade path.
 
 - **Cross-agent REST demo transcripts** (`demo/cross-agent/`) — signed
   request/response evidence from a live run of the Park/Torres
@@ -1317,9 +1286,8 @@ rejection events are auditable.
   `NODE_ENV ∈ {development, test}`. Defaulting to `development` meant
   any `agents serve` invocation without explicit env silently enabled
   a forgeable-identity endpoint. Development demos now set
-  `NODE_ENV=development` explicitly (see `demo/hackathon/run.sh`);
-  production deployments that don't set the env get mock auth
-  hard-closed by default.
+  `NODE_ENV=development` explicitly; production deployments that don't
+  set the env get mock auth hard-closed by default.
 
 - **Showcase Beat 4 fallback UX** — when no `ANTHROPIC_API_KEY` is set
   and the user types a custom NL query that doesn't match the canned
@@ -1356,7 +1324,7 @@ rejection events are auditable.
   Every storage operation flows through identity-gated, auditable channels. Chief (and
   future consumers) can use SQLite locally without bypassing the trust model.
 
-- **IAgentStore, IAuditStore, IContextStore** — decomposed sub-store interfaces.
+- **AgentStore, AuditStore, ContextStore** — decomposed sub-store interfaces.
   Agent store handles registry CRUD. Audit store is append-only with hash chaining
   and database triggers. Context store enforces identity gating at the query level
   (WHERE owner_did = $callerDid) with server identity bypass.
@@ -1377,7 +1345,7 @@ rejection events are auditable.
 
 ### Changed
 
-- **AuditLogger** now accepts an optional IAuditStore, falling back to pool-based
+- **AuditLogger** now accepts an optional AuditStore, falling back to pool-based
   Postgres for backward compatibility. Existing callers that pass `{ pool }` continue
   to work with zero changes.
 
@@ -1428,7 +1396,7 @@ rejection events are auditable.
 
 - **`isTrusted(did)`** — O(1) Map lookup. Safe on the MCP request hot path.
 
-- **`createTrustAnchorStore(options)`** — factory typed as `ITrustAnchorStore` interface.
+- **`createTrustAnchorStore(options)`** — factory typed as `TrustAnchorStore` interface.
 
 - **Tests** (`test/trust-anchor.test.ts`): 45 pass, 0 fail.
 
@@ -1449,20 +1417,20 @@ rejection events are auditable.
   (code: `WRONG_ORG`), `AgentUnauthorizedError` (code: `UNAUTHORIZED`). All extend
   `AgentScopeError` with machine-readable `code` and structured `details`.
 
-- **`createAgentVerifier(options)`** — factory typed as `IAgentVerifier` interface.
+- **`createAgentVerifier(options)`** — factory typed as `AgentVerifier` interface.
 
-- **Security hardening** (Ryan Rawson adversarial review, 2026-04-12):
+- **Security hardening** (adversarial review, 2026-04-12):
   - `AgentVerifyRequest.agentDid` changed from optional (`agentDid?: string`) to
     required (`agentDid: string`). An optional field creates a silent bypass — callers
     that omit it skip subject binding with no compile-time or runtime error. Making it
     required forces the confusion-deputy issue to surface at the TypeScript layer before
     it can reach production.
   - Runtime validation of the `capabilities` array (ensure it is truly an array before
-    passing to `CapabilityEngine`) deferred to T6 (MCP Bearer Auth). The current cast
-    carries acceptable risk: `CapabilityEngine.checkCapability()` skips malformed entries
-    and throws `CapabilitySetTooLargeError` for 501+ entries, so a bad cast produces a
-    hard error rather than a silent pass. Full schema validation added in T6 when the
-    bearer auth middleware is wired.
+    passing to `CapabilityEngine`) deferred. The current cast carries acceptable risk:
+    `CapabilityEngine.checkCapability()` skips malformed entries and throws
+    `CapabilitySetTooLargeError` for 501+ entries, so a bad cast produces a hard error
+    rather than a silent pass. Full schema validation added when the bearer auth
+    middleware is wired.
 
 - **Tests** (`test/agent-verifier.test.ts`): 40 pass, 0 fail. New: SUSPENDED status
   mapping, `CapabilityParseError` propagation, `CapabilitySetTooLargeError` propagation,
@@ -1473,8 +1441,7 @@ rejection events are auditable.
 
 - **`IDidDhtPublisher`** + **`DidDhtMethod`** type (`src/identity/did-dht.ts`) — types only,
   no runtime code. Phase 2 always returns `'did:key'`. Phase 3 slots in `DidDhtPublisher`
-  class behind this interface without changing calling code. R6 ACCEPTED 2026-04-12:
-  pkarr record format still in flux, no production consumers resolving did:dht today.
+  class behind this interface without changing calling code.
 
 ### MCP Bearer Auth (T6)
 
@@ -1509,8 +1476,7 @@ Four new MCP tools exposing the identity layer to connected agents:
 - **`discover`** — list trusted server DIDs and identity topology. Returns `serverDid`,
   `trustedAnchors` (from TrustAnchorStore), and `didMethod`.
 
-- **`challenge`** — issue HMAC-signed time-based challenges for VP requests. Protocol:
-  timestamp+audience+UUID7 (per Ryan memo 2026-03-30, reconfirmed 2026-04-13). Stateless
+- **`challenge`** — issue HMAC-signed time-based challenges for VP requests. Stateless
   issuance. Bounded JTI dedup cache for zero-replay-window protection (E7 atomic consume).
 
 - **`ChallengeStore`** (`src/mcp/challenge-store.ts`) — HMAC-SHA256 challenge issuance with
@@ -1527,9 +1493,9 @@ Four new MCP tools exposing the identity layer to connected agents:
 
 - `CapabilityEngine`, `createCapabilityEngine`, `CapabilityParseError`, `CapabilitySetTooLargeError`,
   `MAX_CAPABILITY_SET_SIZE` — from `src/capability/index.ts`
-- `LocalTrustAnchorStore`, `createTrustAnchorStore`, `ITrustAnchorStore`, `TrustAnchor`,
+- `LocalTrustAnchorStore`, `createTrustAnchorStore`, `TrustAnchorStore`, `TrustAnchor`,
   `TrustAnchorSource` — from `src/discovery/trust-anchor.ts`
-- `AgentVerifier`, `createAgentVerifier`, `IAgentVerifier`, `UntrustedIssuerError`,
+- `AgentVerifier`, `createAgentVerifier`, `UntrustedIssuerError`,
   `WrongOrgError`, `AgentUnauthorizedError` — from `src/identity/agent-verifier.ts`
 - `IDidDhtPublisher`, `DidDhtMethod` — from `src/identity/did-dht.ts`
 - `createMcpBearerAuth`, `OVERLAP_WINDOW_SECONDS`, `McpBearerAuth`,
@@ -1606,7 +1572,7 @@ applies all security findings from the Phase 1 review pass and pre-landing speci
   and consumed (single-use) at `exchangeCode()`. Prevents CSRF in browser redirect flows.
   *Known gap*: legacy `completeOidcFlow()` is a public API and cannot enforce this without
   a signature change — callers are responsible for validating state (documented in module
-  header, Ryan Finding #6). New providers are the recommended path.
+  header). New providers are the recommended path.
 
 - **Finding E** — DID method validation in legacy `completeOidcFlow()`: only `did:key:`
   and `did:dht:` are accepted. Any other method (did:web, did:ion, numeric sub) throws.
@@ -1637,5 +1603,3 @@ applies all security findings from the Phase 1 review pass and pre-landing speci
 - `deriveHumanDid()` public key usage audit
 
 ## [0.2.0] — prior
-
-Initial AbaxxOne-only release with OIDC flow, VC verification, and scope engine.

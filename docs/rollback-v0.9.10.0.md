@@ -152,6 +152,6 @@ There is no DB rollback to undo, so re-applying is a normal forward upgrade. Re-
 
 - Migration guide forward: `docs/migration-byok.md`
 - CHANGELOG entry for v0.9.10.0: `CHANGELOG.md` § `[0.9.10.0]`
-- Migration 007 rollback (revocations): `demo/hackathon/findings/session-plans/session-3-release/rollback-007.md`
-- Migration 008 rollback (sessions): `demo/hackathon/findings/session-plans/session-5-release/rollback-008.md`
+- Migration 007 rollback (revocations): documented in the v0.9.6.0 release notes
+- Migration 008 rollback (sessions): documented in the v0.9.8.0 release notes
 - v0.9.10.0 deploys do NOT add migrations — rollback procedures for 001–008 are unaffected by this release.
