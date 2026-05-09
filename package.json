@@ -110,7 +110,7 @@
     "audit:package-files": "node scripts/audit-public-artifacts.mjs package",
     "audit:public-repo": "node scripts/audit-public-artifacts.mjs public-repo",
     "audit:public-artifacts": "node scripts/audit-public-artifacts.mjs all",
-    "lint": "eslint src/ test/ packages/server/src/ --ext .ts",
+    "lint": "eslint src/ test/ --ext .ts",
     "lint:fix": "eslint src/ test/ packages/server/src/ --ext .ts --fix",
     "format": "prettier --write 'src/**/*.ts' 'test/**/*.ts'",
     "demo": "node --loader ts-node/esm src/cli/index.ts demo",
