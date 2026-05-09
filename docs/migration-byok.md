@@ -354,7 +354,7 @@ Re-wrapping a column key under a new master key is a five-step, write-quiesced p
 
 ## MAC-key co-rotation note (server consumers only)
 
-This concerns deployments that use `packages/server/` and persist sessions via `PostgresSessionStore` or `SqliteSessionStore` (Session 5, v0.9.8.0+).
+This concerns deployments that use `packages/server/` and persist sessions via `PostgresSessionStore` or `SqliteSessionStore` (v0.9.8.0+).
 
 The session-envelope MAC key is HKDF-derived from the master key (`HKDF_CONTEXT_SESSION_MAC` context string). Changing the master key changes the MAC key. Any session envelope written under the OLD master key has a MAC tag derived from the OLD MAC key — and will fail integrity verification when re-read under the NEW master key.
 

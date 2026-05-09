@@ -14,18 +14,16 @@
 
 name: JSDoc Type Check
 
-# D35 drift prevention — extracts every @example block from src/**/*.ts and
+# Drift prevention — extracts every @example block from src/**/*.ts and
 # type-checks it against the live source types. If a JSDoc example references
 # a field, type, or import that doesn't exist in the public API, this job fails.
 #
-# Background: Session 3 shipped a JSDoc at src/vc-verifier.ts:207 promising
-# AgentScope.create({ storage: { revocation: myRevocationStore } }). The
-# `storage:` field was never added to AgentScopeConfig. Tests passed; users
+# Background: a JSDoc once promised AgentScope.create({ storage: { revocation: myRevocationStore } })
+# but the `storage:` field was never added to AgentScopeConfig. Tests passed; users
 # following the JSDoc got a runtime error. This check catches that class of
 # drift at PR time, not after ship.
 #
 # See: scripts/extract-jsdoc-examples.ts for extraction and filtering logic.
-# See: memory/project_session3_revocation_wiring_drift.md for the incident record.
 
 on:
   push:
