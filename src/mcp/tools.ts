@@ -27,7 +27,7 @@ import type { ServerIdentity } from '../identity/server-identity.js';
 import type { TrustAnchorStore } from '../discovery/trust-anchor.js';
 import { createAgentToolServices, type AgentToolServices } from '../services/index.js';
 import type { Logger } from '../logger.js';
-import { defaultLogger } from '../logger.js';
+import { getLogger } from '../logger.js';
 import { ChallengeStore } from './challenge-store.js';
 import {
   CHALLENGE_RATE_LIMIT,
@@ -47,10 +47,11 @@ import {
 
 // ─── Shared Error Mapper ─────────────────────────────────────────
 
-function mapAgentScopeError(err: unknown, logger: Logger = defaultLogger): {
+function mapAgentScopeError(err: unknown, injectedLogger?: Logger): {
   content: Array<{ type: 'text'; text: string }>;
   isError: true;
 } {
+  const logger = getLogger(injectedLogger);
   const normalized = normalizeDomainError(err);
   // Never forward raw internal errors across the trust boundary.
   if (normalized.code === 'INTERNAL_ERROR' && err instanceof Error) {
@@ -131,7 +132,7 @@ export function registerTools(
 ): void {
   const { session, credentialMaxTtlMs } = deps;
   const services = resolveServices(deps);
-  const log = deps.logger ?? defaultLogger;
+  const log = getLogger(deps.logger);
 
   // 1. query — Execute a scoped SQL query
   server.tool(

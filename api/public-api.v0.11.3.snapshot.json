@@ -1,0 +1,1271 @@
+{
+  "schemaVersion": 1,
+  "packageName": "@abaxxlabs/agents",
+  "packageVersion": "0.11.4",
+  "publicSubpaths": [
+    ".",
+    "./sql",
+    "./mcp",
+    "./storage",
+    "./sqlite",
+    "./bootstrap"
+  ],
+  "entries": {
+    ".": [
+      {
+        "name": "AgentDirectory",
+        "kind": "type"
+      },
+      {
+        "name": "AgentDirectoryService",
+        "kind": "type"
+      },
+      {
+        "name": "AgentIdentity",
+        "kind": "type+value"
+      },
+      {
+        "name": "AgentIdentityConfig",
+        "kind": "type"
+      },
+      {
+        "name": "AgentIdentityInjections",
+        "kind": "type"
+      },
+      {
+        "name": "AgentListFilter",
+        "kind": "type"
+      },
+      {
+        "name": "AgentRecord",
+        "kind": "type"
+      },
+      {
+        "name": "AgentScopeConfig",
+        "kind": "type"
+      },
+      {
+        "name": "AgentScopeError",
+        "kind": "type+value"
+      },
+      {
+        "name": "AgentSigner",
+        "kind": "type"
+      },
+      {
+        "name": "AgentStore",
+        "kind": "type"
+      },
+      {
+        "name": "AgentToolServices",
+        "kind": "type"
+      },
+      {
+        "name": "AgentUnauthorizedError",
+        "kind": "type+value"
+      },
+      {
+        "name": "AgentVerifier",
+        "kind": "type+value"
+      },
+      {
+        "name": "AgentVerifierOptions",
+        "kind": "type"
+      },
+      {
+        "name": "AgentVerifyRequest",
+        "kind": "type"
+      },
+      {
+        "name": "AgentVerifyResult",
+        "kind": "type"
+      },
+      {
+        "name": "asColumnName",
+        "kind": "value"
+      },
+      {
+        "name": "asDid",
+        "kind": "value"
+      },
+      {
+        "name": "asIssuerUrl",
+        "kind": "value"
+      },
+      {
+        "name": "asJti",
+        "kind": "value"
+      },
+      {
+        "name": "asMasterKey",
+        "kind": "value"
+      },
+      {
+        "name": "assertExpiresInBound",
+        "kind": "value"
+      },
+      {
+        "name": "assertScopeFitsInCeiling",
+        "kind": "value"
+      },
+      {
+        "name": "assertUtf8MaxBytes",
+        "kind": "value"
+      },
+      {
+        "name": "assertWithinRateLimit",
+        "kind": "value"
+      },
+      {
+        "name": "asTableName",
+        "kind": "value"
+      },
+      {
+        "name": "asTrustedMigrationCredential",
+        "kind": "value"
+      },
+      {
+        "name": "asVerifiedParentCredential",
+        "kind": "value"
+      },
+      {
+        "name": "AuditEntry",
+        "kind": "type"
+      },
+      {
+        "name": "AuditLogger",
+        "kind": "type+value"
+      },
+      {
+        "name": "AuditQueryFilter",
+        "kind": "type"
+      },
+      {
+        "name": "AuditReader",
+        "kind": "type"
+      },
+      {
+        "name": "AuditRecord",
+        "kind": "type"
+      },
+      {
+        "name": "AuditService",
+        "kind": "type"
+      },
+      {
+        "name": "AuditStore",
+        "kind": "type"
+      },
+      {
+        "name": "AuditVerifier",
+        "kind": "type"
+      },
+      {
+        "name": "AuditWriteFailedError",
+        "kind": "type+value"
+      },
+      {
+        "name": "AuthenticatedSession",
+        "kind": "type"
+      },
+      {
+        "name": "AuthOptions",
+        "kind": "type"
+      },
+      {
+        "name": "AuthUnavailableError",
+        "kind": "type+value"
+      },
+      {
+        "name": "BindingOptions",
+        "kind": "type"
+      },
+      {
+        "name": "canonicalizeEnvelope",
+        "kind": "value"
+      },
+      {
+        "name": "Capability",
+        "kind": "type"
+      },
+      {
+        "name": "CapabilityAction",
+        "kind": "type"
+      },
+      {
+        "name": "CapabilityCheckResult",
+        "kind": "type"
+      },
+      {
+        "name": "CapabilityEngine",
+        "kind": "type+value"
+      },
+      {
+        "name": "CapabilityParseError",
+        "kind": "type+value"
+      },
+      {
+        "name": "CapabilityRequiresPaidTierError",
+        "kind": "type+value"
+      },
+      {
+        "name": "CapabilitySet",
+        "kind": "type"
+      },
+      {
+        "name": "CapabilitySetTooLargeError",
+        "kind": "type+value"
+      },
+      {
+        "name": "CHALLENGE_RATE_LIMIT",
+        "kind": "value"
+      },
+      {
+        "name": "CHALLENGE_RATE_WINDOW_MS",
+        "kind": "value"
+      },
+      {
+        "name": "ChallengeConsumeResult",
+        "kind": "type"
+      },
+      {
+        "name": "ChallengeIssueOptions",
+        "kind": "type"
+      },
+      {
+        "name": "ChallengeIssueResult",
+        "kind": "type"
+      },
+      {
+        "name": "ChallengeStore",
+        "kind": "type+value"
+      },
+      {
+        "name": "ColumnName",
+        "kind": "type"
+      },
+      {
+        "name": "composeConsumerDomains",
+        "kind": "value"
+      },
+      {
+        "name": "composeStorageBackend",
+        "kind": "value"
+      },
+      {
+        "name": "computeMac",
+        "kind": "value"
+      },
+      {
+        "name": "ContextEntry",
+        "kind": "type"
+      },
+      {
+        "name": "ContextListOptions",
+        "kind": "type"
+      },
+      {
+        "name": "ContextStore",
+        "kind": "type"
+      },
+      {
+        "name": "createAgentDirectoryService",
+        "kind": "value"
+      },
+      {
+        "name": "CreateAgentOptions",
+        "kind": "type"
+      },
+      {
+        "name": "createAgentToolServices",
+        "kind": "value"
+      },
+      {
+        "name": "createAgentVerifier",
+        "kind": "value"
+      },
+      {
+        "name": "createAuditService",
+        "kind": "value"
+      },
+      {
+        "name": "createBindingCredential",
+        "kind": "value"
+      },
+      {
+        "name": "createCapabilityEngine",
+        "kind": "value"
+      },
+      {
+        "name": "createCredentialService",
+        "kind": "value"
+      },
+      {
+        "name": "createIdentityContext",
+        "kind": "value"
+      },
+      {
+        "name": "createJwt",
+        "kind": "value"
+      },
+      {
+        "name": "createKeystore",
+        "kind": "value"
+      },
+      {
+        "name": "CreateKeystoreOptions",
+        "kind": "type"
+      },
+      {
+        "name": "createMcpBearerAuth",
+        "kind": "value"
+      },
+      {
+        "name": "createMockSession",
+        "kind": "value"
+      },
+      {
+        "name": "createOidcSession",
+        "kind": "value"
+      },
+      {
+        "name": "createPresentation",
+        "kind": "value"
+      },
+      {
+        "name": "CreatePresentationOptions",
+        "kind": "type"
+      },
+      {
+        "name": "createQueryService",
+        "kind": "value"
+      },
+      {
+        "name": "createServerIdentityContext",
+        "kind": "value"
+      },
+      {
+        "name": "createSigner",
+        "kind": "value"
+      },
+      {
+        "name": "createStorageBackend",
+        "kind": "value"
+      },
+      {
+        "name": "createTrustAnchorStore",
+        "kind": "value"
+      },
+      {
+        "name": "CredentialDelegator",
+        "kind": "type"
+      },
+      {
+        "name": "CredentialExpiredError",
+        "kind": "type+value"
+      },
+      {
+        "name": "CredentialInvalidError",
+        "kind": "type+value"
+      },
+      {
+        "name": "CredentialIssuer",
+        "kind": "type"
+      },
+      {
+        "name": "CredentialMalformedError",
+        "kind": "type+value"
+      },
+      {
+        "name": "CredentialReplayedError",
+        "kind": "type+value"
+      },
+      {
+        "name": "CredentialRevokedError",
+        "kind": "type+value"
+      },
+      {
+        "name": "CredentialRevoker",
+        "kind": "type"
+      },
+      {
+        "name": "CredentialScope",
+        "kind": "type"
+      },
+      {
+        "name": "CredentialService",
+        "kind": "type"
+      },
+      {
+        "name": "DbConnectionFailedError",
+        "kind": "type+value"
+      },
+      {
+        "name": "DecodedCredential",
+        "kind": "type"
+      },
+      {
+        "name": "decodeJwt",
+        "kind": "value"
+      },
+      {
+        "name": "decrypt",
+        "kind": "value"
+      },
+      {
+        "name": "decryptRow",
+        "kind": "value"
+      },
+      {
+        "name": "DEFAULT_CHALLENGE_TTL_SECONDS",
+        "kind": "value"
+      },
+      {
+        "name": "defaultIdentityRateLimiter",
+        "kind": "value"
+      },
+      {
+        "name": "defaultLogger",
+        "kind": "value"
+      },
+      {
+        "name": "DelegateCredentialOptions",
+        "kind": "type"
+      },
+      {
+        "name": "deriveSessionMacKey",
+        "kind": "value"
+      },
+      {
+        "name": "Did",
+        "kind": "type"
+      },
+      {
+        "name": "DidDhtMethod",
+        "kind": "type"
+      },
+      {
+        "name": "DidDhtPublisher",
+        "kind": "type"
+      },
+      {
+        "name": "DidResolutionFailedError",
+        "kind": "type+value"
+      },
+      {
+        "name": "DiscoveryEndpointBlockedError",
+        "kind": "type+value"
+      },
+      {
+        "name": "encrypt",
+        "kind": "value"
+      },
+      {
+        "name": "EnvelopeIntegrityError",
+        "kind": "type+value"
+      },
+      {
+        "name": "EnvelopeTooLargeError",
+        "kind": "type+value"
+      },
+      {
+        "name": "extractUuid7Timestamp",
+        "kind": "value"
+      },
+      {
+        "name": "FixedWindowRateLimiter",
+        "kind": "type+value"
+      },
+      {
+        "name": "generateColumnKey",
+        "kind": "value"
+      },
+      {
+        "name": "generateDidKey",
+        "kind": "value"
+      },
+      {
+        "name": "generateUuid7",
+        "kind": "value"
+      },
+      {
+        "name": "GenericOidcProvider",
+        "kind": "type+value"
+      },
+      {
+        "name": "hashAuditRecord",
+        "kind": "value"
+      },
+      {
+        "name": "HKDF_CONTEXT_SESSION_MAC",
+        "kind": "value"
+      },
+      {
+        "name": "HKDF_SALT_SESSION_MAC",
+        "kind": "value"
+      },
+      {
+        "name": "IdentityBindingCredential",
+        "kind": "type"
+      },
+      {
+        "name": "IdentityContext",
+        "kind": "type"
+      },
+      {
+        "name": "IdSdkInstance",
+        "kind": "type"
+      },
+      {
+        "name": "initializeServerIdentity",
+        "kind": "value"
+      },
+      {
+        "name": "InMemoryRevocationStore",
+        "kind": "type+value"
+      },
+      {
+        "name": "InMemorySessionStore",
+        "kind": "type+value"
+      },
+      {
+        "name": "isExpired",
+        "kind": "value"
+      },
+      {
+        "name": "IssuanceContext",
+        "kind": "type"
+      },
+      {
+        "name": "IssuanceRule",
+        "kind": "type"
+      },
+      {
+        "name": "issueCredential",
+        "kind": "value"
+      },
+      {
+        "name": "issueCredentialFromParent",
+        "kind": "value"
+      },
+      {
+        "name": "IssueCredentialOptions",
+        "kind": "type"
+      },
+      {
+        "name": "issueDelegatedCredential",
+        "kind": "value"
+      },
+      {
+        "name": "IssuerUrl",
+        "kind": "type"
+      },
+      {
+        "name": "JsonFileBackend",
+        "kind": "type+value"
+      },
+      {
+        "name": "Jti",
+        "kind": "type"
+      },
+      {
+        "name": "KeyRotationFailedError",
+        "kind": "type+value"
+      },
+      {
+        "name": "KeyRotationPhase",
+        "kind": "type"
+      },
+      {
+        "name": "KeystoreBackend",
+        "kind": "type"
+      },
+      {
+        "name": "LocalTrustAnchorStore",
+        "kind": "type+value"
+      },
+      {
+        "name": "Logger",
+        "kind": "type"
+      },
+      {
+        "name": "MAC_BYTES",
+        "kind": "value"
+      },
+      {
+        "name": "MacOsKeychainBackend",
+        "kind": "type+value"
+      },
+      {
+        "name": "MasterKey",
+        "kind": "type"
+      },
+      {
+        "name": "MasterKeyMismatchError",
+        "kind": "type+value"
+      },
+      {
+        "name": "MasterKeyMissingError",
+        "kind": "type+value"
+      },
+      {
+        "name": "MAX_CAPABILITY_SET_SIZE",
+        "kind": "value"
+      },
+      {
+        "name": "MAX_CHALLENGE_TTL_SECONDS",
+        "kind": "value"
+      },
+      {
+        "name": "MAX_DEDUP_CACHE_SIZE",
+        "kind": "value"
+      },
+      {
+        "name": "MAX_ENVELOPE_BYTES",
+        "kind": "value"
+      },
+      {
+        "name": "McpBearerAuth",
+        "kind": "type"
+      },
+      {
+        "name": "McpBearerAuthOptions",
+        "kind": "type"
+      },
+      {
+        "name": "mcpToolInputShapes",
+        "kind": "value"
+      },
+      {
+        "name": "NormalizedDomainError",
+        "kind": "type"
+      },
+      {
+        "name": "normalizeDomainError",
+        "kind": "value"
+      },
+      {
+        "name": "OrgBoundary",
+        "kind": "type+value"
+      },
+      {
+        "name": "OrgBoundaryResult",
+        "kind": "type"
+      },
+      {
+        "name": "OVERLAP_WINDOW_SECONDS",
+        "kind": "value"
+      },
+      {
+        "name": "ParentCredentialRequestFailedError",
+        "kind": "type+value"
+      },
+      {
+        "name": "ParentScopeExceededError",
+        "kind": "type+value"
+      },
+      {
+        "name": "parseBindingCredential",
+        "kind": "value"
+      },
+      {
+        "name": "PolicyViolationError",
+        "kind": "type+value"
+      },
+      {
+        "name": "PostgresStorageOptions",
+        "kind": "type"
+      },
+      {
+        "name": "PrecisionLossError",
+        "kind": "type+value"
+      },
+      {
+        "name": "ProviderNotAllowedError",
+        "kind": "type+value"
+      },
+      {
+        "name": "QueryExecutor",
+        "kind": "type"
+      },
+      {
+        "name": "QueryRejectedError",
+        "kind": "type+value"
+      },
+      {
+        "name": "QueryService",
+        "kind": "type"
+      },
+      {
+        "name": "rateLimitBucketKey",
+        "kind": "value"
+      },
+      {
+        "name": "RateLimitCheck",
+        "kind": "type"
+      },
+      {
+        "name": "RateLimitDecision",
+        "kind": "type"
+      },
+      {
+        "name": "RateLimiter",
+        "kind": "type"
+      },
+      {
+        "name": "RateLimitExceededError",
+        "kind": "type+value"
+      },
+      {
+        "name": "REDACTED_MASTER_KEY",
+        "kind": "value"
+      },
+      {
+        "name": "REDACTED_SIGNER",
+        "kind": "value"
+      },
+      {
+        "name": "refreshBindingCredential",
+        "kind": "value"
+      },
+      {
+        "name": "RegisteredAgent",
+        "kind": "type"
+      },
+      {
+        "name": "RequestedScope",
+        "kind": "type"
+      },
+      {
+        "name": "RequestSchema",
+        "kind": "type"
+      },
+      {
+        "name": "RequestValidationError",
+        "kind": "type+value"
+      },
+      {
+        "name": "resolveScopeCeiling",
+        "kind": "value"
+      },
+      {
+        "name": "resolveScopeCeilingFromClaims",
+        "kind": "value"
+      },
+      {
+        "name": "restValidationSchemas",
+        "kind": "value"
+      },
+      {
+        "name": "RevocationStore",
+        "kind": "type"
+      },
+      {
+        "name": "RoleScopeConfig",
+        "kind": "type"
+      },
+      {
+        "name": "rotateServerIdentity",
+        "kind": "value"
+      },
+      {
+        "name": "SafeValidationIssue",
+        "kind": "type"
+      },
+      {
+        "name": "ScopeCeiling",
+        "kind": "type"
+      },
+      {
+        "name": "ScopedQueryInput",
+        "kind": "type"
+      },
+      {
+        "name": "ScopedQueryResult",
+        "kind": "type"
+      },
+      {
+        "name": "ScopeExceedsCeilingError",
+        "kind": "type+value"
+      },
+      {
+        "name": "scopeFitsInCeiling",
+        "kind": "value"
+      },
+      {
+        "name": "ScopeMode",
+        "kind": "type"
+      },
+      {
+        "name": "ScopeViolationError",
+        "kind": "type+value"
+      },
+      {
+        "name": "ServerIdentity",
+        "kind": "type"
+      },
+      {
+        "name": "SessionEnvelope",
+        "kind": "type"
+      },
+      {
+        "name": "SessionNotPortableError",
+        "kind": "type+value"
+      },
+      {
+        "name": "SessionPutOptions",
+        "kind": "type"
+      },
+      {
+        "name": "SessionStore",
+        "kind": "type"
+      },
+      {
+        "name": "shouldRefresh",
+        "kind": "value"
+      },
+      {
+        "name": "SIGN_PAYLOAD_MAX_BYTES",
+        "kind": "value"
+      },
+      {
+        "name": "SIGN_RATE_LIMIT",
+        "kind": "value"
+      },
+      {
+        "name": "SIGN_RATE_WINDOW_MS",
+        "kind": "value"
+      },
+      {
+        "name": "SqliteStorageOptions",
+        "kind": "type"
+      },
+      {
+        "name": "StorageBackend",
+        "kind": "type"
+      },
+      {
+        "name": "StorageBackendOptions",
+        "kind": "type"
+      },
+      {
+        "name": "TableName",
+        "kind": "type"
+      },
+      {
+        "name": "timeOfDayRule",
+        "kind": "value"
+      },
+      {
+        "name": "toExternalSigner",
+        "kind": "value"
+      },
+      {
+        "name": "toHttpErrorBody",
+        "kind": "value"
+      },
+      {
+        "name": "toMcpErrorBody",
+        "kind": "value"
+      },
+      {
+        "name": "TrustAnchor",
+        "kind": "type"
+      },
+      {
+        "name": "TrustAnchorSource",
+        "kind": "type"
+      },
+      {
+        "name": "TrustAnchorStore",
+        "kind": "type"
+      },
+      {
+        "name": "TrustedMigrationCredential",
+        "kind": "type"
+      },
+      {
+        "name": "UnknownIssuerError",
+        "kind": "type+value"
+      },
+      {
+        "name": "unrestrictedCeiling",
+        "kind": "value"
+      },
+      {
+        "name": "UntrustedIssuerError",
+        "kind": "type+value"
+      },
+      {
+        "name": "unwrapColumnKey",
+        "kind": "value"
+      },
+      {
+        "name": "validateRequest",
+        "kind": "value"
+      },
+      {
+        "name": "VcVerifier",
+        "kind": "type+value"
+      },
+      {
+        "name": "VerificationResult",
+        "kind": "type"
+      },
+      {
+        "name": "VerifiedParentCredential",
+        "kind": "type"
+      },
+      {
+        "name": "verifyIdTokenSignature",
+        "kind": "value"
+      },
+      {
+        "name": "verifyJwtSignature",
+        "kind": "value"
+      },
+      {
+        "name": "verifyMac",
+        "kind": "value"
+      },
+      {
+        "name": "VP_TYPE",
+        "kind": "value"
+      },
+      {
+        "name": "withRedactedSerialization",
+        "kind": "value"
+      },
+      {
+        "name": "wrapColumnKey",
+        "kind": "value"
+      },
+      {
+        "name": "WrongOrgError",
+        "kind": "type+value"
+      }
+    ],
+    "./sql": [
+      {
+        "name": "AgentScope",
+        "kind": "type+value"
+      },
+      {
+        "name": "AgentScopeConfig",
+        "kind": "type"
+      },
+      {
+        "name": "AgentScopeError",
+        "kind": "type+value"
+      },
+      {
+        "name": "AgentScopeInjections",
+        "kind": "type"
+      },
+      {
+        "name": "AgentScopeInstance",
+        "kind": "type"
+      },
+      {
+        "name": "AuditWriteFailedError",
+        "kind": "type+value"
+      },
+      {
+        "name": "AuthUnavailableError",
+        "kind": "type+value"
+      },
+      {
+        "name": "CapabilityRequiresPaidTierError",
+        "kind": "type+value"
+      },
+      {
+        "name": "CredentialExpiredError",
+        "kind": "type+value"
+      },
+      {
+        "name": "CredentialInvalidError",
+        "kind": "type+value"
+      },
+      {
+        "name": "CredentialMalformedError",
+        "kind": "type+value"
+      },
+      {
+        "name": "CredentialReplayedError",
+        "kind": "type+value"
+      },
+      {
+        "name": "CredentialRevokedError",
+        "kind": "type+value"
+      },
+      {
+        "name": "DbConnectionFailedError",
+        "kind": "type+value"
+      },
+      {
+        "name": "DidResolutionFailedError",
+        "kind": "type+value"
+      },
+      {
+        "name": "encryptColumnInPlace",
+        "kind": "value"
+      },
+      {
+        "name": "KeyRotationFailedError",
+        "kind": "type+value"
+      },
+      {
+        "name": "KeyRotationPhase",
+        "kind": "type"
+      },
+      {
+        "name": "loadColumnKeys",
+        "kind": "value"
+      },
+      {
+        "name": "LoadColumnKeysResult",
+        "kind": "type"
+      },
+      {
+        "name": "MasterKeyMismatchError",
+        "kind": "type+value"
+      },
+      {
+        "name": "MasterKeyMissingError",
+        "kind": "type+value"
+      },
+      {
+        "name": "ParentCredentialRequestFailedError",
+        "kind": "type+value"
+      },
+      {
+        "name": "QueryOptions",
+        "kind": "type"
+      },
+      {
+        "name": "QueryRejectedError",
+        "kind": "type+value"
+      },
+      {
+        "name": "registerColumn",
+        "kind": "value"
+      },
+      {
+        "name": "rewrapColumnKey",
+        "kind": "value"
+      },
+      {
+        "name": "rotateColumnKey",
+        "kind": "value"
+      },
+      {
+        "name": "ScopedResult",
+        "kind": "type"
+      },
+      {
+        "name": "ScopeEngine",
+        "kind": "type+value"
+      },
+      {
+        "name": "ScopeMode",
+        "kind": "type"
+      },
+      {
+        "name": "ScopeViolationError",
+        "kind": "type+value"
+      },
+      {
+        "name": "UnknownIssuerError",
+        "kind": "type+value"
+      },
+      {
+        "name": "verifyAllColumnKeys",
+        "kind": "value"
+      }
+    ],
+    "./mcp": [
+      {
+        "name": "createMcpServer",
+        "kind": "value"
+      },
+      {
+        "name": "McpCliOptions",
+        "kind": "type"
+      },
+      {
+        "name": "McpServerOptions",
+        "kind": "type"
+      },
+      {
+        "name": "startMcpServer",
+        "kind": "value"
+      }
+    ],
+    "./storage": [
+      {
+        "name": "AgentListFilter",
+        "kind": "type"
+      },
+      {
+        "name": "AgentRecord",
+        "kind": "type"
+      },
+      {
+        "name": "AgentStore",
+        "kind": "type"
+      },
+      {
+        "name": "AuditQueryFilter",
+        "kind": "type"
+      },
+      {
+        "name": "AuditStore",
+        "kind": "type"
+      },
+      {
+        "name": "canonicalizeEnvelope",
+        "kind": "value"
+      },
+      {
+        "name": "composeStorageBackend",
+        "kind": "value"
+      },
+      {
+        "name": "computeMac",
+        "kind": "value"
+      },
+      {
+        "name": "ContextEntry",
+        "kind": "type"
+      },
+      {
+        "name": "ContextListOptions",
+        "kind": "type"
+      },
+      {
+        "name": "ContextStore",
+        "kind": "type"
+      },
+      {
+        "name": "createIdentityContext",
+        "kind": "value"
+      },
+      {
+        "name": "createServerIdentityContext",
+        "kind": "value"
+      },
+      {
+        "name": "createStorageBackend",
+        "kind": "value"
+      },
+      {
+        "name": "deriveSessionMacKey",
+        "kind": "value"
+      },
+      {
+        "name": "EnvelopeIntegrityError",
+        "kind": "type+value"
+      },
+      {
+        "name": "EnvelopeTooLargeError",
+        "kind": "type+value"
+      },
+      {
+        "name": "HKDF_CONTEXT_SESSION_MAC",
+        "kind": "value"
+      },
+      {
+        "name": "HKDF_SALT_SESSION_MAC",
+        "kind": "value"
+      },
+      {
+        "name": "IdentityContext",
+        "kind": "type"
+      },
+      {
+        "name": "InMemoryRevocationStore",
+        "kind": "type+value"
+      },
+      {
+        "name": "InMemorySessionStore",
+        "kind": "type+value"
+      },
+      {
+        "name": "MAC_BYTES",
+        "kind": "value"
+      },
+      {
+        "name": "MAX_ENVELOPE_BYTES",
+        "kind": "value"
+      },
+      {
+        "name": "PostgresStorageOptions",
+        "kind": "type"
+      },
+      {
+        "name": "ProviderNotAllowedError",
+        "kind": "type+value"
+      },
+      {
+        "name": "RevocationStore",
+        "kind": "type"
+      },
+      {
+        "name": "SessionEnvelope",
+        "kind": "type"
+      },
+      {
+        "name": "SessionNotPortableError",
+        "kind": "type+value"
+      },
+      {
+        "name": "SessionPutOptions",
+        "kind": "type"
+      },
+      {
+        "name": "SessionStore",
+        "kind": "type"
+      },
+      {
+        "name": "SqliteStorageOptions",
+        "kind": "type"
+      },
+      {
+        "name": "StorageBackend",
+        "kind": "type"
+      },
+      {
+        "name": "StorageBackendOptions",
+        "kind": "type"
+      },
+      {
+        "name": "verifyMac",
+        "kind": "value"
+      }
+    ],
+    "./sqlite": [
+      {
+        "name": "SqliteStorageBackend",
+        "kind": "type+value"
+      },
+      {
+        "name": "SqliteStorageBackendOptions",
+        "kind": "type"
+      }
+    ],
+    "./bootstrap": [
+      {
+        "name": "parseMasterKeyHex",
+        "kind": "value"
+      },
+      {
+        "name": "resolveMasterKeyFromEnv",
+        "kind": "value"
+      },
+      {
+        "name": "resolveTrustedServersFromEnv",
+        "kind": "value"
+      }
+    ]
+  }
+}

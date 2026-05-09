@@ -59,10 +59,19 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Set up test database
         run: node scripts/setup-test-db.mjs
-      - name: Build
-        run: npm run build
-      - name: Test
-        run: npm test
+      - name: Release verification gate
+        run: npm run release:gate
+      # Guard against accidental `git add -f dist/` regressions.
+      # `dist/` is gitignored and built fresh in CI; tracking it would let a
+      # stale local build silently override the source-of-truth signature on
+      # the public API surface.
+      - name: Verify dist/ not committed
+        run: |
+          if [ -n "$(git ls-files dist/)" ]; then
+            echo "ERROR: dist/ contains git-tracked files. dist/ must be built in CI, not committed."
+            git ls-files dist/ | head -20
+            exit 1
+          fi
 
   bun-test:
     runs-on: ubuntu-latest

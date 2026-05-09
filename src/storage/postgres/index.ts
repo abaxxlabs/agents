@@ -44,13 +44,12 @@ import { defaultLogger } from '../../logger.js';
 const { Pool } = pg;
 
 /**
- * Postgres-specific sub-store options. `sessionMacKey` must be supplied for
- * cross-process MAC verification; defaults to a 32-byte zero buffer (tests only).
- * Derive via `deriveSessionMacKey()` for production.
+ * Postgres-specific sub-store options. `sessionMacKey` is required for
+ * cross-process MAC verification. Derive via `deriveSessionMacKey()`.
  */
 export interface PostgresStorageBackendExtraOptions {
   revocationOptions?: PostgresRevocationStoreOptions;
-  sessionMacKey?: Buffer;
+  sessionMacKey: Buffer;
   sessionStoreOptions?: PostgresSessionStoreOptions;
   /** Optional diagnostic logger. */
   logger?: Logger;
@@ -70,13 +69,19 @@ export class PostgresStorageBackend implements StorageBackend {
   private _closed = false;
 
   constructor(options: PostgresStorageOptions, extraOptions?: PostgresStorageBackendExtraOptions) {
-    this._logger = extraOptions?.logger ?? defaultLogger;
+    if (!extraOptions?.sessionMacKey) {
+      throw new TypeError(
+        'PostgresStorageBackend requires a sessionMacKey. ' +
+          'Derive one via deriveSessionMacKey(masterKey) from @abaxxlabs/agents.',
+      );
+    }
+    this._logger = extraOptions.logger ?? defaultLogger;
     this._pool = new Pool({
       connectionString: options.connectionString,
       max: options.poolSize ?? 10,
     });
 
-    const macKey = extraOptions?.sessionMacKey ?? Buffer.alloc(32, 0);
+    const macKey = extraOptions.sessionMacKey;
 
     this._agents = new PostgresAgentStore(this._pool);
     this._audit = new PostgresAuditStore(this._pool);
@@ -106,9 +111,15 @@ export class PostgresStorageBackend implements StorageBackend {
     ownsPool = false,
     extraOptions?: PostgresStorageBackendExtraOptions,
   ): PostgresStorageBackend {
+    if (!extraOptions?.sessionMacKey) {
+      throw new TypeError(
+        'PostgresStorageBackend.fromPool() requires a sessionMacKey. ' +
+          'Derive one via deriveSessionMacKey(masterKey) from @abaxxlabs/agents.',
+      );
+    }
     const backend = Object.create(PostgresStorageBackend.prototype) as PostgresStorageBackend;
-    const macKey = extraOptions?.sessionMacKey ?? Buffer.alloc(32, 0);
-    const logger = extraOptions?.logger ?? defaultLogger;
+    const macKey = extraOptions.sessionMacKey;
+    const logger = extraOptions.logger ?? defaultLogger;
     // Bypass readonly to populate the prototype-created instance from an externally-owned pool.
     const mut = backend as unknown as {
       _pool: pg.Pool;

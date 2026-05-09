@@ -31,6 +31,7 @@ import http from 'node:http';
 import { resolveMasterKeyFromEnv } from '../bootstrap/index.js';
 import type { Logger } from '../logger.js';
 import { defaultLogger } from '../logger.js';
+import type { StorageBackend } from '../storage/types.js';
 import { createMcpServer, connectStdio } from './server.js';
 import { createMcpBearerAuth, type McpBearerAuth } from './auth.js';
 import { createMcpHttpHandler } from './http-handler.js';
@@ -70,6 +71,8 @@ export interface McpCliOptions {
   bearerAuth?: { getValidTokens: () => string[] };
   /** Optional diagnostic logger. Defaults to stderr. */
   logger?: Logger;
+  /** Pre-built `StorageBackend`. When provided, the production refusal gate and coherency warning are skipped. */
+  storage?: StorageBackend;
 }
 
 type AgentScopeConstructor = (typeof import('../sql/index.js'))['AgentScope'];
@@ -129,6 +132,7 @@ export async function startMcpServer(options: McpCliOptions): Promise<void> {
     tlsKey,
     insecure,
     singleInstance,
+    storage,
   } = options;
 
   // Use stderr for all logging — stdout is reserved for MCP JSON-RPC in stdio mode
@@ -138,7 +142,7 @@ export async function startMcpServer(options: McpCliOptions): Promise<void> {
   // Default-storage MCP refuses to start in production unless the operator acknowledges
   // single-instance deployment. The default PostgresStorageBackend has revocation coherency
   // poll OFF, so a revoked credential remains valid on N-1 of N peers until restart.
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env.NODE_ENV === 'production' && !storage) {
     if (!singleInstance) {
       mcpLogger.error(
         '[agents] Refusing to start: NODE_ENV=production with default storage. ' +
@@ -165,12 +169,10 @@ export async function startMcpServer(options: McpCliOptions): Promise<void> {
   // below (avoids redundant getValidTokens() on every start).
   let bearerResolution: McpHttpBearerResolution | undefined;
 
-  // Validate transport security
   if (transport === 'http') {
     const env = (process.env.NODE_ENV ?? '').toLowerCase();
 
     if (insecure) {
-      // --insecure requires NODE_ENV=development or NODE_ENV=test
       if (env !== 'development' && env !== 'test') {
         mcpLogger.error('[agents] --insecure requires NODE_ENV=development or NODE_ENV=test');
         process.exit(1);
@@ -210,10 +212,9 @@ export async function startMcpServer(options: McpCliOptions): Promise<void> {
         orgBoundary: { extraConsumerDomains },
       }),
     },
-    { masterKey, logger: mcpLogger },
+    { masterKey, logger: mcpLogger, ...(storage && { storage }) },
   );
 
-  // Authenticate session
   log('Authenticating session...');
   const session = mock
     ? await scope.authenticate({ mockHumanDid: mock })
@@ -221,23 +222,19 @@ export async function startMcpServer(options: McpCliOptions): Promise<void> {
 
   log(`Session authenticated as ${session.humanDid}`);
 
-  // Create MCP server
   const mcpServer = createMcpServer({
     scope,
     session,
     auditLogger: scope.auditLoggerInstance,
-
     logger: mcpLogger,
     credentialMaxTtlMs: scope.credentialMaxTtlMs,
   });
 
-  // Connect transport
   if (transport === 'stdio') {
     log('MCP server starting on stdio...');
     await connectStdio(mcpServer);
     log('MCP server running on stdio');
   } else {
-    // HTTP/HTTPS transport
     // bearerResolution was computed and validated by the boot gate above.
     const bearerGuard: McpBearerAuth | null =
       bearerResolution?.ok && options.bearerAuth
@@ -270,7 +267,6 @@ export async function startMcpServer(options: McpCliOptions): Promise<void> {
       log(`MCP server running at ${proto}://${bindHost}:${port}`);
     });
 
-    // Graceful shutdown
     let shuttingDown = false;
     const shutdown = async () => {
       if (shuttingDown) return;

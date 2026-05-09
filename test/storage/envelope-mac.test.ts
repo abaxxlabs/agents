@@ -73,12 +73,11 @@ describe('envelope-mac — HKDF key derivation', () => {
     expect(k1.equals(k2)).toBe(false);
   });
 
-  it('HKDF context string regression (RY-7): Session 6 inherits this pattern', () => {
+  it('HKDF context string regression (RY-7): derived keys must use distinct context strings', () => {
     expect(HKDF_CONTEXT_SESSION_MAC).toBe('agents:SessionStore:mac:v1');
     expect(HKDF_SALT_SESSION_MAC.length).toBe(0);
 
-    // Simulate what Session 6 should NOT do: derive a different key for a
-    // different purpose and verify it does not collide with the session-MAC key.
+    // Derive a key for a different purpose and verify it does not collide with the session-MAC key.
     const master = padMaster('test-master');
     const sessionKey = deriveSessionMacKey(master);
     const byokKey = Buffer.from(

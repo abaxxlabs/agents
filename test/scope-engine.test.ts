@@ -240,12 +240,12 @@ describe('Scope Enforcement Engine', () => {
         expiresIn: '1s',
       });
 
-      // Wait for expiry (1s credential + margin)
-      await new Promise((r) => setTimeout(r, 1100));
+      // Wait for expiry (1s credential + 1s clockSkew + margin)
+      await new Promise((r) => setTimeout(r, 2200));
 
       // Use a strict verifier
       const strictVerifier = new VcVerifier({
-        clockSkew: '0s',
+        clockSkew: '1s',
         revocationStore: new InMemoryRevocationStore(),
       });
       const strictServer = generateDidKey();

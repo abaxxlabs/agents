@@ -1,0 +1,62 @@
+# Copyright 2026 Abaxx Technologies
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: JSDoc Type Check
+
+# D35 drift prevention — extracts every @example block from src/**/*.ts and
+# type-checks it against the live source types. If a JSDoc example references
+# a field, type, or import that doesn't exist in the public API, this job fails.
+#
+# Background: Session 3 shipped a JSDoc at src/vc-verifier.ts:207 promising
+# AgentScope.create({ storage: { revocation: myRevocationStore } }). The
+# `storage:` field was never added to AgentScopeConfig. Tests passed; users
+# following the JSDoc got a runtime error. This check catches that class of
+# drift at PR time, not after ship.
+#
+# See: scripts/extract-jsdoc-examples.ts for extraction and filtering logic.
+# See: memory/project_session3_revocation_wiring_drift.md for the incident record.
+
+on:
+  push:
+    branches:
+      - main
+      - 'breaking/**'
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  jsdoc-typecheck:
+    name: JSDoc @example type check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          # Match the Node versions used by ci.yml — 20 is the baseline; we run
+          # on 20 here since JSDoc type-checking is not Node-version-sensitive.
+          node-version: '20'
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Extract and type-check JSDoc @example blocks
+        run: npx tsx scripts/extract-jsdoc-examples.ts

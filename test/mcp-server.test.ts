@@ -809,6 +809,51 @@ describe('MCP Server', () => {
       if (originalKey !== undefined) process.env.AGENTS_MASTER_KEY = originalKey;
     });
 
+    it('skips the gate and the coherency warning when explicit storage is injected', async () => {
+      const originalEnv = process.env.NODE_ENV;
+      const originalKey = process.env.AGENTS_MASTER_KEY;
+      process.env.NODE_ENV = 'production';
+      delete process.env.AGENTS_MASTER_KEY;
+
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+        throw new Error('process.exit called');
+      }) as never);
+
+      const injectedStorage = {} as unknown as Parameters<typeof startMcpServer>[0]['storage'];
+
+      try {
+        await startMcpServer({
+          db: 'postgresql://localhost/test',
+          storage: injectedStorage,
+        });
+      } catch {
+        // expected: boot fails downstream once we're past the gate
+      }
+
+      const refusalCall = errorSpy.mock.calls.find((c) =>
+        String(c[0]).includes('Refusing to start: NODE_ENV=production'),
+      );
+      expect(refusalCall).toBeUndefined();
+
+      const warningCall = errorSpy.mock.calls.find((c) =>
+        c.some((arg) =>
+          String(arg).includes('MCP server booting in NODE_ENV=production without an explicit storage injection'),
+        ),
+      );
+      expect(warningCall).toBeUndefined();
+
+      const ackCall = errorSpy.mock.calls.find((c) =>
+        c.some((arg) => String(arg).includes('Single-instance mode acknowledged')),
+      );
+      expect(ackCall).toBeUndefined();
+
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+      process.env.NODE_ENV = originalEnv;
+      if (originalKey !== undefined) process.env.AGENTS_MASTER_KEY = originalKey;
+    });
+
     it('does not fire the gate when NODE_ENV is not production', async () => {
       const originalEnv = process.env.NODE_ENV;
       const originalKey = process.env.AGENTS_MASTER_KEY;

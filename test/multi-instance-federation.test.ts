@@ -33,6 +33,7 @@ import { InMemoryRevocationStore } from '../src/storage/memory/revocation-store.
 import { InMemorySessionStore } from '../src/storage/memory/session-store.js';
 import { composeStorageBackend } from '../src/storage/compose.js';
 import { deriveSessionMacKey } from '../src/storage/envelope-mac.js';
+import { deterministicSessionMacKey } from './support/deterministic-session-mac-key.js';
 import { createPresentation } from '../src/index.js';
 
 const { Pool } = pg;
@@ -68,7 +69,7 @@ describeFn('Multi-instance AgentScope federation (live Postgres required)', () =
     await pool.query('DELETE FROM agent_keys').catch(() => undefined);
     await pool.query('DELETE FROM agents').catch(() => undefined);
 
-    const base = PostgresStorageBackend.fromPool(pool, false);
+    const base = PostgresStorageBackend.fromPool(pool, false, { sessionMacKey: deterministicSessionMacKey() });
 
     const masterKeyA = asMasterKey(Buffer.alloc(32, 0xaa));
     const masterKeyB = asMasterKey(Buffer.alloc(32, 0xbb));

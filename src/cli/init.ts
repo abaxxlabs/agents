@@ -41,6 +41,8 @@ const SCHEMA_SQL = `
     did TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     owner_did TEXT NOT NULL,
+    encrypted_private_key BYTEA,
+    public_key BYTEA,
     created_at TIMESTAMPTZ DEFAULT NOW()
   );
 

@@ -425,7 +425,7 @@ export function categorize(hits: Hit[]): Categorization {
       caseId: 'trap',
       headline: 'Trap detected — both env-read AND encryption.masterKey config sites present.',
       guidance: [
-        'Pre-v0.9.10.0 the env var silently won and the config field was dead code.',
+        'Previously the env var silently won and the config field was dead code.',
         'Run the environment audit in docs/migration-byok.md § "Environment audit',
         '(do this first)" before applying any of the four worked examples.',
         'Once you have identified the canonical key value, you will be in case #1',
@@ -556,9 +556,9 @@ function printReport(hits: Hit[], report: Categorization, root: string): void {
 
   if (consumerDomainsHits > 0) {
     console.log('Advisory — AGENTS_CONSUMER_DOMAINS migration:');
-    console.log('  v0.10.0 removes the env-reads from BOTH library sites (org-boundary.ts');
-    console.log('  AND auth/generic.ts) — pre-v0.10.0 the dual-read surface let the two');
-    console.log('  engines drift. Promoted to a single config field. Bridge env at the');
+    console.log('  The library no longer reads AGENTS_CONSUMER_DOMAINS from env at both');
+    console.log('  library sites (org-boundary.ts and auth/generic.ts) — the dual-read');
+    console.log('  surface let the two engines drift. Promoted to a single config field. Bridge env at the');
     console.log('  consumer boundary and pass the SAME list to both engines:');
     console.log('    const extra = (process.env.AGENTS_CONSUMER_DOMAINS ?? "").split(",")');
     console.log('      .map(s => s.trim()).filter(Boolean);');

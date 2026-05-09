@@ -29,12 +29,24 @@ export function resolveDidKeyFallback(did: Did): Uint8Array {
   }
 
   const multibaseEncoded = did.slice('did:key:'.length);
-  const decoded = base58Decode(multibaseEncoded.slice(1));
+  let decoded: Uint8Array;
+  try {
+    decoded = base58Decode(multibaseEncoded.slice(1));
+  } catch {
+    throw new DidResolutionFailedError(did, 'Invalid base58 encoding in DID key');
+  }
 
   if (decoded[0] !== 0xed || decoded[1] !== 0x01) {
     throw new DidResolutionFailedError(
       did,
       `Unsupported key type. Expected Ed25519 (0xed01), got 0x${decoded[0]?.toString(16)}${decoded[1]?.toString(16)}`,
+    );
+  }
+
+  if (decoded.length !== 34) {
+    throw new DidResolutionFailedError(
+      did,
+      `Expected 34 bytes (2-byte prefix + 32-byte Ed25519 key), got ${decoded.length}`,
     );
   }
 

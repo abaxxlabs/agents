@@ -93,6 +93,9 @@ export interface AgentScopeConfig {
     maxTtl?: string; // default: '24h'
     clockSkew?: string; // default: '30s'
   };
+  delegation?: {
+    maxDepth?: number; // default: 2 (human→agent→worker)
+  };
   did?: {
     resolverCacheTtl?: string; // default: '5m'
   };

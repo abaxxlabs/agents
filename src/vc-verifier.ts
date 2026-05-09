@@ -116,7 +116,19 @@ export class VcVerifier {
 
   constructor(options: VcVerifierOptions) {
     this.cache = new DidCache(options.resolverCacheTtl ?? '5m');
+    const MAX_CLOCK_SKEW_MS = 5 * 60 * 1_000;
     this.clockSkewMs = parseDuration(options.clockSkew ?? '30s');
+    if (this.clockSkewMs <= 0) {
+      throw new Error(
+        'clockSkew must be greater than zero — zero tolerance causes false rejections under any clock drift',
+      );
+    }
+    if (this.clockSkewMs > MAX_CLOCK_SKEW_MS) {
+      throw new Error(
+        'clockSkew exceeds maximum of 5 minutes — ' +
+          'values beyond NTP-realistic drift extend credential lifetime, not clock tolerance',
+      );
+    }
     this.knownKeys = options.knownKeys ?? new Map();
     this.sdk = options.sdk;
     this.replayProtection = options.replayProtection ?? true;
@@ -608,6 +620,9 @@ export class VcVerifier {
         return { valid: false, status: 'REVOKED', error: 'Credential has been revoked' };
       }
     }
+    
+    const chainResult = await this.checkDelegationChainRevocation(payload.delegationChain);
+    if (chainResult) return chainResult;
 
     // 6. Check revocation status (if SDK available and credential has status)
     if (this.sdk && payload.vc?.credentialStatus) {
@@ -664,6 +679,13 @@ export class VcVerifier {
     const delegationChain: string[] | undefined = Array.isArray(payload.delegationChain)
       ? payload.delegationChain
       : undefined;
+    if (delegationChain !== undefined && delegationChain.length === 0) {
+      return {
+        valid: false,
+        status: 'MALFORMED',
+        error: 'Credential has empty delegationChain — a delegated credential must have at least one ancestor.',
+      };
+    }
 
     // Extract migration credential claims when the VC type is
     // IdentityMigrationCredential. These are passed to the scope engine
@@ -743,6 +765,73 @@ export class VcVerifier {
 
   clearReplayCache(): void {
     this.seenJtis.clear();
+  }
+
+  /** Reject when any ancestor JTI in delegationChain is revoked. Depth-capped against hostile input. */
+  private async checkDelegationChainRevocation(
+    rootChain: unknown,
+  ): Promise<VerificationResult | undefined> {
+    if (!Array.isArray(rootChain) || rootChain.length === 0) return undefined;
+
+    const MAX_CHAIN_DEPTH = 10;
+    let depth = 0;
+    let cursor: string[] = rootChain.filter((j): j is string => typeof j === 'string');
+
+    while (cursor.length > 0) {
+      if (++depth > MAX_CHAIN_DEPTH) {
+        return {
+          valid: false,
+          status: 'MALFORMED',
+          error: `Delegation chain exceeds maximum depth of ${MAX_CHAIN_DEPTH}`,
+        };
+      }
+      const next: string[] = [];
+      for (const ancestorJwt of cursor) {
+        let ancestorPayload: ReturnType<typeof decodeJwt>['payload'];
+        try {
+          ancestorPayload = decodeJwt(ancestorJwt).payload;
+        } catch {
+          return {
+            valid: false,
+            status: 'MALFORMED',
+            error: 'Delegation chain contains malformed JWT',
+          };
+        }
+        if (ancestorPayload.jti) {
+          let ancestorRevoked: boolean;
+          try {
+            ancestorRevoked = await this.revocationStore.isRevoked(ancestorPayload.jti);
+          } catch (err) {
+            this.emitRevocationTelemetry({
+              source: 'local_store',
+              credentialId: ancestorPayload.jti,
+              outcome: 'failed',
+              error: err,
+            });
+            throw err;
+          }
+          this.emitRevocationTelemetry({
+            source: 'local_store',
+            credentialId: ancestorPayload.jti,
+            outcome: ancestorRevoked ? 'revoked' : 'not_revoked',
+          });
+          if (ancestorRevoked) {
+            return {
+              valid: false,
+              status: 'REVOKED',
+              error: `Delegation chain credential ${ancestorPayload.jti} has been revoked`,
+            };
+          }
+        }
+        if (Array.isArray(ancestorPayload.delegationChain)) {
+          for (const inner of ancestorPayload.delegationChain) {
+            if (typeof inner === 'string') next.push(inner);
+          }
+        }
+      }
+      cursor = next;
+    }
+    return undefined;
   }
 
   private evictExpiredJtis(force = false): void {

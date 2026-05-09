@@ -65,7 +65,7 @@ export class VcApi {
     verifyJWT(jwt) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
-                VerifiableCredential.verify(jwt);
+                yield VerifiableCredential.verify(jwt);
                 return true;
             }
             catch (e) {

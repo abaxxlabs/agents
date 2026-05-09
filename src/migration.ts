@@ -32,7 +32,7 @@ import type {
 import { DidAliasRegistry, type DidAlias } from './did-alias.js';
 import { AuditLogger, hashCredential } from './audit-logger.js';
 import type { Logger } from './logger.js';
-import { defaultLogger } from './logger.js';
+import { getLogger } from './logger.js';
 import {
   MigrationTrustAnchor,
   UntrustedMigrationIssuerError,
@@ -114,7 +114,7 @@ export class MigrationExecutor {
     this.#auditLogger = options.auditLogger;
     this.#gracePeriodDays = options.gracePeriodDays ?? DEFAULT_GRACE_PERIOD_DAYS;
     this.#migrationTrustAnchor = options.migrationTrustAnchor ?? new MigrationTrustAnchor();
-    this.#logger = options.logger ?? defaultLogger;
+    this.#logger = getLogger(options.logger);
   }
 
   /**

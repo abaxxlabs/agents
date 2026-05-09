@@ -20,7 +20,7 @@
 
 import { z, type ZodIssue } from 'zod';
 import { RequestValidationError, type SafeValidationIssue } from './errors.js';
-import { parseDuration } from '../config.js';
+import { expiresInToMs, parseDuration } from '../config.js';
 
 export type RequestSchema<T> = z.ZodType<T>;
 
@@ -227,10 +227,7 @@ export function assertExpiresInBound(
   expiresIn: string | number,
   maxTtlMs: number,
 ): void {
-  const requestedMs =
-    typeof expiresIn === 'number' ? expiresIn * 1_000 : parseDuration(expiresIn);
-
-  if (requestedMs > maxTtlMs) {
+  if (expiresInToMs(expiresIn) > maxTtlMs) {
     const maxSeconds = Math.floor(maxTtlMs / 1_000);
     throw new RequestValidationError([
       {

@@ -1,0 +1,7 @@
+# Local install output for this standalone consumer app.
+node_modules/
+
+# Optional local database artifacts if someone points the app at a file-backed
+# helper in the future.
+*.db
+*.sqlite

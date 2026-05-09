@@ -28,6 +28,7 @@ import type {
   AgentRecord,
 } from '../src/storage/types.js';
 import type { AuditRecord } from '../src/types.js';
+import type { Logger } from '../src/logger.js';
 
 function createInMemoryAgentStore(): AgentStore {
   const agents = new Map<string, AgentRecord>();
@@ -180,7 +181,7 @@ describe('AgentIdentity', () => {
     identity.close();
   });
 
-  it('close() zeros the masterKey buffer', async () => {
+  it('close() does not mutate the caller-owned masterKey buffer', async () => {
     const storage = buildTestStorage();
     const keyBuf = Buffer.alloc(32, 0x33);
     const identity = await AgentIdentity.create(
@@ -188,7 +189,14 @@ describe('AgentIdentity', () => {
       { storage, masterKey: asMasterKey(keyBuf) },
     );
     identity.close();
-    expect(keyBuf.every((b) => b === 0)).toBe(true);
+    expect(keyBuf.every((b) => b === 0x33)).toBe(true);
+
+    const identity2 = await AgentIdentity.create(
+      { audit: { enabled: true } },
+      { storage, masterKey: asMasterKey(keyBuf) },
+    );
+    identity2.close();
+    expect(keyBuf.every((b) => b === 0x33)).toBe(true);
   });
 
   it('exposes verifierInstance and auditLoggerInstance', async () => {
@@ -232,6 +240,25 @@ describe('AgentIdentity', () => {
     identity.close();
   });
 
+  it('createAgent rejects missing or empty name with a clear validation error', async () => {
+    const storage = buildTestStorage();
+    const identity = await AgentIdentity.create(
+      { audit: { enabled: true }, devMode: true },
+      { storage, masterKey: asMasterKey(Buffer.alloc(32, 0x55)) },
+    );
+    const session = await identity.authenticate({ mockHumanDid: 'did:key:z6MkOwner' });
+    await expect(
+      identity.createAgent({ ownerDid: session.humanDid } as never),
+    ).rejects.toThrow(/createAgent\(\) requires name/);
+    await expect(
+      identity.createAgent({ name: '', ownerDid: session.humanDid }),
+    ).rejects.toThrow(/createAgent\(\) requires name/);
+    await expect(
+      identity.createAgent({ name: '   ', ownerDid: session.humanDid }),
+    ).rejects.toThrow(/createAgent\(\) requires name/);
+    identity.close();
+  });
+
   it('delegateCredential round-trip', async () => {
     const storage = buildTestStorage();
     const identity = await AgentIdentity.create(
@@ -264,32 +291,32 @@ describe('AgentIdentity', () => {
     identity.close();
   });
 
-  it('emits structured log event when agents table is missing', async () => {
+  it('emits a clear init hint via logger.warn when agents table is missing', async () => {
     const storage = buildTestStorage();
     const pgError = Object.assign(new Error('relation "agents" does not exist'), { code: '42P01' });
-    storage.agents.listAll = async () => { throw pgError; };
+    storage.agents.listAll = vi.fn().mockRejectedValue(pgError);
 
-    const spy = vi.spyOn(console, 'info').mockImplementation(() => {});
-    try {
-      const identity = await AgentIdentity.create(
-        { audit: { enabled: true } },
-        { storage, masterKey: asMasterKey(Buffer.alloc(32, 0xaa)) },
-      );
+    const logger: Logger = { warn: vi.fn(), error: vi.fn() };
 
-      expect(spy).toHaveBeenCalledOnce();
-      const event = JSON.parse(spy.mock.calls[0][0] as string);
-      expect(event).toMatchObject({
+    const identity = await AgentIdentity.create(
+      { audit: { enabled: true } },
+      { storage, masterKey: asMasterKey(Buffer.alloc(32, 0xaa)), logger },
+    );
+
+    expect(logger.warn).toHaveBeenCalledOnce();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('agents init --db'),
+      expect.objectContaining({
         event: 'restore_agents_schema_missing',
-        level: 'INFO',
-        schema: 'public',
         table: 'agents',
-      });
-      expect(event.nextStep).toContain('migrate');
-      expect(event.message).toBeDefined();
-      identity.close();
-    } finally {
-      spy.mockRestore();
-    }
+        nextStep: 'agents init --db <url>',
+      }),
+    );
+    expect(logger.warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('migrate'),
+      expect.anything(),
+    );
+    identity.close();
   });
 
   it('throws on method calls after close()', async () => {

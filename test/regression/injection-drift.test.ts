@@ -24,6 +24,7 @@ import { asMasterKey } from '../../src/crypto/master-key.js';
 import { composeStorageBackend } from '../../src/storage/index.js';
 import { InMemoryRevocationStore } from '../../src/storage/memory/revocation-store.js';
 import { PostgresStorageBackend } from '../../src/storage/postgres/index.js';
+import { deterministicSessionMacKey } from '../support/deterministic-session-mac-key.js';
 
 const { Pool } = pg;
 
@@ -61,7 +62,7 @@ describeFn('Injection drift regression (live Postgres required)', () => {
     await pool.query('DELETE FROM agent_keys').catch(() => undefined);
     await pool.query('DELETE FROM agents').catch(() => undefined);
 
-    const base = PostgresStorageBackend.fromPool(pool, false);
+    const base = PostgresStorageBackend.fromPool(pool, false, { sessionMacKey: deterministicSessionMacKey() });
 
     // Custom revocation store held externally; correct wiring means calls
     // through scope.storage.revocation reach this exact instance.

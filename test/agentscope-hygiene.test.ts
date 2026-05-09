@@ -23,6 +23,7 @@ import { asMasterKey } from '../src/crypto/master-key.js';
 import { PostgresStorageBackend } from '../src/storage/postgres/index.js';
 import { InMemoryRevocationStore } from '../src/storage/memory/revocation-store.js';
 import { composeStorageBackend } from '../src/storage/compose.js';
+import { deterministicSessionMacKey } from './support/deterministic-session-mac-key.js';
 
 const { Pool } = pg;
 
@@ -63,7 +64,7 @@ describeFn('AgentScope hygiene (live Postgres required)', () => {
     await pool.query('DELETE FROM agent_keys').catch(() => undefined);
     await pool.query('DELETE FROM agents').catch(() => undefined);
 
-    const base = PostgresStorageBackend.fromPool(pool, false);
+    const base = PostgresStorageBackend.fromPool(pool, false, { sessionMacKey: deterministicSessionMacKey() });
     revocation = new InMemoryRevocationStore();
     const storage = composeStorageBackend(base, { revocation });
 
@@ -175,16 +176,16 @@ describeFn('AgentScope hygiene (live Postgres required)', () => {
     });
   });
 
-  // ─── close() zeroes masterKey ─────────────────────────────────
-  describe('close() zeros masterKey', () => {
-    it('after close(), the original masterKey buffer is all zeros', async () => {
+  // ─── close() does not mutate caller-owned masterKey ───────────
+  describe('close() leaves caller-owned masterKey intact', () => {
+    it('after close(), the caller-owned masterKey buffer is unchanged', async () => {
       expect(masterKeyBuf[0]).toBe(MASTER_KEY_BYTE);
       expect(masterKeyBuf[31]).toBe(MASTER_KEY_BYTE);
 
       await scope.close();
 
       for (let i = 0; i < 32; i++) {
-        expect(masterKeyBuf[i]).toBe(0);
+        expect(masterKeyBuf[i]).toBe(MASTER_KEY_BYTE);
       }
     });
   });

@@ -149,7 +149,7 @@ describe('query-policy', () => {
     });
   });
 
-  describe('libpg-query AST shape regression (ABXAGNTS-384)', () => {
+  describe('libpg-query AST shape regression', () => {
     function stripLocations(obj: unknown): unknown {
       if (Array.isArray(obj)) return obj.map(stripLocations);
       if (obj && typeof obj === 'object') {

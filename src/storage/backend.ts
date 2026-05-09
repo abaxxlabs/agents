@@ -87,6 +87,8 @@ export interface PostgresStorageOptions {
   connectionString: string;
   /** Connection pool size. Default: 10. */
   poolSize?: number;
+  /** HKDF-derived key for session envelope MAC verification. Derive via deriveSessionMacKey(). */
+  sessionMacKey: Buffer;
 }
 
 export interface SqliteStorageOptions {
@@ -97,6 +99,6 @@ export interface SqliteStorageOptions {
    * Use a file path for persistent storage.
    */
   path: string;
-  /** HKDF-derived key for session envelope MAC verification. */
-  sessionMacKey?: Buffer;
+  /** HKDF-derived key for session envelope MAC verification. Derive via deriveSessionMacKey(). */
+  sessionMacKey: Buffer;
 }

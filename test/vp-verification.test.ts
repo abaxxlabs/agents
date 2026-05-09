@@ -148,7 +148,7 @@ describe('VP Verification — VcVerifier', () => {
       expect(result.error).toContain('missing audience claim');
     });
 
-    it('accepts audience as string[] and verifies against any listed DID (ABXAGNTS-255)', async () => {
+    it('accepts audience as string[] and verifies against any listed DID', async () => {
       const serverA = generateDidKey();
       const serverB = generateDidKey();
       const serverC = generateDidKey();
@@ -197,7 +197,7 @@ describe('VP Verification — VcVerifier', () => {
 
       // Use strict verifier
       const strictVerifier = new VcVerifier({
-        clockSkew: '0s',
+        clockSkew: '1s',
         revocationStore: new InMemoryRevocationStore(),
       });
       strictVerifier.registerKey(human.did, human.publicKey);
@@ -404,9 +404,8 @@ describe('createPresentation()', () => {
   });
 
   it('sets exp to 60 seconds from now by default', () => {
-    // Default tightened post-v0.10.0 from 300s → 60s. The VP lifetime IS the
-    // first-mover replay window for a captured presentation; at machine speeds
-    // 60s is generous for an RPC round-trip and 5× tighter than the prior default.
+    // VP lifetime defaults to 60s. The VP lifetime IS the first-mover replay
+    // window for a captured presentation; 60s is generous for an RPC round-trip.
     const vc = issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['col.a'],
@@ -484,7 +483,7 @@ describe('createPresentation()', () => {
     // parseDuration's regex `\d+` accepts '0s'/'0m' as syntactically valid
     // and returns 0 ms. Without a floor, this would produce exp = now:
     // immediately expired under tight clockSkew, or only clockSkew-valid under
-    // default. Surfaced by adversarial review on PR #24 — caught before merge.
+    // default. Without the floor, a zero-lifetime VP would be born-expired.
     const vc = issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['col.a'],
