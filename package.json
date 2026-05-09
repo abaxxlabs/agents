@@ -1,7 +1,7 @@
 {
   "name": "@abaxxlabs/agents",
   "version": "0.11.4",
-  "description": "Agents++ — encryption-based agent identity and scoped database access for PostgreSQL",
+  "description": "Agents++ \u2014 encryption-based agent identity and scoped database access for PostgreSQL",
   "type": "module",
   "main": "./dist/cjs/index.js",
   "module": "./dist/index.js",
@@ -184,24 +184,11 @@
     "level": "8.0.0"
   },
   "overrides": {
-    "@modelcontextprotocol/sdk": {
-      "@hono/node-server": "1.19.14",
-      "hono": "4.12.15"
-    },
-    "@typescript-eslint/typescript-estree": {
-      "minimatch": {
-        "brace-expansion": "5.0.5"
-      }
-    },
-    "minimatch": {
-      "brace-expansion": "1.1.14"
-    },
-    "router": {
-      "path-to-regexp": "8.4.2"
-    },
-    "vite": {
-      "postcss": "8.5.12"
-    }
+    "@hono/node-server": "1.19.14",
+    "hono": "4.12.15",
+    "brace-expansion": "1.1.14",
+    "path-to-regexp": "8.4.2",
+    "postcss": "8.5.12"
   },
   "peerDependencies": {
     "better-sqlite3": "11.10.0",
