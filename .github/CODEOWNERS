@@ -1,5 +1,5 @@
 # Default owner — all files require review from Ian
-* @IanAbaxx
+*                       @IanAbaxx
 
 # Core library and migrations — also require jdutchak
 /src/                   @IanAbaxx @jdutchak
