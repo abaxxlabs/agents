@@ -209,7 +209,7 @@ describe('MCP Server', () => {
       const fixtures = createMcpTestFixtures();
       const { scope, session, auditLogger, human, agentA } = fixtures;
 
-      const credential = issueCredential(human.did, human.privateKey, {
+      const credential = await issueCredential(human.did, human.privateKey, {
         agent: agentA.did,
         columns: ['patients.name', 'patients.dob'],
         actions: ['read'],
@@ -904,7 +904,7 @@ describe('MCP Server', () => {
       expect(agent.did).toBe(agentA.did);
 
       // 2. Issue credential
-      const credential = issueCredential(human.did, human.privateKey, {
+      const credential = await issueCredential(human.did, human.privateKey, {
         agent: agentA.did,
         columns: ['patients.name', 'patients.dob'],
         actions: ['read'],

@@ -14,7 +14,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
-import { ScopeViolationError } from '../src/errors.js';
+import { ScopeViolationError, TtlExceededError } from '../src/errors.js';
 import {
   FixedWindowRateLimiter,
   JWT_MAX_CHARS,
@@ -472,26 +472,33 @@ describe('expiresIn validation', () => {
     });
 
     it('rejects string duration exceeding bound', () => {
-      expect(() => assertExpiresInBound('48h', MAX_TTL_24H)).toThrow(RequestValidationError);
+      expect(() => assertExpiresInBound('48h', MAX_TTL_24H)).toThrow(TtlExceededError);
     });
 
     it('rejects integer seconds exceeding bound', () => {
-      expect(() => assertExpiresInBound(86401, MAX_TTL_24H)).toThrow(RequestValidationError);
+      expect(() => assertExpiresInBound(86401, MAX_TTL_24H)).toThrow(TtlExceededError);
     });
 
-    it('error body names the violated bound', () => {
+    it('error message names the violated bound', () => {
       try {
         assertExpiresInBound('48h', MAX_TTL_24H);
         expect.unreachable('should have thrown');
       } catch (err) {
-        expect(err).toBeInstanceOf(RequestValidationError);
-        const ve = err as InstanceType<typeof RequestValidationError>;
-        expect(ve.issues).toHaveLength(1);
-        expect(ve.issues[0]).toMatchObject({
-          path: 'expiresIn',
-          code: 'too_big',
-        });
-        expect(ve.issues[0].message).toContain('86400');
+        expect(err).toBeInstanceOf(TtlExceededError);
+        const te = err as TtlExceededError;
+        expect(te.code).toBe('TTL_EXCEEDED');
+        expect(te.message).toContain('86400');
+      }
+    });
+
+    it('maps to HTTP 400 via normalizeDomainError', () => {
+      try {
+        assertExpiresInBound('48h', MAX_TTL_24H);
+        expect.unreachable('should have thrown');
+      } catch (err) {
+        const normalized = normalizeDomainError(err);
+        expect(normalized.httpStatus).toBe(400);
+        expect(normalized.code).toBe('TTL_EXCEEDED');
       }
     });
 

@@ -489,7 +489,7 @@ export function registerTools(
 
         const prefixedPayload = `agents-sign-v1:${payload}`;
 
-        const jwt = serverIdentity.signer.signJwt({
+        const jwt = await serverIdentity.signer.signJwt({
           iss: serverIdentity.did,
           iat: Math.floor(Date.now() / 1000),
           payload: prefixedPayload,

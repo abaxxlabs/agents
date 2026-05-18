@@ -169,11 +169,11 @@ describe('concurrent append — Postgres-style mock store', () => {
     return {
       append: vi.fn(delayedWriter),
       appendWithChainLock: vi.fn(async (
-        buildRecord: (lastRecord: AuditRecord | null) => AuditRecord,
+        buildRecord: (lastRecord: AuditRecord | null) => AuditRecord | Promise<AuditRecord>,
       ) => {
         return withAdvisoryLock(async () => {
           const lastRecord = records.length === 0 ? null : records[records.length - 1];
-          const record = buildRecord(lastRecord);
+          const record = await buildRecord(lastRecord);
           await delayedWriter(record);
           return record;
         });

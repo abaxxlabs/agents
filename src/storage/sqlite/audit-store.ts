@@ -50,6 +50,7 @@ interface AuditRow {
 
 export class SqliteAuditStore implements AuditStore {
   private readonly db: Database;
+  private lockQueue: Promise<void> = Promise.resolve();
 
   constructor(db: Database) {
     this.db = db;
@@ -65,16 +66,30 @@ export class SqliteAuditStore implements AuditStore {
    * BEGIN IMMEDIATE (RESERVED lock), preventing concurrent forks of the hash chain.
    */
   async appendWithChainLock(
-    buildRecord: (lastRecord: AuditRecord | null) => AuditRecord,
+    buildRecord: (lastRecord: AuditRecord | null) => AuditRecord | Promise<AuditRecord>,
   ): Promise<AuditRecord> {
-    return this.db
-      .transaction(() => {
-        const row = this.loadLastRecordRow();
-        const record = buildRecord(row ? this._rowToRecord(row) : null);
-        this.insertRecord(record);
-        return record;
-      })
-      .immediate();
+    // JS mutex: async buildRecord yields the event loop before SQLite COMMIT
+    let release!: () => void;
+    const acquired = new Promise<void>((resolve) => { release = resolve; });
+    const prev = this.lockQueue;
+    this.lockQueue = acquired;
+    await prev;
+
+    let inTransaction = false;
+    try {
+      this.db.exec('BEGIN IMMEDIATE');
+      inTransaction = true;
+      const row = this.loadLastRecordRow();
+      const record = await buildRecord(row ? this._rowToRecord(row) : null);
+      this.insertRecord(record);
+      this.db.exec('COMMIT');
+      return record;
+    } catch (err) {
+      if (inTransaction) this.db.exec('ROLLBACK');
+      throw err;
+    } finally {
+      release();
+    }
   }
 
   private insertRecord(record: AuditRecord): void {

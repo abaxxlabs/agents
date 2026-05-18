@@ -38,24 +38,24 @@ describe('VC Verifier', () => {
   });
 
   describe('JWT creation and verification', () => {
-    it('creates a valid JWT', () => {
-      const jwt = createJwt({ iss: human.did, sub: 'test' }, human.privateKey);
+    it('creates a valid JWT', async () => {
+      const jwt = await createJwt({ iss: human.did, sub: 'test' }, human.privateKey);
       expect(jwt.split('.').length).toBe(3);
     });
 
-    it('verifies a valid JWT signature', () => {
-      const jwt = createJwt({ iss: human.did, sub: 'test' }, human.privateKey);
-      expect(verifyJwtSignature(jwt, human.publicKey)).toBe(true);
+    it('verifies a valid JWT signature', async () => {
+      const jwt = await createJwt({ iss: human.did, sub: 'test' }, human.privateKey);
+      expect(await verifyJwtSignature(jwt, human.publicKey)).toBe(true);
     });
 
-    it('rejects a JWT with wrong key', () => {
-      const jwt = createJwt({ iss: human.did, sub: 'test' }, human.privateKey);
+    it('rejects a JWT with wrong key', async () => {
+      const jwt = await createJwt({ iss: human.did, sub: 'test' }, human.privateKey);
       const other = generateDidKey();
-      expect(verifyJwtSignature(jwt, other.publicKey)).toBe(false);
+      expect(await verifyJwtSignature(jwt, other.publicKey)).toBe(false);
     });
 
-    it('decodes JWT payload', () => {
-      const jwt = createJwt({ iss: human.did, sub: agent.did, custom: 'data' }, human.privateKey);
+    it('decodes JWT payload', async () => {
+      const jwt = await createJwt({ iss: human.did, sub: agent.did, custom: 'data' }, human.privateKey);
       const { payload } = decodeJwt(jwt);
       expect(payload.iss).toBe(human.did);
       expect(payload.sub).toBe(agent.did);
@@ -83,11 +83,11 @@ describe('VC Verifier', () => {
         actions: ['read'],
         expiresIn: '4h',
         ...overrides,
-      });
+      }); // now returns Promise<string>
     }
 
     it('verifies a valid credential', async () => {
-      const jwt = makeCredential();
+      const jwt = await makeCredential();
       const result = await verifier.verify(jwt);
       expect(result.valid).toBe(true);
       expect(result.status).toBe('VALID');
@@ -97,32 +97,25 @@ describe('VC Verifier', () => {
     });
 
     it('rejects expired credential', async () => {
-      const jwt = issueCredential(human.did, human.privateKey, {
+      const jwt = await issueCredential(human.did, human.privateKey, {
         agent: agent.did,
         columns: ['patients.name'],
         actions: ['read'],
         expiresIn: '1s',
       });
 
-      // Wait for expiry (1s credential + 1s clockSkew + margin)
-      await new Promise((resolve) => setTimeout(resolve, 2200));
+      // Wait for expiry (1s credential + margin)
+      await new Promise((resolve) => setTimeout(resolve, 1500));
 
-      // Create a verifier with minimal clock skew
-      const strictVerifier = new VcVerifier({
-        clockSkew: '1s',
-        revocationStore: new InMemoryRevocationStore(),
-      });
-      strictVerifier.registerKey(human.did, human.publicKey);
-
-      const result = await strictVerifier.verify(jwt);
+      // VC exp is authoritative — no clockSkew tolerance
+      const result = await verifier.verify(jwt);
       expect(result.valid).toBe(false);
       expect(result.status).toBe('EXPIRED');
     });
 
-    it('accepts credential within clock skew tolerance', async () => {
-      // Create credential that expires "now" (0s) but verifier allows 30s skew
+    it('rejects credential expired even by 1 second (VC exp is authoritative)', async () => {
       const now = Math.floor(Date.now() / 1000);
-      const jwt = createJwt(
+      const jwt = await createJwt(
         {
           iss: human.did,
           sub: agent.did,
@@ -138,13 +131,13 @@ describe('VC Verifier', () => {
         human.privateKey,
       );
 
-      // 30s clock skew should accept this
       const result = await verifier.verify(jwt);
-      expect(result.valid).toBe(true);
+      expect(result.valid).toBe(false);
+      expect(result.status).toBe('EXPIRED');
     });
 
     it('rejects credential with invalid signature', async () => {
-      const jwt = makeCredential();
+      const jwt = await makeCredential();
       // Tamper with the signature
       const parts = jwt.split('.');
       parts[2] = parts[2].slice(0, -5) + 'XXXXX';
@@ -156,7 +149,7 @@ describe('VC Verifier', () => {
     });
 
     it('rejects credential with missing scope claim', async () => {
-      const jwt = createJwt(
+      const jwt = await createJwt(
         {
           iss: human.did,
           sub: agent.did,
@@ -179,7 +172,7 @@ describe('VC Verifier', () => {
 
     it('rejects credential from non-did:key issuer (unsupported method)', async () => {
       // did:key is self-resolving, so test with an unsupported DID method
-      const fakeJwt = createJwt(
+      const fakeJwt = await createJwt(
         {
           iss: 'did:ion:EiAunknown123',
           sub: agent.did,
@@ -207,7 +200,7 @@ describe('VC Verifier', () => {
 
   describe('DID cache', () => {
     it('caches resolved keys', async () => {
-      const jwt = issueCredential(human.did, human.privateKey, {
+      const jwt = await issueCredential(human.did, human.privateKey, {
         agent: agent.did,
         columns: ['patients.name'],
         actions: ['read'],
@@ -220,8 +213,8 @@ describe('VC Verifier', () => {
   });
 
   describe('scope extraction', () => {
-    it('extracts scope from valid credential', () => {
-      const jwt = issueCredential(human.did, human.privateKey, {
+    it('extracts scope from valid credential', async () => {
+      const jwt = await issueCredential(human.did, human.privateKey, {
         agent: agent.did,
         columns: ['patients.name', 'patients.dob'],
         actions: ['read'],

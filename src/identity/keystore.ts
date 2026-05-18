@@ -44,7 +44,7 @@ import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type { Logger } from '../logger.js';
-import { defaultLogger } from '../logger.js';
+import { getLogger } from '../logger.js';
 
 // ─── Public interface ────────────────────────────────────────────────────────
 
@@ -86,7 +86,7 @@ export class MacOsKeychainBackend implements KeystoreBackend {
   private service: string;
   private logger: Logger;
 
-  constructor(service = 'agents', logger: Logger = defaultLogger) {
+  constructor(service = 'agents', logger: Logger = getLogger()) {
     this.service = service;
     this.logger = logger;
   }

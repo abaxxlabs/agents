@@ -60,7 +60,7 @@ describe('initializeServerIdentity()', () => {
 
   it('signer can sign a JWT', async () => {
     const identity = await initializeServerIdentity(keystore);
-    const jwt = identity.signer.signJwt({ sub: 'test', iss: identity.did });
+    const jwt = await identity.signer.signJwt({ sub: 'test', iss: identity.did });
     expect(typeof jwt).toBe('string');
     const parts = jwt.split('.');
     expect(parts).toHaveLength(3);
@@ -87,7 +87,7 @@ describe('initializeServerIdentity()', () => {
   it('loaded identity can sign JWTs', async () => {
     await initializeServerIdentity(keystore); // first run — generate
     const loaded = await initializeServerIdentity(keystore); // second run — load
-    const jwt = loaded.signer.signJwt({ sub: 'test', iss: loaded.did });
+    const jwt = await loaded.signer.signJwt({ sub: 'test', iss: loaded.did });
     expect(jwt.split('.')).toHaveLength(3);
   });
 

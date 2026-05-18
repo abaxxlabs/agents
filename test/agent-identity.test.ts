@@ -199,6 +199,19 @@ describe('AgentIdentity', () => {
     expect(keyBuf.every((b) => b === 0x33)).toBe(true);
   });
 
+  it('close() zeros the SDK-internal copy of the master key', async () => {
+    const storage = buildTestStorage();
+    const keyBuf = Buffer.alloc(32, 0x55);
+    const identity = await AgentIdentity.create(
+      { audit: { enabled: true } },
+      { storage, masterKey: asMasterKey(keyBuf) },
+    );
+    identity.close();
+    const internalKey: Buffer = (identity as any).masterKey;
+    expect(internalKey.every((b: number) => b === 0x00)).toBe(true);
+    expect(keyBuf.every((b) => b === 0x55)).toBe(true);
+  });
+
   it('exposes verifierInstance and auditLoggerInstance', async () => {
     const storage = buildTestStorage();
     const identity = await AgentIdentity.create(

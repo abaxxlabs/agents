@@ -223,7 +223,11 @@ describe('parseDuration', () => {
   });
 
   it('rejects durations that overflow to Infinity', () => {
-    expect(() => parseDuration('9'.repeat(400) + 'd')).toThrow(/out of range/);
+    expect(() => parseDuration('9'.repeat(19) + 'd')).toThrow(/out of range/);
+  });
+
+  it('rejects oversized input strings', () => {
+    expect(() => parseDuration('9'.repeat(400) + 'd')).toThrow(/too long/);
   });
 
   it('accepts durations up to the 100-year cap', () => {

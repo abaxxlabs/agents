@@ -12,18 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { sign as ed25519Sign, verify as ed25519Verify } from 'node:crypto';
+import { SignJWT, compactVerify, decodeJwt as joseDecodeJwt, decodeProtectedHeader, importJWK, errors as joseErrors } from 'jose';
+import { ed25519 } from '@noble/curves/ed25519';
 import { CredentialMalformedError } from './errors.js';
 import type { CredentialScope } from './types.js';
-
-export function base64UrlDecode(str: string): Buffer {
-  const padded = str.replace(/-/g, '+').replace(/_/g, '/');
-  return Buffer.from(padded, 'base64');
-}
-
-export function base64UrlEncode(buf: Buffer): string {
-  return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
 
 export interface JwtHeader {
   alg: string;
@@ -62,26 +54,20 @@ export interface JwtPayload {
  * Decode a JWT into its constituent parts without verifying the signature.
  *
  * @param jwt - Compact JWS string (header.payload.signature).
- * @returns Decoded header, payload, raw signature bytes, and the signing input.
- * @throws {CredentialMalformedError} if the JWT does not have exactly 3 parts.
+ * @returns Decoded header and payload.
+ * @throws {CredentialMalformedError} if the JWT is malformed.
  */
 export function decodeJwt(jwt: string): {
   header: JwtHeader;
   payload: JwtPayload;
-  signature: Buffer;
-  signingInput: string;
 } {
-  const parts = jwt.split('.');
-  if (parts.length !== 3) {
-    throw new CredentialMalformedError('JWT must have 3 parts (header.payload.signature)');
+  try {
+    const payload = joseDecodeJwt(jwt) as JwtPayload;
+    const header = decodeProtectedHeader(jwt) as JwtHeader;
+    return { header, payload };
+  } catch {
+    throw new CredentialMalformedError('Malformed JWT');
   }
-
-  const header = JSON.parse(base64UrlDecode(parts[0]).toString('utf-8')) as JwtHeader;
-  const payload = JSON.parse(base64UrlDecode(parts[1]).toString('utf-8')) as JwtPayload;
-  const signature = base64UrlDecode(parts[2]);
-  const signingInput = `${parts[0]}.${parts[1]}`;
-
-  return { header, payload, signature, signingInput };
 }
 
 /**
@@ -91,25 +77,20 @@ export function decodeJwt(jwt: string): {
  * @param privateKey - Raw 32-byte Ed25519 private key.
  * @returns Compact JWS string.
  */
-export function createJwt(payload: JwtPayload, privateKey: Uint8Array): string {
-  const header: JwtHeader = { alg: 'EdDSA', typ: 'JWT' };
-  const headerB64 = base64UrlEncode(Buffer.from(JSON.stringify(header)));
-  const payloadB64 = base64UrlEncode(Buffer.from(JSON.stringify(payload)));
-  const signingInput = `${headerB64}.${payloadB64}`;
-
-  const keyObj = {
-    key: Buffer.concat([
-      Buffer.from('302e020100300506032b657004220420', 'hex'),
-      Buffer.from(privateKey),
-    ]),
-    format: 'der' as const,
-    type: 'pkcs8' as const,
-  };
-
-  const sig = ed25519Sign(undefined, Buffer.from(signingInput), keyObj);
-  const sigB64 = base64UrlEncode(sig);
-
-  return `${signingInput}.${sigB64}`;
+export async function createJwt(payload: JwtPayload, privateKey: Uint8Array): Promise<string> {
+  const publicKey = ed25519.getPublicKey(privateKey);
+  const key = await importJWK(
+    {
+      kty: 'OKP',
+      crv: 'Ed25519',
+      x: Buffer.from(publicKey).toString('base64url'),
+      d: Buffer.from(privateKey).toString('base64url'),
+    },
+    'EdDSA',
+  );
+  return new SignJWT(payload as unknown as Record<string, unknown>)
+    .setProtectedHeader({ alg: 'EdDSA', typ: 'JWT' })
+    .sign(key);
 }
 
 /**
@@ -119,14 +100,25 @@ export function createJwt(payload: JwtPayload, privateKey: Uint8Array): string {
  * @param publicKey - Raw 32-byte Ed25519 public key.
  * @returns `true` if the signature is valid.
  */
-export function verifyJwtSignature(jwt: string, publicKey: Uint8Array): boolean {
-  const { signingInput, signature } = decodeJwt(jwt);
-
-  const keyObj = {
-    key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), Buffer.from(publicKey)]),
-    format: 'der' as const,
-    type: 'spki' as const,
-  };
-
-  return ed25519Verify(undefined, Buffer.from(signingInput), keyObj, signature);
+export async function verifyJwtSignature(jwt: string, publicKey: Uint8Array): Promise<boolean> {
+  const key = await importJWK(
+    {
+      kty: 'OKP',
+      crv: 'Ed25519',
+      x: Buffer.from(publicKey).toString('base64url'),
+    },
+    'EdDSA',
+  );
+  try {
+    await compactVerify(jwt, key, { algorithms: ['EdDSA'] });
+    return true;
+  } catch (err) {
+    if (
+      err instanceof joseErrors.JWSSignatureVerificationFailed ||
+      err instanceof joseErrors.JWSInvalid ||
+      err instanceof joseErrors.JOSEAlgNotAllowed ||
+      err instanceof joseErrors.JOSENotSupported
+    ) return false;
+    throw err;
+  }
 }

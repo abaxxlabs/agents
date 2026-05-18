@@ -369,6 +369,20 @@ export class ParentCredentialRequestFailedError extends AgentScopeError {
   }
 }
 
+// ─── TTL Errors ────────────────────────────────────────────────
+
+export class TtlExceededError extends AgentScopeError {
+  constructor(maxTtlMs: number) {
+    const maxSeconds = Math.floor(maxTtlMs / 1_000);
+    super(
+      'TTL_EXCEEDED',
+      `expiresIn exceeds maximum credential TTL of ${maxSeconds}s`,
+      { maxTtlMs, maxSeconds },
+    );
+    this.name = 'TtlExceededError';
+  }
+}
+
 // ─── Numeric Precision Errors ───────────────────────────────────
 
 export class PrecisionLossError extends AgentScopeError {

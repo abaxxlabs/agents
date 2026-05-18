@@ -30,7 +30,7 @@ describe('Cross-org federation primitive (Beat 7)', () => {
     const agentA = generateDidKey();
     const agentASigner = createSigner(agentA.privateKey);
 
-    const credA = issueCredential(human.did, human.privateKey, {
+    const credA = await issueCredential(human.did, human.privateKey, {
       agent: agentA.did,
       columns: ['order_book.ticker', 'order_book.side'],
       actions: ['read'],
@@ -45,7 +45,7 @@ describe('Cross-org federation primitive (Beat 7)', () => {
     orgBEnrolled.add(agentA.did);
     orgBVerifier.registerKey(agentA.did, agentA.publicKey);
 
-    const vp = createPresentation(credA, agentA.did, agentASigner, {
+    const vp = await createPresentation(credA, agentA.did, agentASigner, {
       audience: orgBIdentity.did,
     });
 
@@ -64,7 +64,7 @@ describe('Cross-org federation primitive (Beat 7)', () => {
     const unknownAgent = generateDidKey();
     const unknownSigner = createSigner(unknownAgent.privateKey);
 
-    const credUnknown = issueCredential(human.did, human.privateKey, {
+    const credUnknown = await issueCredential(human.did, human.privateKey, {
       agent: unknownAgent.did,
       columns: ['order_book.ticker'],
       actions: ['read'],
@@ -77,7 +77,7 @@ describe('Cross-org federation primitive (Beat 7)', () => {
     });
     const orgBEnrolled = new Set<string>(); // empty — nobody enrolled yet
 
-    const vp = createPresentation(credUnknown, unknownAgent.did, unknownSigner, {
+    const vp = await createPresentation(credUnknown, unknownAgent.did, unknownSigner, {
       audience: orgBIdentity.did,
     });
 
@@ -96,7 +96,7 @@ describe('Cross-org federation primitive (Beat 7)', () => {
     const agentA = generateDidKey();
     const agentASigner = createSigner(agentA.privateKey);
 
-    const credA = issueCredential(human.did, human.privateKey, {
+    const credA = await issueCredential(human.did, human.privateKey, {
       agent: agentA.did,
       columns: ['order_book.ticker'],
       actions: ['read'],
@@ -111,7 +111,7 @@ describe('Cross-org federation primitive (Beat 7)', () => {
     });
     orgBVerifier.registerKey(agentA.did, agentA.publicKey);
 
-    const vp = createPresentation(credA, agentA.did, agentASigner, {
+    const vp = await createPresentation(credA, agentA.did, agentASigner, {
       audience: orgCIdentity.did,
     });
 

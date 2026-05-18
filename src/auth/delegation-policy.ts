@@ -65,7 +65,7 @@ export function validateExpiry(
  * @throws Error if chain depth is exceeded
  */
 export function validateChain(chainLength: number, maxDepth: number): void {
-  if (chainLength > maxDepth) {
+  if (chainLength >= maxDepth) {
     throw new Error(
       `Delegation error: chain depth ${chainLength} exceeds maximum ${maxDepth}.`,
     );

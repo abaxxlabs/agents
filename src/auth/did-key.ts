@@ -90,7 +90,7 @@ export function createSigner(privateKey: Uint8Array): AgentSigner {
   const key = new Uint8Array(privateKey);
   const signer = withRedactedSerialization(
     {
-      signJwt(payload: Record<string, unknown>): string {
+      signJwt(payload: Record<string, unknown>): Promise<string> {
         return createJwt(payload, key);
       },
     },
@@ -118,7 +118,7 @@ export function toExternalSigner(
       _raw: Buffer.from(data).toString('base64url'),
     };
 
-    const jws = agentSigner.signJwt(payload);
+    const jws = await agentSigner.signJwt(payload);
 
     const parts = jws.split('.');
     if (parts.length !== 3) {

@@ -150,7 +150,7 @@ describe('Scope Enforcement Engine', () => {
     it('decrypts in-scope columns for full-scope agent', async () => {
       const { human, agentA, engine } = createTestFixtures();
 
-      const credential = issueCredential(human.did, human.privateKey, {
+      const credential = await issueCredential(human.did, human.privateKey, {
         agent: agentA.did,
         columns: ['patients.name', 'patients.dob', 'patients.diagnosis'],
         actions: ['read'],
@@ -173,7 +173,7 @@ describe('Scope Enforcement Engine', () => {
     it('rejects queries for encrypted columns outside scope', async () => {
       const { human, agentB, engine } = createTestFixtures();
 
-      const credential = issueCredential(human.did, human.privateKey, {
+      const credential = await issueCredential(human.did, human.privateKey, {
         agent: agentB.did,
         columns: ['patients.name'],
         actions: ['read'],
@@ -193,7 +193,7 @@ describe('Scope Enforcement Engine', () => {
     it('tracks metadata correctly', async () => {
       const { human, agentA, engine } = createTestFixtures();
 
-      const credential = issueCredential(human.did, human.privateKey, {
+      const credential = await issueCredential(human.did, human.privateKey, {
         agent: agentA.did,
         columns: ['patients.name', 'patients.dob', 'patients.diagnosis'],
         actions: ['read'],
@@ -233,15 +233,15 @@ describe('Scope Enforcement Engine', () => {
     it('rejects expired credential', async () => {
       const { human, agentA } = createTestFixtures();
 
-      const credential = issueCredential(human.did, human.privateKey, {
+      const credential = await issueCredential(human.did, human.privateKey, {
         agent: agentA.did,
         columns: ['patients.name'],
         actions: ['read'],
         expiresIn: '1s',
       });
 
-      // Wait for expiry (1s credential + 1s clockSkew + margin)
-      await new Promise((r) => setTimeout(r, 2200));
+      // Wait for expiry (1s credential + margin)
+      await new Promise((r) => setTimeout(r, 1500));
 
       // Use a strict verifier
       const strictVerifier = new VcVerifier({
@@ -275,7 +275,7 @@ describe('Scope Enforcement Engine', () => {
       const { human, agentA, agentB, engine } = createTestFixtures();
 
       // Issue credential to Agent A
-      const credential = issueCredential(human.did, human.privateKey, {
+      const credential = await issueCredential(human.did, human.privateKey, {
         agent: agentA.did,
         columns: ['patients.name'],
         actions: ['read'],
@@ -299,7 +299,7 @@ describe('Scope Enforcement Engine', () => {
       const { human, agentA, engine } = createTestFixtures();
       const { createJwt } = await import('../src/vc-verifier.js');
 
-      const jwt = createJwt(
+      const jwt = await createJwt(
         {
           iss: human.did,
           sub: agentA.did,
@@ -327,14 +327,14 @@ describe('Scope Enforcement Engine', () => {
     it('unions scopes from multiple valid credentials', async () => {
       const { human, agentA, engine } = createTestFixtures();
 
-      const cred1 = issueCredential(human.did, human.privateKey, {
+      const cred1 = await issueCredential(human.did, human.privateKey, {
         agent: agentA.did,
         columns: ['patients.name', 'patients.dob'],
         actions: ['read'],
         expiresIn: '4h',
       });
 
-      const cred2 = issueCredential(human.did, human.privateKey, {
+      const cred2 = await issueCredential(human.did, human.privateKey, {
         agent: agentA.did,
         columns: ['patients.diagnosis'],
         actions: ['read'],
@@ -359,7 +359,7 @@ describe('Scope Enforcement Engine', () => {
     it('rejects unscoped unencrypted columns under projection mode', async () => {
       const { human, agentB, engine } = createTestFixtures();
 
-      const credential = issueCredential(human.did, human.privateKey, {
+      const credential = await issueCredential(human.did, human.privateKey, {
         agent: agentB.did,
         columns: ['patients.name'],
         actions: ['read'],
@@ -379,7 +379,7 @@ describe('Scope Enforcement Engine', () => {
     it('allows unencrypted columns when explicitly in scope', async () => {
       const { human, agentB, engine } = createTestFixtures();
 
-      const credential = issueCredential(human.did, human.privateKey, {
+      const credential = await issueCredential(human.did, human.privateKey, {
         agent: agentB.did,
         columns: ['patients.id', 'patients.name'],
         actions: ['read'],

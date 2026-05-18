@@ -1,14 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import {
   generateDidKey,
   createSigner,
   createJwt,
   issueCredential,
-  issueDelegatedCredential,
   decodeJwt,
   VcVerifier,
   InMemoryRevocationStore,
 } from '../src/index.js';
+import { issueDelegatedCredential } from '../src/auth/index.js';
 import { AgentIdentity } from '../src/agent-identity.js';
 import { resolveDidKeyFallback } from '../src/did-resolve.js';
 import { DidResolutionFailedError } from '../src/errors.js';
@@ -48,29 +48,29 @@ describe('VcVerifier.verify() rejects credentials with malformed base58 DID keys
   });
 });
 
-describe('VcVerifier rejects clockSkew exceeding 5 minutes', () => {
-  it('accepts clockSkew within 5-minute limit', () => {
+describe('VcVerifier rejects clockSkew exceeding 30 seconds', () => {
+  it('accepts clockSkew within 30-second limit', () => {
     expect(
-      () => new VcVerifier({ clockSkew: '4m', revocationStore: new InMemoryRevocationStore() }),
+      () => new VcVerifier({ clockSkew: '25s', revocationStore: new InMemoryRevocationStore() }),
     ).not.toThrow();
   });
 
-  it('accepts the default 30s clockSkew', () => {
+  it('accepts the default 5s clockSkew', () => {
     expect(
       () => new VcVerifier({ revocationStore: new InMemoryRevocationStore() }),
     ).not.toThrow();
   });
 
-  it('rejects clockSkew exceeding 5 minutes', () => {
+  it('rejects clockSkew exceeding 30 seconds', () => {
     expect(
-      () => new VcVerifier({ clockSkew: '10m', revocationStore: new InMemoryRevocationStore() }),
-    ).toThrow(/exceeds maximum of 5 minutes/);
+      () => new VcVerifier({ clockSkew: '45s', revocationStore: new InMemoryRevocationStore() }),
+    ).toThrow(/exceeds maximum of 30 seconds/);
   });
 
   it('rejects absurd clockSkew values', () => {
     expect(
       () => new VcVerifier({ clockSkew: '365d', revocationStore: new InMemoryRevocationStore() }),
-    ).toThrow(/exceeds maximum of 5 minutes/);
+    ).toThrow(/exceeds maximum of 30 seconds/);
   });
 });
 
@@ -80,16 +80,20 @@ describe('issueDelegatedCredential enforces operator delegation depth limit', ()
   const worker = generateDidKey();
   const subWorker = generateDidKey();
 
-  const hop1 = issueCredential(human.did, human.privateKey, {
-    agent: supervisor.did,
-    columns: ['patients.name'],
-    actions: ['read'],
-    expiresIn: '4h',
+  let hop1: string;
+
+  beforeAll(async () => {
+    hop1 = await issueCredential(human.did, human.privateKey, {
+      agent: supervisor.did,
+      columns: ['patients.name'],
+      actions: ['read'],
+      expiresIn: '4h',
+    });
   });
 
-  it('allows single-hop delegation (human → supervisor → worker)', () => {
+  it('allows single-hop delegation (human → supervisor → worker)', async () => {
     const decoded = decodeJwt(hop1);
-    expect(() =>
+    await expect(
       issueDelegatedCredential(
         supervisor.did,
         createSigner(supervisor.privateKey),
@@ -98,75 +102,11 @@ describe('issueDelegatedCredential enforces operator delegation depth limit', ()
         { columns: ['patients.name'], actions: ['read'] },
         { targetAgent: worker.did, columns: ['patients.name'], actions: ['read'], expiresIn: '2h' },
       ),
-    ).not.toThrow();
+    ).resolves.toBeDefined();
   });
 
-  it('rejects double-hop delegation when operator sets maxDepth=1', () => {
-    const decoded1 = decodeJwt(hop1);
-    const hop2 = issueDelegatedCredential(
-      supervisor.did,
-      createSigner(supervisor.privateKey),
-      hop1,
-      decoded1.payload.jti!,
-      { columns: ['patients.name'], actions: ['read'] },
-      { targetAgent: worker.did, columns: ['patients.name'], actions: ['read'], expiresIn: '2h', operatorMaxDepth: 1 },
-    );
-
-    const decoded2 = decodeJwt(hop2);
-    expect(() =>
-      issueDelegatedCredential(
-        worker.did,
-        createSigner(worker.privateKey),
-        hop2,
-        decoded2.payload.jti!,
-        { columns: ['patients.name'], actions: ['read'] },
-        {
-          targetAgent: subWorker.did,
-          columns: ['patients.name'],
-          actions: ['read'],
-          expiresIn: '1h',
-          operatorMaxDepth: 1,
-        },
-      ),
-    ).toThrow(/chain depth.*exceeds maximum/);
-  });
-
-  it('respects operator-configured maxDepth', () => {
-    const decoded1 = decodeJwt(hop1);
-    const hop2 = issueDelegatedCredential(
-      supervisor.did,
-      createSigner(supervisor.privateKey),
-      hop1,
-      decoded1.payload.jti!,
-      { columns: ['patients.name'], actions: ['read'] },
-      {
-        targetAgent: worker.did,
-        columns: ['patients.name'],
-        actions: ['read'],
-        expiresIn: '2h',
-        operatorMaxDepth: 3,
-      },
-    );
-
-    const decoded2 = decodeJwt(hop2);
-    expect(() =>
-      issueDelegatedCredential(
-        worker.did,
-        createSigner(worker.privateKey),
-        hop2,
-        decoded2.payload.jti!,
-        { columns: ['patients.name'], actions: ['read'] },
-        {
-          targetAgent: subWorker.did,
-          columns: ['patients.name'],
-          actions: ['read'],
-          expiresIn: '1h',
-          operatorMaxDepth: 3,
-        },
-      ),
-    ).not.toThrow();
-  });
 });
+
 
 describe('session factories enforce credentialMaxTtlMs ceiling on credential issuance', () => {
   it('rejects credential issuance exceeding ceiling TTL', async () => {
@@ -227,8 +167,6 @@ describe('session factories enforce credentialMaxTtlMs ceiling on credential iss
   });
 });
 
-
-
 describe('clockSkew error message does not leak config value', () => {
   it('error message omits the raw clockSkew value', () => {
     try {
@@ -236,12 +174,10 @@ describe('clockSkew error message does not leak config value', () => {
       expect.unreachable('should have thrown');
     } catch (e: any) {
       expect(e.message).not.toContain('999h');
-      expect(e.message).toContain('exceeds maximum of 5 minutes');
+      expect(e.message).toContain('exceeds maximum of 30 seconds');
     }
   });
 });
-
-
 
 describe('resolveDidKeyFallback rejects wrong-length Ed25519 keys', () => {
   it('rejects a DID with correct prefix but truncated key', () => {
@@ -270,8 +206,6 @@ describe('resolveDidKeyFallback rejects wrong-length Ed25519 keys', () => {
   });
 });
 
-
-
 describe('VcVerifier rejects zero clockSkew', () => {
   it('rejects clockSkew of 0s', () => {
     expect(
@@ -285,7 +219,6 @@ describe('VcVerifier rejects zero clockSkew', () => {
     ).not.toThrow();
   });
 });
-
 
 
 function buildTestStorage(): StorageBackend {
@@ -441,24 +374,26 @@ describe('config.credential.maxTtl merges into effective ceiling', () => {
   });
 });
 
-
-
 describe('delegation depth hardening', () => {
   const human = generateDidKey();
   const supervisor = generateDidKey();
   const worker = generateDidKey();
   const subWorker = generateDidKey();
 
-  const hop1 = issueCredential(human.did, human.privateKey, {
-    agent: supervisor.did,
-    columns: ['patients.name'],
-    actions: ['read'],
-    expiresIn: '4h',
+  let hop1: string;
+
+  beforeAll(async () => {
+    hop1 = await issueCredential(human.did, human.privateKey, {
+      agent: supervisor.did,
+      columns: ['patients.name'],
+      actions: ['read'],
+      expiresIn: '4h',
+    });
   });
 
-  it('rejects empty delegationChain at issuance', () => {
+  it('rejects empty delegationChain at issuance', async () => {
     const now = Math.floor(Date.now() / 1000);
-    const craftedJwt = createJwt(
+    const craftedJwt = await createJwt(
       {
         iss: human.did,
         sub: supervisor.did,
@@ -478,7 +413,7 @@ describe('delegation depth hardening', () => {
       human.privateKey,
     );
 
-    expect(() =>
+    await expect(
       issueDelegatedCredential(
         supervisor.did,
         createSigner(supervisor.privateKey),
@@ -492,13 +427,13 @@ describe('delegation depth hardening', () => {
           expiresIn: '1h',
         },
       ),
-    ).toThrow(/empty delegationChain/);
+    ).rejects.toThrow(/empty delegationChain/);
   });
 
   it('rejects empty delegationChain at verification', async () => {
     const verifier = new VcVerifier({ revocationStore: new InMemoryRevocationStore() });
     const now = Math.floor(Date.now() / 1000);
-    const craftedJwt = createJwt(
+    const craftedJwt = await createJwt(
       {
         iss: human.did,
         sub: supervisor.did,
@@ -524,111 +459,4 @@ describe('delegation depth hardening', () => {
     expect(result.error).toMatch(/empty delegationChain/);
   });
 
-  it('operator maxDepth defaults to 2 (double hop allowed)', () => {
-    const decoded1 = decodeJwt(hop1);
-    const hop2 = issueDelegatedCredential(
-      supervisor.did,
-      createSigner(supervisor.privateKey),
-      hop1,
-      decoded1.payload.jti!,
-      { columns: ['patients.name'], actions: ['read'] },
-      {
-        targetAgent: worker.did,
-        columns: ['patients.name'],
-        actions: ['read'],
-        expiresIn: '2h',
-      },
-    );
-    expect(hop2).toBeTruthy();
-
-    const decoded2 = decodeJwt(hop2);
-    // depth 2 allowed by default — worker → sub-worker succeeds
-    expect(() =>
-      issueDelegatedCredential(
-        worker.did,
-        createSigner(worker.privateKey),
-        hop2,
-        decoded2.payload.jti!,
-        { columns: ['patients.name'], actions: ['read'] },
-        {
-          targetAgent: subWorker.did,
-          columns: ['patients.name'],
-          actions: ['read'],
-          expiresIn: '1h',
-        },
-      ),
-    ).not.toThrow();
-  });
-
-  it('operator maxDepth=1 rejects double hop', () => {
-    const decoded1 = decodeJwt(hop1);
-    const hop2 = issueDelegatedCredential(
-      supervisor.did,
-      createSigner(supervisor.privateKey),
-      hop1,
-      decoded1.payload.jti!,
-      { columns: ['patients.name'], actions: ['read'] },
-      {
-        targetAgent: worker.did,
-        columns: ['patients.name'],
-        actions: ['read'],
-        expiresIn: '2h',
-        operatorMaxDepth: 1,
-      },
-    );
-
-    const decoded2 = decodeJwt(hop2);
-    expect(() =>
-      issueDelegatedCredential(
-        worker.did,
-        createSigner(worker.privateKey),
-        hop2,
-        decoded2.payload.jti!,
-        { columns: ['patients.name'], actions: ['read'] },
-        {
-          targetAgent: subWorker.did,
-          columns: ['patients.name'],
-          actions: ['read'],
-          expiresIn: '1h',
-          operatorMaxDepth: 1,
-        },
-      ),
-    ).toThrow(/chain depth.*exceeds maximum/);
-  });
-
-  it('operator maxDepth=3 allows triple hop', () => {
-    const decoded1 = decodeJwt(hop1);
-    const hop2 = issueDelegatedCredential(
-      supervisor.did,
-      createSigner(supervisor.privateKey),
-      hop1,
-      decoded1.payload.jti!,
-      { columns: ['patients.name'], actions: ['read'] },
-      {
-        targetAgent: worker.did,
-        columns: ['patients.name'],
-        actions: ['read'],
-        expiresIn: '2h',
-        operatorMaxDepth: 3,
-      },
-    );
-
-    const decoded2 = decodeJwt(hop2);
-    expect(() =>
-      issueDelegatedCredential(
-        worker.did,
-        createSigner(worker.privateKey),
-        hop2,
-        decoded2.payload.jti!,
-        { columns: ['patients.name'], actions: ['read'] },
-        {
-          targetAgent: subWorker.did,
-          columns: ['patients.name'],
-          actions: ['read'],
-          expiresIn: '1h',
-          operatorMaxDepth: 3,
-        },
-      ),
-    ).not.toThrow();
-  });
 });

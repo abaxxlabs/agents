@@ -33,7 +33,7 @@ import {
 } from '../column-encryption.js';
 import { MasterKeyMismatchError, KeyRotationFailedError } from '../errors.js';
 import type { Logger } from '../logger.js';
-import { defaultLogger } from '../logger.js';
+import { getLogger } from '../logger.js';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -56,7 +56,7 @@ export type LoadColumnKeysResult = Map<string, Buffer> | { schemaMissing: true }
 export async function loadColumnKeys(
   pool: Pool,
   masterKey: MasterKey,
-  logger: Logger = defaultLogger,
+  logger: Logger = getLogger(),
 ): Promise<LoadColumnKeysResult> {
   let rows: ColumnKeyRecord[];
   try {

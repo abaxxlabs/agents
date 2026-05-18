@@ -87,16 +87,25 @@ describe('delegation-policy', () => {
 
   describe('validateChain', () => {
     it('accepts chain within max depth', () => {
-      expect(() => validateChain(2, 3)).not.toThrow();
+      expect(() => validateChain(1, 3)).not.toThrow();
     });
 
-    it('accepts chain at exact max depth', () => {
-      expect(() => validateChain(3, 3)).not.toThrow();
+    it('throws at exact max depth boundary', () => {
+      expect(() => validateChain(3, 3)).toThrow(
+        'chain depth 3 exceeds maximum 3',
+      );
     });
 
     it('throws when chain depth exceeds max', () => {
       expect(() => validateChain(5, 3)).toThrow(
         'chain depth 5 exceeds maximum 3',
+      );
+    });
+
+    it('blocks third hop with default maxDepth of 2', () => {
+      expect(() => validateChain(1, 2)).not.toThrow();
+      expect(() => validateChain(2, 2)).toThrow(
+        'chain depth 2 exceeds maximum 2',
       );
     });
   });

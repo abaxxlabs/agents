@@ -24,7 +24,7 @@
 import type { Pool } from 'pg';
 import type { RevocationStore } from '../types.js';
 import type { Logger } from '../../logger.js';
-import { defaultLogger } from '../../logger.js';
+import { getLogger } from '../../logger.js';
 
 export interface PostgresRevocationStoreOptions {
   /**
@@ -79,7 +79,7 @@ export class PostgresRevocationStore implements RevocationStore {
   /** Whether the store has been closed. */
   private closed = false;
 
-  constructor(pool: Pool, options: PostgresRevocationStoreOptions = {}, logger: Logger = defaultLogger) {
+  constructor(pool: Pool, options: PostgresRevocationStoreOptions = {}, logger: Logger = getLogger()) {
     this.pool = pool;
     this.logger = logger;
     // Poll is the only implemented mode. listen-notify is kept in the option

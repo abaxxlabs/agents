@@ -126,7 +126,7 @@ describeFn('Multi-instance AgentScope federation (live Postgres required)', () =
     });
 
     // VP audience is bound to org B's verifier DID — prevents replay at org A.
-    const vp = createPresentation(credential, agent.did, agent.signer, {
+    const vp = await createPresentation(credential, agent.did, agent.signer, {
       audience: scopeB.verifierDid,
     });
 
@@ -154,7 +154,7 @@ describeFn('Multi-instance AgentScope federation (live Postgres required)', () =
     });
 
     // VP is bound to org A's own verifier — not org B's.
-    const vp = createPresentation(credential, agent.did, agent.signer, {
+    const vp = await createPresentation(credential, agent.did, agent.signer, {
       audience: scopeA.verifierDid,
     });
 

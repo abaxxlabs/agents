@@ -82,7 +82,7 @@ export async function runVerify(auditFileOrDb: string, options: VerifyOptions): 
   console.log(`\n[agents] Verifying ${records.length} audit record(s)...\n`);
 
   const verifier = new VcVerifier({
-    clockSkew: '30s',
+    clockSkew: '5s',
     revocationStore: new InMemoryRevocationStore(),
   });
   let passed = 0;

@@ -86,19 +86,19 @@ describe('createIdSdkMcpAdapter', () => {
     ]);
   });
 
-  it('does not invent a credential subject when signer options are requested with only an issuer', async () => {
+  it('sends both issuer and subject DIDs to vc_get_signer_options', async () => {
     const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
     const sdk = createIdSdkMcpAdapter(async (name, args) => {
       calls.push({ name, args });
-      return { issuerDid: args.issuerDid };
+      return { issuerDid: args.issuerDid, subjectDid: args.subjectDid };
     });
 
-    await sdk.vc.getSignerOptions('did:dht:issuer');
+    await sdk.vc.getSignerOptions('did:dht:issuer', 'did:dht:subject');
 
     expect(calls).toEqual([
       {
         name: 'vc_get_signer_options',
-        args: { issuerDid: 'did:dht:issuer' },
+        args: { issuerDid: 'did:dht:issuer', subjectDid: 'did:dht:subject' },
       },
     ]);
   });

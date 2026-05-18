@@ -104,12 +104,12 @@ export interface BindingOptions {
  * @param oauthClaims     The full OidcIdentity produced by the OIDC provider.
  * @param options         Optional: membershipTtlSeconds override.
  */
-export function createBindingCredential(
+export async function createBindingCredential(
   serverIdentity: ServerIdentity,
   userDid: string,
   oauthClaims: OidcIdentity,
   options: BindingOptions = {},
-): IdentityBindingCredential {
+): Promise<IdentityBindingCredential> {
   // Runtime guard: TypeScript only enforces OidcIdentity.issuer/.sub at compile time.
   if (!oauthClaims.issuer || typeof oauthClaims.issuer !== 'string') {
     throw new Error(
@@ -152,7 +152,7 @@ export function createBindingCredential(
     },
   };
 
-  const jwt = serverIdentity.signer.signJwt(payload);
+  const jwt = await serverIdentity.signer.signJwt(payload);
 
   return {
     jwt,
@@ -183,12 +183,12 @@ export function createBindingCredential(
  * @param newOauthClaims  Fresh OIDC claims from a re-authentication.
  * @param options         Optional: TTL override for the refreshed binding.
  */
-export function refreshBindingCredential(
+export async function refreshBindingCredential(
   serverIdentity: ServerIdentity,
   existing: IdentityBindingCredential,
   newOauthClaims: OidcIdentity,
   options: BindingOptions = {},
-): IdentityBindingCredential {
+): Promise<IdentityBindingCredential> {
   const originalTtl = existing.exp - existing.iat;
   const ttl = options.membershipTtlSeconds ?? originalTtl;
 

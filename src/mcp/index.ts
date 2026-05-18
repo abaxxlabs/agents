@@ -30,7 +30,7 @@ import https from 'node:https';
 import http from 'node:http';
 import { resolveMasterKeyFromEnv } from '../bootstrap/index.js';
 import type { Logger } from '../logger.js';
-import { defaultLogger } from '../logger.js';
+import { getLogger } from '../logger.js';
 import type { StorageBackend } from '../storage/types.js';
 import { createMcpServer, connectStdio } from './server.js';
 import { createMcpBearerAuth, type McpBearerAuth } from './auth.js';
@@ -136,7 +136,7 @@ export async function startMcpServer(options: McpCliOptions): Promise<void> {
   } = options;
 
   // Use stderr for all logging — stdout is reserved for MCP JSON-RPC in stdio mode
-  const mcpLogger = options.logger ?? defaultLogger;
+  const mcpLogger = getLogger(options.logger);
   const log = (...args: unknown[]) => mcpLogger.error('[agents] ' + args.map(String).join(' '));
 
   // Default-storage MCP refuses to start in production unless the operator acknowledges

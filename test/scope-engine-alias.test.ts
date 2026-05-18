@@ -141,7 +141,7 @@ describe('ScopeEngine — alias-aware DID comparison', () => {
     });
 
     // Issue credential from the OLD human DID (pre-migration credential)
-    const credential = issueCredential(humanOld.did, humanOld.privateKey, {
+    const credential = await issueCredential(humanOld.did, humanOld.privateKey, {
       agent: agentA.did,
       columns: ['patients.name'],
       actions: ['read'],
@@ -184,7 +184,7 @@ describe('ScopeEngine — alias-aware DID comparison', () => {
       agentStore: { findByDid: vi.fn().mockResolvedValue(null) } as unknown as AgentStore,
     });
 
-    const credential = issueCredential(humanOld.did, humanOld.privateKey, {
+    const credential = await issueCredential(humanOld.did, humanOld.privateKey, {
       agent: agentA.did,
       columns: ['patients.name'],
       actions: ['read'],
@@ -229,7 +229,7 @@ describe('ScopeEngine — alias-aware DID comparison', () => {
     const unrelated = generateDidKey();
     verifier.registerKey(unrelated.did, unrelated.publicKey);
 
-    const credential = issueCredential(unrelated.did, unrelated.privateKey, {
+    const credential = await issueCredential(unrelated.did, unrelated.privateKey, {
       agent: agentA.did,
       columns: ['patients.name'],
       actions: ['read'],

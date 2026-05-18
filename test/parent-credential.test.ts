@@ -342,7 +342,7 @@ describe('createSessionFromDid — revokeCredential', () => {
       humanKeys.privateKey,
     );
 
-    const jti = 'some-jti-abxagnts-180-d6';
+    const jti = 'revoke-local-only-jti-d6';
     const result = await session.revokeCredential(jti);
 
     // Local write succeeded, no SDK notification attempted.
@@ -370,7 +370,7 @@ describe('createSessionFromDid — revokeCredential', () => {
       humanKeys.privateKey,
     );
 
-    const jti = 'some-jti-abxagnts-180-d6-sdk-fail';
+    const jti = 'revoke-sdk-fail-jti-d6';
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       const result = await session.revokeCredential(jti);

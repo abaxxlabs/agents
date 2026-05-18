@@ -20,7 +20,8 @@
 
 import { z, type ZodIssue } from 'zod';
 import { RequestValidationError, type SafeValidationIssue } from './errors.js';
-import { expiresInToMs, parseDuration } from '../config.js';
+import { parseDuration } from '../config.js';
+export { assertExpiresInBound } from '../config.js';
 
 export type RequestSchema<T> = z.ZodType<T>;
 
@@ -214,28 +215,6 @@ export function validateRequest<T>(schema: RequestSchema<T>, input: unknown): T 
 export function assertUtf8MaxBytes(path: string, value: string, maxBytes: number): void {
   if (Buffer.from(value, 'utf-8').length > maxBytes) {
     throw new RequestValidationError([{ path, code: 'too_big' }], 413);
-  }
-}
-
-/**
- * Reject expiresIn values that exceed the configured credential maxTtl.
- * Call after Zod schema validation in route/tool handlers where config is available.
- *
- * @throws RequestValidationError with a 400 status naming the violated bound
- */
-export function assertExpiresInBound(
-  expiresIn: string | number,
-  maxTtlMs: number,
-): void {
-  if (expiresInToMs(expiresIn) > maxTtlMs) {
-    const maxSeconds = Math.floor(maxTtlMs / 1_000);
-    throw new RequestValidationError([
-      {
-        path: 'expiresIn',
-        code: 'too_big',
-        message: `expiresIn exceeds maximum credential TTL of ${maxSeconds}s`,
-      },
-    ]);
   }
 }
 

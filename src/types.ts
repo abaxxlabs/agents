@@ -91,7 +91,7 @@ export interface AgentScopeConfig {
   };
   credential?: {
     maxTtl?: string; // default: '24h'
-    clockSkew?: string; // default: '30s'
+    clockSkew?: string; // default: '5s' (VP checks only; VC exp/nbf are authoritative)
   };
   delegation?: {
     maxDepth?: number; // default: 2 (human→agent→worker)
@@ -289,7 +289,7 @@ export interface CreateAgentOptions {
  */
 export interface AgentSigner {
   /** Sign a JWT payload, returning a compact JWS string (EdDSA / Ed25519). */
-  signJwt(payload: Record<string, unknown>): string;
+  signJwt(payload: Record<string, unknown>): Promise<string>;
 }
 
 export interface RegisteredAgent {

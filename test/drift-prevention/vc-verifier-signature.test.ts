@@ -56,7 +56,7 @@ describe('VcVerifier required-revocationStore contract', () => {
     // upstream checks (issuer key, vc claims, scope shape, JTI, exp) before
     // reaching the revocation step. issueCredential produces the canonical
     // shape that takes the verify path all the way to revocation.
-    const jwt = issueCredential(human.did, human.privateKey, {
+    const jwt = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['patients.dob'],
       actions: ['read'],

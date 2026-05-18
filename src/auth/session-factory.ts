@@ -35,24 +35,14 @@ import {
 import { generateDidKeyFromSeed } from './did-key.js';
 import { base58Encode } from '../crypto/base58.js';
 import type { Logger } from '../logger.js';
-import { defaultLogger } from '../logger.js';
-import { expiresInToMs } from '../config.js';
-
-function assertExpiresInBound(
-  expiresIn: string | number,
-  maxTtlMs: number,
-): void {
-  if (expiresInToMs(expiresIn) > maxTtlMs) {
-    const maxSeconds = Math.floor(maxTtlMs / 1_000);
-    throw new Error(`expiresIn exceeds maximum credential TTL of ${maxSeconds}s`);
-  }
-}
+import { getLogger } from '../logger.js';
+import { assertExpiresInBound } from '../config.js';
 
 function revokeCredentialHelper(
   verifier: VcVerifier,
   sdk: IdSdkInstance | undefined,
   context?: string,
-  logger: Logger = defaultLogger,
+  logger: Logger = getLogger(),
 ): (credentialId: string) => Promise<{ sdkNotificationFailed?: Error }> {
   return async (credentialId: string) => {
     await verifier.revokeAsync(credentialId);
@@ -106,7 +96,7 @@ export function createSessionFromDid(
     issuerDid: string;
     credentialExp: number;
   },
-  logger: Logger = defaultLogger,
+  logger: Logger = getLogger(),
 ): AuthenticatedSession {
   return {
     humanDid,
@@ -253,7 +243,7 @@ export function createOidcSession(
   },
   sdk?: IdSdkInstance,
   ceiling: ScopeCeiling = unrestrictedCeiling(),
-  logger: Logger = defaultLogger,
+  logger: Logger = getLogger(),
 ): AuthenticatedSession {
   const seed = createHash('sha256')
     .update(identity.issuer + '\x00' + identity.sub)

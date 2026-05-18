@@ -38,7 +38,7 @@ describe('VC Verifier — T10 audience binding additions', () => {
   describe('backward compatibility (no options)', () => {
     it('existing scope-bearing VC still verifies without options', async () => {
       const now = Math.floor(Date.now() / 1000);
-      const jwt = createJwt(
+      const jwt = await createJwt(
         {
           iss: issuer.did,
           sub: agentA.did,
@@ -60,7 +60,7 @@ describe('VC Verifier — T10 audience binding additions', () => {
 
     it('scope check still rejects VC missing scope when no options passed', async () => {
       const now = Math.floor(Date.now() / 1000);
-      const jwt = createJwt(
+      const jwt = await createJwt(
         {
           iss: issuer.did,
           sub: agentA.did,
@@ -83,7 +83,7 @@ describe('VC Verifier — T10 audience binding additions', () => {
     it('binding VC without scope passes when skipScopeCheck: true', async () => {
       const now = Math.floor(Date.now() / 1000);
       // IdentityBindingCredential has no scope.columns by design
-      const jwt = createJwt(
+      const jwt = await createJwt(
         {
           iss: issuer.did,
           sub: agentA.did,
@@ -107,7 +107,7 @@ describe('VC Verifier — T10 audience binding additions', () => {
 
     it('binding VC without scope still fails WITHOUT skipScopeCheck', async () => {
       const now = Math.floor(Date.now() / 1000);
-      const jwt = createJwt(
+      const jwt = await createJwt(
         {
           iss: issuer.did,
           sub: agentA.did,
@@ -132,7 +132,7 @@ describe('VC Verifier — T10 audience binding additions', () => {
     it('skipScopeCheck does not affect other validity checks', async () => {
       // Expired binding VC should still be rejected even with skipScopeCheck
       const past = Math.floor(Date.now() / 1000) - 7200;
-      const jwt = createJwt(
+      const jwt = await createJwt(
         {
           iss: issuer.did,
           sub: agentA.did,
@@ -157,7 +157,7 @@ describe('VC Verifier — T10 audience binding additions', () => {
   describe('expectedSubject — confused-deputy prevention', () => {
     it('passes when sub matches expectedSubject', async () => {
       const now = Math.floor(Date.now() / 1000);
-      const jwt = createJwt(
+      const jwt = await createJwt(
         {
           iss: issuer.did,
           sub: agentA.did,
@@ -179,7 +179,7 @@ describe('VC Verifier — T10 audience binding additions', () => {
     it('rejects when sub does NOT match expectedSubject (confused-deputy)', async () => {
       const now = Math.floor(Date.now() / 1000);
       // VC was issued for agentA — agentB should NOT be able to use it
-      const jwt = createJwt(
+      const jwt = await createJwt(
         {
           iss: issuer.did,
           sub: agentA.did,
@@ -205,7 +205,7 @@ describe('VC Verifier — T10 audience binding additions', () => {
     it('subject check fires after signature check (signature still required)', async () => {
       // Tampered JWT — wrong signature — should fail on sig, not subject
       const now = Math.floor(Date.now() / 1000);
-      const validJwt = createJwt(
+      const validJwt = await createJwt(
         {
           iss: issuer.did,
           sub: agentA.did,
@@ -235,7 +235,7 @@ describe('VC Verifier — T10 audience binding additions', () => {
 
     it('no subject check when expectedSubject not passed (legacy callers)', async () => {
       const now = Math.floor(Date.now() / 1000);
-      const jwt = createJwt(
+      const jwt = await createJwt(
         {
           iss: issuer.did,
           sub: agentA.did,
@@ -261,7 +261,7 @@ describe('VC Verifier — T10 audience binding additions', () => {
   describe('skipScopeCheck + expectedSubject together', () => {
     it('binding VC passes with correct subject and skipScopeCheck', async () => {
       const now = Math.floor(Date.now() / 1000);
-      const jwt = createJwt(
+      const jwt = await createJwt(
         {
           iss: issuer.did,
           sub: agentA.did,
@@ -287,7 +287,7 @@ describe('VC Verifier — T10 audience binding additions', () => {
 
     it('binding VC fails with wrong subject even with skipScopeCheck', async () => {
       const now = Math.floor(Date.now() / 1000);
-      const jwt = createJwt(
+      const jwt = await createJwt(
         {
           iss: issuer.did,
           sub: agentA.did,

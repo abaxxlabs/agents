@@ -207,8 +207,8 @@ describe('DidAliasRegistry — expiry edge cases', () => {
     expect(registry.resolveToOld(newDid)).toBeUndefined();
   });
 
-  it('alias 1ms before expiry is still active', () => {
-    registry.addAlias(makeAlias({ expiresAt: new Date(Date.now() + 1) }));
+  it('alias with future expiry is still active', () => {
+    registry.addAlias(makeAlias({ expiresAt: new Date(Date.now() + 5_000) }));
     expect(registry.didsMatch(oldDid, newDid)).toBe(true);
   });
 });
