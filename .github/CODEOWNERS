@@ -9,3 +9,8 @@
 /.github/               @IanAbaxx
 /CLAUDE.md              @IanAbaxx
 /AGENTS.md              @IanAbaxx
+
+# Core component review assignments
+/src/auth/              @IanAbaxx @dchrast
+/src/storage/           @IanAbaxx @dchrast
+/src/crypto/            @IanAbaxx @dchrast
