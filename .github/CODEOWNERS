@@ -1,5 +1,5 @@
 # Default owner — all files require review from Ian
-*                       @IanAbaxx
+* @IanAbaxx
 
 # Core library and migrations — also require jdutchak
 /src/                   @IanAbaxx @jdutchak
@@ -9,3 +9,8 @@
 /.github/               @IanAbaxx
 /CLAUDE.md              @IanAbaxx
 /AGENTS.md              @IanAbaxx
+
+# Security-Critical Paths — Requires Infosec and Ian
+/src/auth/              @IanAbaxx @dchrastil
+/src/storage/           @IanAbaxx @dchrastil
+/src/crypto/            @IanAbaxx @dchrastil
