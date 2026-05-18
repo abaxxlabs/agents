@@ -11,6 +11,6 @@
 /AGENTS.md              @IanAbaxx
 
 # Security-Critical Paths — Requires Infosec and Ian
-/src/auth/              @IanAbaxx @dchrastil
-/src/storage/           @IanAbaxx @dchrastil
-/src/crypto/            @IanAbaxx @dchrastil
+/src/auth/              @IanAbaxx @dchrast
+/src/storage/           @IanAbaxx @dchrast
+/src/crypto/            @IanAbaxx @dchrast
