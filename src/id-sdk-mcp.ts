@@ -211,10 +211,10 @@ export function createIdSdkMcpAdapter(
       }) as Promise<string>;
     },
 
-    getSignerOptions(issuerDid: string, subjectDid?: string) {
+    getSignerOptions(issuerDid: string, subjectDid: string) {
       return callTool('vc_get_signer_options', {
         issuerDid,
-        ...(subjectDid ? { subjectDid } : {}),
+        subjectDid,
       }) as Promise<{ kid: string; issuerDid: string; subjectDid: string; signer: (data: Uint8Array) => Promise<Uint8Array> }>;
     },
 

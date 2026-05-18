@@ -65,7 +65,7 @@ function parsePackJson(
   return JSON.parse(stdout) as Array<{ filename: string; files: Array<{ path: string }> }>;
 }
 
-describe.sequential('package CLI contract', () => {
+describe('package CLI contract', () => {
   let tempRoot: string;
 
   beforeAll(() => {

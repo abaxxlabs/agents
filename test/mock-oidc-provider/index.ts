@@ -359,7 +359,7 @@ export class MockOidcServer {
    * Both tokens are real Ed25519-signed JWTs using createJwt() so VcVerifier can
    * verify them without special mocking.
    */
-  private handleToken(body: URLSearchParams | null, res: import('node:http').ServerResponse): void {
+  private async handleToken(body: URLSearchParams | null, res: import('node:http').ServerResponse): Promise<void> {
     if (!body) {
       json(res, 400, { error: 'invalid_request', description: 'Empty body' });
       return;
@@ -428,7 +428,7 @@ export class MockOidcServer {
       ...pending.extraClaims,
     };
 
-    const idToken = createJwt(baseClaims, this.signingKey.privateKey);
+    const idToken = await createJwt(baseClaims, this.signingKey.privateKey);
     const accessToken = randomBytes(24).toString('base64url'); // opaque access token
 
     // Record for userinfo lookups

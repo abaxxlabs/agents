@@ -30,8 +30,23 @@ function testOptions(config: unknown): { include?: string[]; exclude?: string[] 
   return (config as { test?: { include?: string[]; exclude?: string[] } }).test ?? {};
 }
 
+// vi.stubEnv unavailable under Bun — manual env stubs
+const _envStubs: Record<string, string | undefined> = {};
+function stubEnv(key: string, value: string | undefined): void {
+  if (!(key in _envStubs)) _envStubs[key] = process.env[key];
+  if (value === undefined) delete process.env[key];
+  else process.env[key] = value;
+}
+function unstubAllEnvs(): void {
+  for (const [k, v] of Object.entries(_envStubs)) {
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
+  Object.keys(_envStubs).forEach((k) => delete _envStubs[k]);
+}
+
 afterEach(() => {
-  vi.unstubAllEnvs();
+  unstubAllEnvs();
 });
 
 describe('release-readiness test gates', () => {
@@ -44,10 +59,10 @@ describe('release-readiness test gates', () => {
   });
 
   it('keeps integration opt-in flags fail-closed under a clean environment', async () => {
-    vi.stubEnv(KEYCHAIN_TESTS_ENV, undefined);
-    vi.stubEnv(LOOPBACK_TESTS_ENV, undefined);
-    vi.stubEnv(ABAXX_ONE_OIDC_TESTS_ENV, undefined);
-    vi.resetModules();
+    stubEnv(KEYCHAIN_TESTS_ENV, undefined);
+    stubEnv(LOOPBACK_TESTS_ENV, undefined);
+    stubEnv(ABAXX_ONE_OIDC_TESTS_ENV, undefined);
+    vi.resetModules?.();
 
     const gates = await import('./support/integration-gates.ts');
 

@@ -341,9 +341,9 @@ describe('MCP Identity Tools', () => {
   });
 
   describe('sign tool contract', () => {
-    it('server signer produces valid JWTs', () => {
+    it('server signer produces valid JWTs', async () => {
       const { serverIdentity } = createPhase2Fixtures();
-      const jwt = serverIdentity.signer.signJwt({
+      const jwt = await serverIdentity.signer.signJwt({
         iss: serverIdentity.did,
         iat: Math.floor(Date.now() / 1000),
         payload: 'agents-sign-v1:test-payload',
@@ -352,11 +352,11 @@ describe('MCP Identity Tools', () => {
       expect(jwt.split('.')).toHaveLength(3); // header.payload.signature
     });
 
-    it('domain separation prefix is applied', () => {
+    it('domain separation prefix is applied', async () => {
       const { serverIdentity } = createPhase2Fixtures();
       const payload = 'hello world';
       const prefixed = `agents-sign-v1:${payload}`;
-      const jwt = serverIdentity.signer.signJwt({
+      const jwt = await serverIdentity.signer.signJwt({
         iss: serverIdentity.did,
         payload: prefixed,
       });

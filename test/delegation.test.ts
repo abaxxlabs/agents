@@ -28,7 +28,7 @@ import {
   issueDelegatedCredential,
   createSigner,
 } from '../src/auth/index.js';
-import { CredentialInvalidError } from '../src/errors.js';
+import { CredentialInvalidError, UnknownIssuerError } from '../src/errors.js';
 import type { RegisteredAgent } from '../src/types.js';
 
 // ─── Fixtures ───────────────────────────────────────────────────
@@ -135,7 +135,7 @@ describe('Delegation', () => {
       const { human, supervisor, worker, engine } = createDelegationFixtures();
 
       // Human issues credential to supervisor
-      const supervisorCred = issueCredential(human.did, human.privateKey, {
+      const supervisorCred = await issueCredential(human.did, human.privateKey, {
         agent: supervisor.did,
         columns: ['patients.name', 'patients.dob', 'patients.diagnosis'],
         actions: ['read'],
@@ -143,7 +143,7 @@ describe('Delegation', () => {
       });
 
       // Supervisor delegates a subset to worker
-      const delegatedCred = issueDelegatedCredential(
+      const delegatedCred = await issueDelegatedCredential(
         supervisor.did,
         createSigner(supervisor.privateKey),
         supervisorCred,
@@ -177,14 +177,14 @@ describe('Delegation', () => {
 
       // Attacker forges a source credential (signed by an unknown key)
       const attacker = generateDidKey();
-      const forgedSourceCred = issueCredential(attacker.did, attacker.privateKey, {
+      const forgedSourceCred = await issueCredential(attacker.did, attacker.privateKey, {
         agent: supervisor.did,
         columns: ['patients.name', 'patients.dob', 'patients.diagnosis'],
         actions: ['read'],
         expiresIn: '4h',
       });
 
-      const delegatedCred = issueDelegatedCredential(
+      const delegatedCred = await issueDelegatedCredential(
         supervisor.did,
         createSigner(supervisor.privateKey),
         forgedSourceCred,
@@ -205,7 +205,7 @@ describe('Delegation', () => {
           table: 'patients',
           sql: 'SELECT name FROM patients',
         }),
-      ).rejects.toThrow(CredentialInvalidError);
+      ).rejects.toThrow(UnknownIssuerError);
     });
 
     it('rejects a delegated credential when the source credential issuer is not the human owner', async () => {
@@ -215,14 +215,14 @@ describe('Delegation', () => {
       const otherHuman = generateDidKey();
       verifier.registerKey(otherHuman.did, otherHuman.publicKey);
 
-      const sourceCred = issueCredential(otherHuman.did, otherHuman.privateKey, {
+      const sourceCred = await issueCredential(otherHuman.did, otherHuman.privateKey, {
         agent: supervisor.did,
         columns: ['patients.name', 'patients.dob'],
         actions: ['read'],
         expiresIn: '4h',
       });
 
-      const delegatedCred = issueDelegatedCredential(
+      const delegatedCred = await issueDelegatedCredential(
         supervisor.did,
         createSigner(supervisor.privateKey),
         sourceCred,
@@ -251,7 +251,7 @@ describe('Delegation', () => {
 
       // Supervisor issues a regular (non-delegated) credential directly —
       // but the C1 check requires issuer == human owner
-      const directCred = issueCredential(supervisor.did, supervisor.privateKey, {
+      const directCred = await issueCredential(supervisor.did, supervisor.privateKey, {
         agent: worker.did,
         columns: ['patients.name'],
         actions: ['read'],
@@ -273,14 +273,14 @@ describe('Delegation', () => {
     it('rejects a query when a worker presents two narrow delegated credentials from the same supervisor', async () => {
       const { human, supervisor, worker, engine } = createDelegationFixtures();
 
-      const supervisorCred = issueCredential(human.did, human.privateKey, {
+      const supervisorCred = await issueCredential(human.did, human.privateKey, {
         agent: supervisor.did,
         columns: ['patients.name', 'patients.dob', 'patients.diagnosis'],
         actions: ['read'],
         expiresIn: '4h',
       });
 
-      const credA = issueDelegatedCredential(
+      const credA = await issueDelegatedCredential(
         supervisor.did,
         createSigner(supervisor.privateKey),
         supervisorCred,
@@ -294,7 +294,7 @@ describe('Delegation', () => {
         },
       );
 
-      const credB = issueDelegatedCredential(
+      const credB = await issueDelegatedCredential(
         supervisor.did,
         createSigner(supervisor.privateKey),
         supervisorCred,
@@ -322,14 +322,14 @@ describe('Delegation', () => {
     it('accepts a single delegated credential covering the full authorized scope', async () => {
       const { human, supervisor, worker, engine } = createDelegationFixtures();
 
-      const supervisorCred = issueCredential(human.did, human.privateKey, {
+      const supervisorCred = await issueCredential(human.did, human.privateKey, {
         agent: supervisor.did,
         columns: ['patients.name', 'patients.dob', 'patients.diagnosis'],
         actions: ['read'],
         expiresIn: '4h',
       });
 
-      const credFull = issueDelegatedCredential(
+      const credFull = await issueDelegatedCredential(
         supervisor.did,
         createSigner(supervisor.privateKey),
         supervisorCred,

@@ -53,7 +53,7 @@ describe('release npm cache guard', () => {
     await expect(stat(cachePath)).resolves.toMatchObject({ uid: process.getuid?.() });
   });
 
-  it.runIf(typeof process.getuid === 'function')(
+  it.skipIf(typeof process.getuid !== 'function')(
     'reports an actionable ownership repair when the cache owner is wrong',
     async () => {
       const cachePath = path.join(tmpRoot, 'cache');

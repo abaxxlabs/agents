@@ -46,7 +46,7 @@ export type { MasterKey } from './crypto/master-key.js';
 // ─── Logger ────────────────────────────────────────────────────────
 
 export type { Logger } from './logger.js';
-export { defaultLogger } from './logger.js';
+export { defaultLogger, getLogger } from './logger.js';
 
 // ─── Redaction helpers ──────────────────────────────────────────────
 
@@ -108,6 +108,7 @@ export {
   QueryRejectedError,
   ScopeViolationError,
   CredentialReplayedError,
+  TtlExceededError,
   CapabilityRequiresPaidTierError,
   ParentCredentialRequestFailedError,
   DiscoveryEndpointBlockedError,
@@ -199,7 +200,6 @@ export {
 export {
   generateDidKey,
   issueCredential,
-  issueDelegatedCredential,
   issueCredentialFromParent,
   createMockSession,
   createOidcSession,

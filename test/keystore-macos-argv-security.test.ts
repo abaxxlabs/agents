@@ -14,33 +14,34 @@
 
 // Asserts MacOsKeychainBackend never places the secret in argv (module-mocked because ESM namespace exports aren't spyable with vi.spyOn).
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi, type MockedFunction } from 'vitest';
 
-vi.mock('node:child_process', async (importOriginal) => {
-  const mod = await importOriginal<typeof import('node:child_process')>();
-  return {
-    ...mod,
-    spawnSync: vi.fn(),
-    execSync: vi.fn(),
-  };
-});
+vi.mock('node:child_process', () => ({
+  spawnSync: vi.fn(),
+  execSync: vi.fn(),
+}));
 
 import { spawnSync, execSync } from 'node:child_process';
+
+// vi.mocked() unavailable under Bun — manual cast
+function asMock<T extends (...args: any[]) => any>(fn: T): MockedFunction<T> {
+  return fn as MockedFunction<T>;
+}
 import { MacOsKeychainBackend } from '../src/identity/keystore.js';
 
 describe('MacOsKeychainBackend — secret never in argv', () => {
   const secret = 'super-secret-key-material-not-in-argv-xyz';
 
   beforeEach(() => {
-    vi.mocked(spawnSync).mockReset();
-    vi.mocked(execSync).mockReset();
-    vi.mocked(execSync).mockImplementation(() => {
+    asMock(spawnSync).mockReset();
+    asMock(execSync).mockReset();
+    asMock(execSync).mockImplementation(() => {
       throw new Error('execSync must not be used for keychain secret I/O');
     });
   });
 
   it('write() feeds the secret via stdin; argv has no secret substring', async () => {
-    vi.mocked(spawnSync).mockImplementation((command, args, options) => {
+    asMock(spawnSync).mockImplementation((command, args, options) => {
       const argv = [String(command), ...((args as string[] | undefined) ?? [])];
       expect(argv.join('\0').includes(secret)).toBe(false);
       const input = options && typeof options === 'object' && 'input' in options ? options.input : undefined;
@@ -59,16 +60,16 @@ describe('MacOsKeychainBackend — secret never in argv', () => {
     const backend = new MacOsKeychainBackend('agents-test-argv');
     await backend.write('account-key', secret);
 
-    expect(vi.mocked(spawnSync)).toHaveBeenCalled();
-    expect(vi.mocked(execSync)).not.toHaveBeenCalled();
-    for (const call of vi.mocked(spawnSync).mock.calls) {
+    expect(asMock(spawnSync)).toHaveBeenCalled();
+    expect(asMock(execSync)).not.toHaveBeenCalled();
+    for (const call of asMock(spawnSync).mock.calls) {
       const argv = [String(call[0]), ...((call[1] as string[] | undefined) ?? [])];
       expect(argv.join('\0').includes(secret)).toBe(false);
     }
   });
 
   it('read() returns secret from stdout; argv has no secret substring', async () => {
-    vi.mocked(spawnSync).mockImplementation((command, args) => {
+    asMock(spawnSync).mockImplementation((command, args) => {
       const argv = [String(command), ...((args as string[] | undefined) ?? [])];
       expect(argv.join('\0').includes(secret)).toBe(false);
       return {
@@ -86,9 +87,9 @@ describe('MacOsKeychainBackend — secret never in argv', () => {
     const out = await backend.read('lookup-key');
 
     expect(out).toBe(secret);
-    expect(vi.mocked(spawnSync)).toHaveBeenCalled();
-    expect(vi.mocked(execSync)).not.toHaveBeenCalled();
-    for (const call of vi.mocked(spawnSync).mock.calls) {
+    expect(asMock(spawnSync)).toHaveBeenCalled();
+    expect(asMock(execSync)).not.toHaveBeenCalled();
+    for (const call of asMock(spawnSync).mock.calls) {
       const argv = [String(call[0]), ...((call[1] as string[] | undefined) ?? [])];
       expect(argv.join('\0').includes(secret)).toBe(false);
     }
@@ -96,7 +97,7 @@ describe('MacOsKeychainBackend — secret never in argv', () => {
 
   it('write() duplicate path (-U retry) still keeps secret out of argv', async () => {
     let callIdx = 0;
-    vi.mocked(spawnSync).mockImplementation((command, args, options) => {
+    asMock(spawnSync).mockImplementation((command, args, options) => {
       const argv = [String(command), ...((args as string[] | undefined) ?? [])];
       expect(argv.join('\0').includes(secret)).toBe(false);
       expect(String((options as { input?: unknown })?.input ?? '')).toBe(secret);
@@ -126,10 +127,10 @@ describe('MacOsKeychainBackend — secret never in argv', () => {
     const backend = new MacOsKeychainBackend('agents-test-argv');
     await backend.write('dup-key', secret);
 
-    expect(vi.mocked(spawnSync).mock.calls.length).toBe(2);
+    expect(asMock(spawnSync).mock.calls.length).toBe(2);
     const secondArgv = [
-      String(vi.mocked(spawnSync).mock.calls[1][0]),
-      ...((vi.mocked(spawnSync).mock.calls[1][1] as string[] | undefined) ?? []),
+      String(asMock(spawnSync).mock.calls[1][0]),
+      ...((asMock(spawnSync).mock.calls[1][1] as string[] | undefined) ?? []),
     ];
     expect(secondArgv.includes('-U')).toBe(true);
     expect(secondArgv.join('\0').includes(secret)).toBe(false);

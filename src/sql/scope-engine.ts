@@ -193,7 +193,7 @@ export class ScopeEngine {
         );
       }
       if (!isAlreadyVP && agent?.signer) {
-        jwtToVerify = createPresentation(jwt, options.agent, agent.signer, {
+        jwtToVerify = await createPresentation(jwt, options.agent, agent.signer, {
           audience: this.verifierDid,
         });
       }

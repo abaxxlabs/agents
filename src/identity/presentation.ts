@@ -90,12 +90,12 @@ export interface CreatePresentationOptions {
  * @param options    Optional audience binding, nonce override, and lifetime.
  * @returns          A signed VP JWT (compact JWS) containing the VC.
  */
-export function createPresentation(
+export async function createPresentation(
   vcJwt: string,
   agentDid: string,
   signer: AgentSigner,
   options: CreatePresentationOptions = {},
-): string {
+): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const nonce = options.nonce || generateUuid7();
   // parseDuration throws on malformed input — surfaces misconfiguration at call time.
@@ -124,5 +124,5 @@ export function createPresentation(
     payload.aud = options.audience;
   }
 
-  return signer.signJwt(payload);
+  return await signer.signJwt(payload);
 }

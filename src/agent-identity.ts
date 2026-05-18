@@ -139,7 +139,6 @@ interface AgentIdentityInternals {
   auditLogger: AuditLogger;
   agentsMap: Map<string, RegisteredAgent>;
   verifierDid: string;
-  masterKey: MasterKey;
 }
 
 // ─── AgentIdentity Class ───────────────────────────────────────────────────────
@@ -266,7 +265,6 @@ export class AgentIdentity {
       auditLogger,
       agentsMap: instance.agents,
       verifierDid: instance.verifierDid,
-      masterKey,
     };
 
     return [instance, internals];

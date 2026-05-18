@@ -46,14 +46,14 @@ export class PostgresAuditStore implements AuditStore {
    * Prevents cross-process hash chain forks at the DB level.
    */
   async appendWithChainLock(
-    buildRecord: (lastRecord: AuditRecord | null) => AuditRecord,
+    buildRecord: (lastRecord: AuditRecord | null) => AuditRecord | Promise<AuditRecord>,
   ): Promise<AuditRecord> {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
       await client.query('SELECT pg_advisory_xact_lock(1234567890)');
       const lastRecord = await this.loadLastRecordFrom(client);
-      const record = buildRecord(lastRecord);
+      const record = await buildRecord(lastRecord);
       await this.insertRecord(client, record);
       await client.query('COMMIT');
       return record;

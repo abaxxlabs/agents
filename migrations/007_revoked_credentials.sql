@@ -1,6 +1,6 @@
 -- Migration 007: revoked_credentials
 --
--- ABXAGNTS-180 — makes JTI revocation durable across process restart and coherent
+--  — makes JTI revocation durable across process restart and coherent
 -- across instances. Previously, revocations lived in a process-local Set<string>
 -- inside VcVerifier and disappeared on restart — a security-posture gap.
 --

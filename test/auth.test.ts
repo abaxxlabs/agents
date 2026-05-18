@@ -38,11 +38,11 @@ describe('Auth', () => {
   });
 
   describe('issueCredential (legacy)', () => {
-    it('creates a valid JWT credential', () => {
+    it('creates a valid JWT credential', async () => {
       const human = generateDidKey();
       const agent = generateDidKey();
 
-      const jwt = issueCredential(human.did, human.privateKey, {
+      const jwt = await issueCredential(human.did, human.privateKey, {
         agent: agent.did,
         columns: ['patients.name', 'patients.dob'],
         actions: ['read'],
@@ -61,11 +61,11 @@ describe('Auth', () => {
       expect(payload.vc?.credentialSubject?.scope?.actions).toEqual(['read']);
     });
 
-    it('sets correct expiry', () => {
+    it('sets correct expiry', async () => {
       const human = generateDidKey();
       const agent = generateDidKey();
 
-      const jwt = issueCredential(human.did, human.privateKey, {
+      const jwt = await issueCredential(human.did, human.privateKey, {
         agent: agent.did,
         columns: ['patients.name'],
         actions: ['read'],
@@ -78,25 +78,25 @@ describe('Auth', () => {
       expect(Math.abs((payload.exp ?? 0) - expectedExp)).toBeLessThan(2);
     });
 
-    it('signature is verifiable with human public key', () => {
+    it('signature is verifiable with human public key', async () => {
       const human = generateDidKey();
       const agent = generateDidKey();
 
-      const jwt = issueCredential(human.did, human.privateKey, {
+      const jwt = await issueCredential(human.did, human.privateKey, {
         agent: agent.did,
         columns: ['patients.name'],
         actions: ['read'],
         expiresIn: '4h',
       });
 
-      expect(verifyJwtSignature(jwt, human.publicKey)).toBe(true);
+      expect(await verifyJwtSignature(jwt, human.publicKey)).toBe(true);
     });
 
-    it('includes metadata in credential', () => {
+    it('includes metadata in credential', async () => {
       const human = generateDidKey();
       const agent = generateDidKey();
 
-      const jwt = issueCredential(human.did, human.privateKey, {
+      const jwt = await issueCredential(human.did, human.privateKey, {
         agent: agent.did,
         columns: ['patients.name'],
         actions: ['read'],
@@ -108,18 +108,18 @@ describe('Auth', () => {
       expect(payload.vc?.credentialSubject?.department).toBe('claims');
     });
 
-    it('rejects invalid duration format', () => {
+    it('rejects invalid duration format', async () => {
       const human = generateDidKey();
       const agent = generateDidKey();
 
-      expect(() =>
+      await expect(
         issueCredential(human.did, human.privateKey, {
           agent: agent.did,
           columns: ['patients.name'],
           actions: ['read'],
           expiresIn: 'invalid',
         }),
-      ).toThrow('Invalid duration');
+      ).rejects.toThrow('Invalid duration');
     });
   });
 

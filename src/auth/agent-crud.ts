@@ -27,7 +27,7 @@ import {
 } from '../errors.js';
 import type { IdSdkInstance } from '../id-sdk-types.js';
 import type { Logger } from '../logger.js';
-import { defaultLogger } from '../logger.js';
+import { getLogger } from '../logger.js';
 
 /**
  * Create a new agent identity (DID + key pair) and register it in the store.
@@ -99,7 +99,7 @@ export async function restoreAgents(
   agents: AgentStore,
   masterKey: MasterKey,
   verifier: VcVerifier,
-  logger: Logger = defaultLogger,
+  logger: Logger = getLogger(),
 ): Promise<RestoreAgentsResult> {
   let rows: AgentRecord[];
   try {

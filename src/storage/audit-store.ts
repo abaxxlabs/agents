@@ -114,7 +114,7 @@ export interface AuditStore {
    * loadLastRecordLocked()+append() when absent.
    */
   appendWithChainLock?(
-    buildRecord: (lastRecord: AuditRecord | null) => AuditRecord,
+    buildRecord: (lastRecord: AuditRecord | null) => AuditRecord | Promise<AuditRecord>,
   ): Promise<AuditRecord>;
 
   /**

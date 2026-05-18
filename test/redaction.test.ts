@@ -56,8 +56,8 @@ describe('createSigner redaction', () => {
     expect(out).not.toContain(privateKeyHex);
   });
 
-  it('signJwt still works after redaction wiring', () => {
-    const jwt = signer.signJwt({ sub: 'test' });
+  it('signJwt still works after redaction wiring', async () => {
+    const jwt = await signer.signJwt({ sub: 'test' });
     expect(jwt.split('.')).toHaveLength(3);
   });
 });

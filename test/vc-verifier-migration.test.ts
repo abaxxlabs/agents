@@ -31,7 +31,7 @@ describe('VcVerifier — migration credential edge cases', () => {
     verifier.registerKey(newIdentity.did, newIdentity.publicKey);
   });
 
-  function createMigrationCredential(overrides?: Record<string, unknown>): string {
+  async function createMigrationCredential(overrides?: Record<string, unknown>): Promise<string> {
     const now = Math.floor(Date.now() / 1000);
     const payload = {
       iss: tenantAdmin.did,
@@ -56,7 +56,7 @@ describe('VcVerifier — migration credential edge cases', () => {
     return signer.signJwt(payload);
   }
 
-  function createScopeCredential(): string {
+  async function createScopeCredential(): Promise<string> {
     const now = Math.floor(Date.now() / 1000);
     const payload = {
       iss: tenantAdmin.did,
@@ -79,7 +79,7 @@ describe('VcVerifier — migration credential edge cases', () => {
   // ─── Missing individual claims ──────────────────────────────────
 
   it('rejects migration credential with missing migrationMethod', async () => {
-    const jwt = createMigrationCredential({ migrationMethod: undefined });
+    const jwt = await createMigrationCredential({ migrationMethod: undefined });
     const result = await verifier.verify(jwt, { skipScopeCheck: true });
 
     expect(result.valid).toBe(false);
@@ -88,7 +88,7 @@ describe('VcVerifier — migration credential edge cases', () => {
   });
 
   it('rejects migration credential with missing oidcIssuer', async () => {
-    const jwt = createMigrationCredential({ oidcIssuer: undefined });
+    const jwt = await createMigrationCredential({ oidcIssuer: undefined });
     const result = await verifier.verify(jwt, { skipScopeCheck: true });
 
     expect(result.valid).toBe(false);
@@ -97,7 +97,7 @@ describe('VcVerifier — migration credential edge cases', () => {
   });
 
   it('rejects migration credential with missing migratedAt', async () => {
-    const jwt = createMigrationCredential({ migratedAt: undefined });
+    const jwt = await createMigrationCredential({ migratedAt: undefined });
     const result = await verifier.verify(jwt, { skipScopeCheck: true });
 
     expect(result.valid).toBe(false);
@@ -109,8 +109,8 @@ describe('VcVerifier — migration credential edge cases', () => {
 
   it('VP filters out invalid migration VC and verifies scope VC', async () => {
     // Create a migration credential with missing required claims
-    const badMigrationJwt = createMigrationCredential({ previousDid: undefined });
-    const scopeJwt = createScopeCredential();
+    const badMigrationJwt = await createMigrationCredential({ previousDid: undefined });
+    const scopeJwt = await createScopeCredential();
 
     // Wrap both in a VP — migration credential first, scope credential second
     const agentSigner = createSigner(newIdentity.privateKey);
@@ -126,7 +126,7 @@ describe('VcVerifier — migration credential edge cases', () => {
         verifiableCredential: [badMigrationJwt, scopeJwt],
       },
     };
-    const vpJwt = agentSigner.signJwt(vpPayload);
+    const vpJwt = await agentSigner.signJwt(vpPayload);
 
     const result = await verifier.verify(vpJwt, { skipScopeCheck: true });
 
@@ -140,7 +140,7 @@ describe('VcVerifier — migration credential edge cases', () => {
   // ─── VP with only a scope VC (no migration) ─────────────────────
 
   it('VP with scope-only VCs returns VALID (no migration detection)', async () => {
-    const scopeJwt = createScopeCredential();
+    const scopeJwt = await createScopeCredential();
 
     const agentSigner = createSigner(newIdentity.privateKey);
     const now = Math.floor(Date.now() / 1000);
@@ -155,7 +155,7 @@ describe('VcVerifier — migration credential edge cases', () => {
         verifiableCredential: [scopeJwt],
       },
     };
-    const vpJwt = agentSigner.signJwt(vpPayload);
+    const vpJwt = await agentSigner.signJwt(vpPayload);
 
     const result = await verifier.verify(vpJwt);
     expect(result.valid).toBe(true);
@@ -166,7 +166,7 @@ describe('VcVerifier — migration credential edge cases', () => {
   // ─── VP with garbled inner VC ───────────────────────────────────
 
   it('VP skips garbled inner VC and still processes scope VC', async () => {
-    const scopeJwt = createScopeCredential();
+    const scopeJwt = await createScopeCredential();
     const garbledJwt = 'not.a.valid.jwt';
 
     const agentSigner = createSigner(newIdentity.privateKey);
@@ -182,7 +182,7 @@ describe('VcVerifier — migration credential edge cases', () => {
         verifiableCredential: [garbledJwt, scopeJwt],
       },
     };
-    const vpJwt = agentSigner.signJwt(vpPayload);
+    const vpJwt = await agentSigner.signJwt(vpPayload);
 
     // The garbled JWT should be caught by the try/catch in the migration
     // scan loop. The VP verification then falls through to innerVCs[0],
@@ -194,7 +194,7 @@ describe('VcVerifier — migration credential edge cases', () => {
   // ─── VP with only migration credentials (no scope VCs) ──────────
 
   it('VP with only a valid migration credential returns MIGRATION_DETECTED', async () => {
-    const migrationJwt = createMigrationCredential();
+    const migrationJwt = await createMigrationCredential();
 
     const agentSigner = createSigner(newIdentity.privateKey);
     const now = Math.floor(Date.now() / 1000);
@@ -209,7 +209,7 @@ describe('VcVerifier — migration credential edge cases', () => {
         verifiableCredential: [migrationJwt],
       },
     };
-    const vpJwt = agentSigner.signJwt(vpPayload);
+    const vpJwt = await agentSigner.signJwt(vpPayload);
 
     const result = await verifier.verify(vpJwt, { skipScopeCheck: true });
     expect(result.valid).toBe(true);
@@ -218,7 +218,7 @@ describe('VcVerifier — migration credential edge cases', () => {
   });
 
   it('VP with only invalid migration credentials returns MALFORMED', async () => {
-    const badJwt = createMigrationCredential({ previousDid: undefined });
+    const badJwt = await createMigrationCredential({ previousDid: undefined });
 
     const agentSigner = createSigner(newIdentity.privateKey);
     const now = Math.floor(Date.now() / 1000);
@@ -233,7 +233,7 @@ describe('VcVerifier — migration credential edge cases', () => {
         verifiableCredential: [badJwt],
       },
     };
-    const vpJwt = agentSigner.signJwt(vpPayload);
+    const vpJwt = await agentSigner.signJwt(vpPayload);
 
     const result = await verifier.verify(vpJwt, { skipScopeCheck: true });
     expect(result.valid).toBe(false);
@@ -244,11 +244,11 @@ describe('VcVerifier — migration credential edge cases', () => {
   // ─── VP with two migration credentials ─────────────────────────
 
   it('VP with two migration credentials returns first valid one', async () => {
-    const migration1 = createMigrationCredential({
+    const migration1 = await createMigrationCredential({
       previousDid: 'did:key:z6MkFirst',
       oidcSubject: 'first@corp.com',
     });
-    const migration2 = createMigrationCredential({
+    const migration2 = await createMigrationCredential({
       previousDid: 'did:key:z6MkSecond',
       oidcSubject: 'second@corp.com',
     });
@@ -266,7 +266,7 @@ describe('VcVerifier — migration credential edge cases', () => {
         verifiableCredential: [migration1, migration2],
       },
     };
-    const vpJwt = agentSigner.signJwt(vpPayload);
+    const vpJwt = await agentSigner.signJwt(vpPayload);
 
     const result = await verifier.verify(vpJwt, { skipScopeCheck: true });
     expect(result.valid).toBe(true);
@@ -279,7 +279,7 @@ describe('VcVerifier — migration credential edge cases', () => {
   //     valid migration claims (ensures full extraction works) ──────
 
   it('extracts all five migration claims correctly', async () => {
-    const jwt = createMigrationCredential({
+    const jwt = await createMigrationCredential({
       previousDid: 'did:key:z6MkSpecific',
       oidcSubject: 'specific-user@corp.com',
       migrationMethod: 'admin-verified',

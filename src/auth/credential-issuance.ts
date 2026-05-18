@@ -17,7 +17,7 @@ import type { IssueCredentialOptions, AgentSigner } from '../types.js';
 import { createJwt } from '../vc-verifier.js';
 import { decodeJwt } from '../jwt-utils.js';
 import { validateScope, validateExpiry, validateChain } from './delegation-policy.js';
-import { expiresInToMs } from '../config.js';
+import { expiresInToMs, assertExpiresInBound } from '../config.js';
 import {
   assertScopeFitsInCeiling,
   type ScopeCeiling,
@@ -25,6 +25,16 @@ import {
 } from './ceiling.js';
 import type { IdSdkInstance } from '../id-sdk-types.js';
 
+/** Match short-form and JSON-LD namespaced URI forms (`#`/`/` suffix) without full context resolution. */
+export function isDelegatedScopeCredentialType(types: readonly unknown[]): boolean {
+  return types.some(
+    (t): t is string =>
+      typeof t === 'string' &&
+      (t === 'DelegatedAgentScopeCredential' ||
+        t.endsWith('#DelegatedAgentScopeCredential') ||
+        t.endsWith('/DelegatedAgentScopeCredential')),
+  );
+}
 
 /**
  * Issue a scoped Verifiable Credential via the platform identity SDK.
@@ -58,7 +68,7 @@ export async function issueCredentialWithSdk(
     'AgentScopeCredential',
   );
 
-  const signerOptions = await sdk.vc.getSignerOptions(humanDid);
+  const signerOptions = await sdk.vc.getSignerOptions(humanDid, options.agent);
   return sdk.vc.signCredential(vc, { ...signerOptions, expirationDate });
 }
 
@@ -69,11 +79,11 @@ export async function issueCredentialWithSdk(
  * @param humanPrivateKey - raw 32-byte Ed25519 private key
  * @param options - scope, actions, TTL, and target agent
  */
-export function issueCredential(
+export async function issueCredential(
   humanDid: string,
   humanPrivateKey: Uint8Array,
   options: IssueCredentialOptions,
-): string {
+): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const expiresInMs = expiresInToMs(options.expiresIn);
   const exp = now + Math.floor(expiresInMs / 1000);
@@ -99,7 +109,7 @@ export function issueCredential(
     },
   };
 
-  return createJwt(payload, humanPrivateKey);
+  return await createJwt(payload, humanPrivateKey);
 }
 
 /**
@@ -112,7 +122,7 @@ export function issueCredential(
  * @param sourceScope - the supervisor's authorized scope
  * @param options - target agent, requested scope subset, TTL, and metadata
  */
-export function issueDelegatedCredential(
+export async function issueDelegatedCredential(
   delegatorDid: string,
   delegatorSigner: AgentSigner,
   sourceCredentialJwt: string,
@@ -127,7 +137,7 @@ export function issueDelegatedCredential(
     operatorMaxDepth?: number;
     metadata?: Record<string, unknown>;
   },
-): string {
+): Promise<string> {
   validateScope(sourceScope, { columns: options.columns, actions: options.actions });
 
   const sourcePayload = decodeJwt(sourceCredentialJwt).payload;
@@ -136,6 +146,15 @@ export function issueDelegatedCredential(
     throw new Error(
       'Delegation error: source credential has an empty delegationChain. ' +
         'A delegated credential must have at least one ancestor in the chain.',
+    );
+  }
+  const rawType = sourcePayload.vc?.type;
+  const sourceVcType: unknown[] = Array.isArray(rawType)
+    ? rawType
+    : typeof rawType === 'string' ? [rawType] : [];
+  if (isDelegatedScopeCredentialType(sourceVcType)) {
+    throw new Error(
+      'Delegation error: source credential is itself delegated. Re-delegation is not permitted.',
     );
   }
   const effectiveDepth = Array.isArray(sourceChain) ? sourceChain.length + 1 : 1;
@@ -171,7 +190,7 @@ export function issueDelegatedCredential(
     },
   };
 
-  return delegatorSigner.signJwt(payload);
+  return await delegatorSigner.signJwt(payload);
 }
 
 /**
@@ -204,11 +223,7 @@ export async function issueCredentialFromParent(
       opts.context,
     );
     if (opts.ceiling.credentialMaxTtlMs !== undefined) {
-      const requestedMs = expiresInToMs(options.expiresIn);
-      if (requestedMs > opts.ceiling.credentialMaxTtlMs) {
-        const maxSeconds = Math.floor(opts.ceiling.credentialMaxTtlMs / 1_000);
-        throw new Error(`expiresIn exceeds maximum credential TTL of ${maxSeconds}s`);
-      }
+      assertExpiresInBound(options.expiresIn, opts.ceiling.credentialMaxTtlMs);
     }
   }
   return provider.requestAgentCredential(accessToken, agentDid, options);

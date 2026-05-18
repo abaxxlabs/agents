@@ -22,7 +22,6 @@
 
 import { AuthUnavailableError, DiscoveryEndpointBlockedError } from '../errors.js';
 import type { Logger } from '../logger.js';
-import { defaultLogger } from '../logger.js';
 
 export const DEFAULT_DISCOVERY_TTL_MS = 60 * 60 * 1000; // 1 hour
 

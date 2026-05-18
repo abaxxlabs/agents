@@ -32,7 +32,7 @@ import type { DidAliasRegistry } from './did-alias.js';
  * Create a compact JWS signature over an audit record payload.
  * Uses the agent's opaque signer (Ed25519 / EdDSA).
  */
-function signAuditRecord(record: Omit<AuditRecord, 'signature'>, signer: AgentSigner): string {
+async function signAuditRecord(record: Omit<AuditRecord, 'signature'>, signer: AgentSigner): Promise<string> {
   const data: Record<string, unknown> = {
     id: record.id,
     timestamp: record.timestamp,
@@ -55,7 +55,7 @@ function signAuditRecord(record: Omit<AuditRecord, 'signature'>, signer: AgentSi
     data,
   };
 
-  return signer.signJwt(payload);
+  return await signer.signJwt(payload);
 }
 
 /**
@@ -194,7 +194,7 @@ export class AuditLogger {
     this.initialized = true;
   }
 
-  private buildQueryRecord(entry: AuditEntry, signer: AgentSigner): AuditRecord {
+  private async buildQueryRecord(entry: AuditEntry, signer: AgentSigner): Promise<AuditRecord> {
     const record: Omit<AuditRecord, 'signature'> = {
       id: uuidv4(),
       timestamp: new Date().toISOString(),
@@ -211,15 +211,15 @@ export class AuditLogger {
       orgId: entry.orgId,
     };
 
-    return { ...record, signature: signAuditRecord(record, signer) };
+    return { ...record, signature: await signAuditRecord(record, signer) };
   }
 
-  private buildRejectionRecord(
+  private async buildRejectionRecord(
     reason: string,
     reasonCode: string,
     signer?: AgentSigner,
     context?: { agentDid?: string; ownerDid?: string; sql?: string; orgId?: string },
-  ): AuditRecord {
+  ): Promise<AuditRecord> {
     const record: Omit<AuditRecord, 'signature'> = {
       id: uuidv4(),
       timestamp: new Date().toISOString(),
@@ -238,16 +238,16 @@ export class AuditLogger {
       orgId: context?.orgId,
     };
 
-    return { ...record, signature: signer ? signAuditRecord(record, signer) : 'unsigned' };
+    return { ...record, signature: signer ? await signAuditRecord(record, signer) : 'unsigned' };
   }
 
   private async appendBuiltRecord(
     operation: 'query' | 'rejection',
-    buildRecord: () => AuditRecord,
+    buildRecord: () => Promise<AuditRecord>,
   ): Promise<AuditRecord> {
     if (!this.enabled) {
       if (!this.initialized) this.setChainHead(null);
-      const record = buildRecord();
+      const record = await buildRecord();
       this.advanceChain(record);
       return record;
     }
@@ -259,10 +259,10 @@ export class AuditLogger {
       let buildError: unknown;
 
       try {
-        fullRecord = await appendWithChainLock((lastRecord) => {
+        fullRecord = await appendWithChainLock(async (lastRecord) => {
           this.setChainHead(lastRecord);
           try {
-            fullRecord = buildRecord();
+            fullRecord = await buildRecord();
             return fullRecord;
           } catch (err) {
             buildError = err;
@@ -278,11 +278,10 @@ export class AuditLogger {
     }
 
     await this.initializeUnlocked();
-    const fullRecord = buildRecord();
+    const fullRecord = await buildRecord();
 
     try {
       await store.append(fullRecord);
-      // Advance hash AFTER successful persist to prevent chain gaps.
       this.advanceChain(fullRecord);
       return fullRecord;
     } catch (err) {
@@ -294,7 +293,7 @@ export class AuditLogger {
     operation: 'query' | 'rejection',
     err: unknown,
     _fullRecord?: AuditRecord,
-    _buildRecord?: () => AuditRecord,
+    _buildRecord?: () => Promise<AuditRecord>,
   ): AuditRecord {
     const reason = err instanceof Error ? err.message : 'Unknown error';
     this.emitAuditWriteFailedTelemetry({ operation, error: err });
@@ -374,7 +373,7 @@ export class AuditLogger {
    */
   async verifyRecord(record: AuditRecord, agentPublicKey: Uint8Array): Promise<boolean> {
     try {
-      return verifyJwtSignature(record.signature, agentPublicKey);
+      return await verifyJwtSignature(record.signature, agentPublicKey);
     } catch {
       return false;
     }
