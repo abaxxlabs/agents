@@ -148,7 +148,7 @@
     "@decentralized-identity/ion-pow-sdk": "1.0.17",
     "@decentralized-identity/ion-sdk": "1.0.1",
     "@dwn-protocol/id": "0.1.6",
-    "@libp2p/kad-dht": "9.3.8",
+    "@libp2p/kad-dht": "16.2.6",
     "@libp2p/mplex": "8.0.4",
     "@libp2p/webrtc-star": "7.0.0",
     "@modelcontextprotocol/sdk": "1.29.0",
