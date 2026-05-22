@@ -28,7 +28,7 @@
 
 import { randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
 import type { MasterKey } from './crypto/master-key.js';
-import { DecryptionFailedError } from './errors.js';
+import { DecryptionFailedError } from './errors/index.js';
 
 const VERSION = 0x01;
 const IV_LENGTH = 12;
@@ -272,3 +272,5 @@ export function decryptRow(
 
   return { decrypted: result, columnsDecrypted, columnsEncrypted };
 }
+
+export type { ColumnKeyRecord, EncryptedColumnMeta, ColumnKeyMap } from './types/encryption.js';

@@ -36,7 +36,7 @@
  */
 
 import { VcVerifier, decodeJwt } from '../vc-verifier.js';
-import type { VerificationResult, VerifyOptions, DecodedCredential } from '../types.js';
+import type { VerificationResult, VerifyOptions, DecodedCredential } from '../types/verification.js';
 import type { TrustAnchorStore } from '../discovery/trust-anchor.js';
 import { CapabilityEngine } from '../capability/engine.js';
 import type { CapabilitySet } from '../capability/types.js';
@@ -45,7 +45,7 @@ import {
   CredentialInvalidError,
   CredentialMalformedError,
   UnknownIssuerError,
-} from '../errors.js';
+} from '../errors/index.js';
 
 // ─── Layer 2 Error Types ──────────────────────────────────────────────────────
 

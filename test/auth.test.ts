@@ -1,19 +1,3 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-// Unit tests for DID generation, credential issuance, mock sessions, and OIDC flow.
-
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { generateDidKey, issueCredential, createMockSession } from '../src/auth/index.js';
 import { issueCredentialFromParent } from '../src/auth/agent.js';
@@ -38,11 +22,11 @@ describe('Auth', () => {
   });
 
   describe('issueCredential (legacy)', () => {
-    it('creates a valid JWT credential', () => {
+    it('creates a valid JWT credential', async () => {
       const human = generateDidKey();
       const agent = generateDidKey();
 
-      const jwt = issueCredential(human.did, human.privateKey, {
+      const jwt = await issueCredential(human.did, human.privateKey, {
         agent: agent.did,
         columns: ['patients.name', 'patients.dob'],
         actions: ['read'],
@@ -61,11 +45,11 @@ describe('Auth', () => {
       expect(payload.vc?.credentialSubject?.scope?.actions).toEqual(['read']);
     });
 
-    it('sets correct expiry', () => {
+    it('sets correct expiry', async () => {
       const human = generateDidKey();
       const agent = generateDidKey();
 
-      const jwt = issueCredential(human.did, human.privateKey, {
+      const jwt = await issueCredential(human.did, human.privateKey, {
         agent: agent.did,
         columns: ['patients.name'],
         actions: ['read'],
@@ -78,25 +62,25 @@ describe('Auth', () => {
       expect(Math.abs((payload.exp ?? 0) - expectedExp)).toBeLessThan(2);
     });
 
-    it('signature is verifiable with human public key', () => {
+    it('signature is verifiable with human public key', async () => {
       const human = generateDidKey();
       const agent = generateDidKey();
 
-      const jwt = issueCredential(human.did, human.privateKey, {
+      const jwt = await issueCredential(human.did, human.privateKey, {
         agent: agent.did,
         columns: ['patients.name'],
         actions: ['read'],
         expiresIn: '4h',
       });
 
-      expect(verifyJwtSignature(jwt, human.publicKey)).toBe(true);
+      expect(await verifyJwtSignature(jwt, human.publicKey)).toBe(true);
     });
 
-    it('includes metadata in credential', () => {
+    it('includes metadata in credential', async () => {
       const human = generateDidKey();
       const agent = generateDidKey();
 
-      const jwt = issueCredential(human.did, human.privateKey, {
+      const jwt = await issueCredential(human.did, human.privateKey, {
         agent: agent.did,
         columns: ['patients.name'],
         actions: ['read'],
@@ -108,18 +92,18 @@ describe('Auth', () => {
       expect(payload.vc?.credentialSubject?.department).toBe('claims');
     });
 
-    it('rejects invalid duration format', () => {
+    it('rejects invalid duration format', async () => {
       const human = generateDidKey();
       const agent = generateDidKey();
 
-      expect(() =>
+      await expect(
         issueCredential(human.did, human.privateKey, {
           agent: agent.did,
           columns: ['patients.name'],
           actions: ['read'],
           expiresIn: 'invalid',
         }),
-      ).toThrow('Invalid duration');
+      ).rejects.toThrow('Invalid duration');
     });
   });
 

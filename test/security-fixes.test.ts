@@ -1,17 +1,3 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 import { describe, it, expect, vi } from 'vitest';
 import { generateDidKey, createSigner, issueCredential } from '../src/auth/index.js';
 import { createJwt, VcVerifier, verifyJwtSignature } from '../src/vc-verifier.js';
@@ -21,7 +7,7 @@ import { asMasterKey } from '../src/crypto/master-key.js';
 import { ScopeEngine } from '../src/sql/scope-engine.js';
 import { AuditLogger } from '../src/audit-logger.js';
 import { createPresentation } from '../src/identity/presentation.js';
-import { CredentialInvalidError, QueryRejectedError } from '../src/errors.js';
+import { CredentialInvalidError, QueryRejectedError } from '../src/errors/index.js';
 import type { AgentStore, AuditStore } from '../src/storage/types.js';
 import type { Pool } from 'pg';
 
@@ -38,15 +24,15 @@ const noopAuditStore: AuditStore = {
 const noopAgentStore = { findByDid: vi.fn().mockResolvedValue(null) } as unknown as AgentStore;
 
 describe('AgentSigner opaque handle', () => {
-  it('signJwt produces a valid JWT', () => {
+  it('signJwt produces a valid JWT', async () => {
     const { privateKey, publicKey } = generateDidKey();
     const signer = createSigner(privateKey);
 
-    const jwt = signer.signJwt({ iss: 'test', sub: 'test', iat: 123 });
+    const jwt = await signer.signJwt({ iss: 'test', sub: 'test', iat: 123 });
     expect(jwt.split('.').length).toBe(3); // header.payload.signature
 
     // Verify with the public key
-    expect(verifyJwtSignature(jwt, publicKey)).toBe(true);
+    expect(await verifyJwtSignature(jwt, publicKey)).toBe(true);
   });
 
   it('signer is frozen (immutable)', () => {
@@ -144,7 +130,7 @@ describe('Explicit table declaration', () => {
       agentStore: noopAgentStore,
     });
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['patients.id', 'patients.name', 'patients.dob'],
       actions: ['read'],
@@ -161,7 +147,7 @@ describe('Explicit table declaration', () => {
     expect(result.rows[0].dob).toBe('1990-03-15');
 
     // Issue a fresh credential for the second query (replay protection)
-    const credential2 = issueCredential(human.did, human.privateKey, {
+    const credential2 = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['patients.id', 'patients.name', 'patients.dob'],
       actions: ['read'],
@@ -219,7 +205,7 @@ describe('Explicit table declaration', () => {
       agentStore: noopAgentStore,
     });
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['patients.name'],
       actions: ['read'],
@@ -277,7 +263,7 @@ describe('Explicit table declaration', () => {
       agentStore: noopAgentStore,
     });
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['patients.name'],
       actions: ['read'],
@@ -296,7 +282,7 @@ describe('Explicit table declaration', () => {
 });
 
 describe('Remote presentation enforcement', () => {
-  function createPresentationFixtures() {
+  async function createPresentationFixtures() {
     const human = generateDidKey();
     const agent = generateDidKey();
     const server = generateDidKey();
@@ -338,7 +324,7 @@ describe('Remote presentation enforcement', () => {
       agentStore: noopAgentStore,
     });
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['patients.name'],
       actions: ['read'],
@@ -349,7 +335,7 @@ describe('Remote presentation enforcement', () => {
   }
 
   it('rejects raw credentials when the caller requires an agent-signed presentation', async () => {
-    const { agent, engine, credential, pool } = createPresentationFixtures();
+    const { agent, engine, credential, pool } = await createPresentationFixtures();
 
     await expect(
       engine.query({
@@ -364,8 +350,8 @@ describe('Remote presentation enforcement', () => {
   });
 
   it('accepts an agent-signed presentation on remote query paths', async () => {
-    const { agent, server, signer, engine, credential } = createPresentationFixtures();
-    const presentation = createPresentation(credential, agent.did, signer, {
+    const { agent, server, signer, engine, credential } = await createPresentationFixtures();
+    const presentation = await createPresentation(credential, agent.did, signer, {
       audience: server.did,
     });
 
@@ -381,7 +367,7 @@ describe('Remote presentation enforcement', () => {
   });
 });
 
-describe('C1: Issuer authorization check', () => {
+describe('issuer authorization check', () => {
   it('rejects credential issued by non-owner', async () => {
     const human = generateDidKey();
     const impostor = generateDidKey();
@@ -426,7 +412,7 @@ describe('C1: Issuer authorization check', () => {
     });
 
     // Credential issued by impostor (not the agent's owner)
-    const credential = issueCredential(impostor.did, impostor.privateKey, {
+    const credential = await issueCredential(impostor.did, impostor.privateKey, {
       agent: agent.did,
       columns: ['patients.name'],
       actions: ['read'],
@@ -484,7 +470,7 @@ describe('C1: Issuer authorization check', () => {
       agentStore: noopAgentStore,
     });
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['patients.name'],
       actions: ['read'],
@@ -502,7 +488,7 @@ describe('C1: Issuer authorization check', () => {
   });
 });
 
-describe('E-1: SQL SELECT restriction', () => {
+describe('SQL SELECT restriction', () => {
   it('rejects INSERT queries', async () => {
     const human = generateDidKey();
     const agent = generateDidKey();
@@ -541,7 +527,7 @@ describe('E-1: SQL SELECT restriction', () => {
       agentStore: noopAgentStore,
     });
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['patients.name'],
       actions: ['read'],
@@ -596,7 +582,7 @@ describe('E-1: SQL SELECT restriction', () => {
       agentStore: noopAgentStore,
     });
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['patients.name'],
       actions: ['read'],
@@ -654,7 +640,7 @@ describe('E-1: SQL SELECT restriction', () => {
       agentStore: noopAgentStore,
     });
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['patients.name'],
       actions: ['read'],
@@ -709,7 +695,7 @@ describe('E-1: SQL SELECT restriction', () => {
       agentStore: noopAgentStore,
     });
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['patients.name'],
       actions: ['read'],
@@ -764,7 +750,7 @@ describe('E-1: SQL SELECT restriction', () => {
       agentStore: noopAgentStore,
     });
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['patients.name'],
       actions: ['read'],
@@ -782,7 +768,7 @@ describe('E-1: SQL SELECT restriction', () => {
   });
 });
 
-describe('E-2: Scope union issuer consistency', () => {
+describe('scope union issuer consistency', () => {
   it('rejects multi-VC from different issuers', async () => {
     const human1 = generateDidKey();
     const human2 = generateDidKey();
@@ -829,7 +815,7 @@ describe('E-2: Scope union issuer consistency', () => {
       agentStore: noopAgentStore,
     });
 
-    const cred1 = issueCredential(human1.did, human1.privateKey, {
+    const cred1 = await issueCredential(human1.did, human1.privateKey, {
       agent: agent.did,
       columns: ['patients.name'],
       actions: ['read'],
@@ -837,7 +823,7 @@ describe('E-2: Scope union issuer consistency', () => {
     });
 
     // Second credential from human2 — different issuer
-    const cred2 = issueCredential(human2.did, human2.privateKey, {
+    const cred2 = await issueCredential(human2.did, human2.privateKey, {
       agent: agent.did,
       columns: ['patients.dob'],
       actions: ['read'],
@@ -901,14 +887,14 @@ describe('E-2: Scope union issuer consistency', () => {
       agentStore: noopAgentStore,
     });
 
-    const cred1 = issueCredential(human.did, human.privateKey, {
+    const cred1 = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['patients.name'],
       actions: ['read'],
       expiresIn: '4h',
     });
 
-    const cred2 = issueCredential(human.did, human.privateKey, {
+    const cred2 = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['patients.dob'],
       actions: ['read'],
@@ -928,7 +914,7 @@ describe('E-2: Scope union issuer consistency', () => {
   });
 });
 
-describe('R-1: Unregistered agent fail-closed', () => {
+describe('unregistered agent fail-closed', () => {
   it('rejects query from unregistered agent', async () => {
     const human = generateDidKey();
     const agent = generateDidKey();
@@ -958,7 +944,7 @@ describe('R-1: Unregistered agent fail-closed', () => {
       agentStore: noopAgentStore,
     });
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['patients.name'],
       actions: ['read'],
@@ -1092,7 +1078,7 @@ describe('nbf/iat validation', () => {
 
     // Issue a credential with iat 1 hour in the future
     const futureIat = Math.floor(Date.now() / 1000) + 3600;
-    const jwt = createJwt(
+    const jwt = await createJwt(
       {
         iss: human.did,
         sub: agent.did,
@@ -1116,19 +1102,19 @@ describe('nbf/iat validation', () => {
     expect(result.error).toContain('not valid until');
   });
 
-  it('accepts credential with past iat within clock skew', async () => {
+  it('rejects credential with future iat (VC nbf is authoritative, no clockSkew)', async () => {
     const human = generateDidKey();
     const agent = generateDidKey();
 
     const verifier = new VcVerifier({
-      clockSkew: '30s',
+      clockSkew: '5s',
       revocationStore: new InMemoryRevocationStore(),
     });
     verifier.registerKey(human.did, human.publicKey);
 
-    // Issue a credential with iat 10 seconds in the future (within 30s skew)
+    // VC with iat 10 seconds in the future — no clockSkew tolerance on VC nbf
     const nearFutureIat = Math.floor(Date.now() / 1000) + 10;
-    const jwt = createJwt(
+    const jwt = await createJwt(
       {
         iss: human.did,
         sub: agent.did,
@@ -1147,7 +1133,9 @@ describe('nbf/iat validation', () => {
     );
 
     const result = await verifier.verify(jwt);
-    expect(result.valid).toBe(true);
+    expect(result.valid).toBe(false);
+    expect(result.status).toBe('MALFORMED');
+    expect(result.error).toContain('not valid until');
   });
 });
 
@@ -1164,7 +1152,7 @@ describe('Credential replay protection (jti dedup)', () => {
     });
     verifier.registerKey(human.did, human.publicKey);
 
-    const jwt = issueCredential(human.did, human.privateKey, {
+    const jwt = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['patients.name'],
       actions: ['read'],
@@ -1191,7 +1179,7 @@ describe('Credential replay protection (jti dedup)', () => {
     verifier.registerKey(human.did, human.publicKey);
     verifier.registerKey(agent.did, agent.publicKey);
 
-    const vc = issueCredential(human.did, human.privateKey, {
+    const vc = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['patients.name'],
       actions: ['read'],
@@ -1201,7 +1189,7 @@ describe('Credential replay protection (jti dedup)', () => {
     // Create a VP wrapping the VC
     const { createPresentation } = await import('../src/identity/presentation.js');
     const signer = createSigner(agent.privateKey);
-    const vp = createPresentation(vc, agent.did, signer);
+    const vp = await createPresentation(vc, agent.did, signer);
 
     // First presentation — should succeed
     const result1 = await verifier.verify(vp);
@@ -1225,14 +1213,14 @@ describe('Credential replay protection (jti dedup)', () => {
     });
     verifier.registerKey(human.did, human.publicKey);
 
-    const jwt1 = issueCredential(human.did, human.privateKey, {
+    const jwt1 = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['patients.name'],
       actions: ['read'],
       expiresIn: '4h',
     });
 
-    const jwt2 = issueCredential(human.did, human.privateKey, {
+    const jwt2 = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['patients.name'],
       actions: ['read'],
@@ -1257,7 +1245,7 @@ describe('Credential replay protection (jti dedup)', () => {
     });
     verifier.registerKey(human.did, human.publicKey);
 
-    const jwt = issueCredential(human.did, human.privateKey, {
+    const jwt = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['patients.name'],
       actions: ['read'],
@@ -1284,7 +1272,7 @@ describe('Credential replay protection (jti dedup)', () => {
 
     // Manually create a JWT without jti (legacy format)
     const now = Math.floor(Date.now() / 1000);
-    const jwt = createJwt(
+    const jwt = await createJwt(
       {
         iss: human.did,
         sub: agent.did,
@@ -1323,7 +1311,7 @@ describe('Credential replay protection (jti dedup)', () => {
 
     expect(verifier.replayCacheSize).toBe(0);
 
-    const vc = issueCredential(human.did, human.privateKey, {
+    const vc = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['patients.name'],
       actions: ['read'],
@@ -1337,7 +1325,7 @@ describe('Credential replay protection (jti dedup)', () => {
     // VP DOES increment replay cache
     const { createPresentation } = await import('../src/identity/presentation.js');
     const signer = createSigner(agent.privateKey);
-    const vp = createPresentation(vc, agent.did, signer);
+    const vp = await createPresentation(vc, agent.did, signer);
     await verifier.verify(vp);
     expect(verifier.replayCacheSize).toBe(1);
 
@@ -1389,7 +1377,7 @@ describe('Credential replay protection (jti dedup)', () => {
       agentStore: noopAgentStore,
     });
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['patients.name'],
       actions: ['read'],

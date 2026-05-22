@@ -46,7 +46,7 @@ export type { MasterKey } from './crypto/master-key.js';
 // ─── Logger ────────────────────────────────────────────────────────
 
 export type { Logger } from './logger.js';
-export { defaultLogger } from './logger.js';
+export { defaultLogger, getLogger } from './logger.js';
 
 // ─── Redaction helpers ──────────────────────────────────────────────
 
@@ -80,17 +80,17 @@ export type {
   IdSdkInstance,
   IssueCredentialOptions,
   DelegateCredentialOptions,
+  CredentialScope,
   AuditRecord,
   AuditEntry,
   VerificationResult,
   DecodedCredential,
-  CredentialScope,
-} from './types.js';
+} from './types/index.js';
 
 // ─── Domain types (branded strings) ────────────────────────────────
 
-export type { Did, ColumnName, TableName, Jti, IssuerUrl } from './domain-types.js';
-export { asDid, asColumnName, asTableName, asJti, asIssuerUrl } from './domain-types.js';
+export type { Did, ColumnName, TableName, Jti, IssuerUrl } from './types/index.js';
+export { asDid, asColumnName, asTableName, asJti, asIssuerUrl } from './types/index.js';
 
 // ─── Errors ─────────────────────────────────────────────────────────
 
@@ -108,6 +108,7 @@ export {
   QueryRejectedError,
   ScopeViolationError,
   CredentialReplayedError,
+  TtlExceededError,
   CapabilityRequiresPaidTierError,
   ParentCredentialRequestFailedError,
   DiscoveryEndpointBlockedError,
@@ -116,7 +117,7 @@ export {
   MasterKeyMismatchError,
   MasterKeyMissingError,
   PrecisionLossError,
-} from './errors.js';
+} from './errors/index.js';
 
 // ─── Pure-crypto column encryption (no Pool dependency) ─────────────
 
@@ -199,7 +200,6 @@ export {
 export {
   generateDidKey,
   issueCredential,
-  issueDelegatedCredential,
   issueCredentialFromParent,
   createMockSession,
   createOidcSession,

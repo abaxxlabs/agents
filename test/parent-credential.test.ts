@@ -1,17 +1,3 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { LocalTrustAnchorStore } from '../src/discovery/trust-anchor.js';
 import { issueCredentialFromParent, createSessionFromDid } from '../src/auth/agent.js';
@@ -21,8 +7,8 @@ import { AgentVerifier, ParentScopeExceededError } from '../src/identity/agent-v
 import { CapabilityEngine } from '../src/capability/engine.js';
 import { AuditLogger } from '../src/audit-logger.js';
 import { generateDidKey, createSigner } from '../src/auth/index.js';
-import { ParentCredentialRequestFailedError } from '../src/errors.js';
-import type { AuditEntry } from '../src/types.js';
+import { ParentCredentialRequestFailedError } from '../src/errors/index.js';
+import type { AuditEntry } from '../src/types/index.js';
 import type { CapabilitySet } from '../src/capability/types.js';
 import type { AuditStore } from '../src/storage/types.js';
 
@@ -342,7 +328,7 @@ describe('createSessionFromDid — revokeCredential', () => {
       humanKeys.privateKey,
     );
 
-    const jti = 'some-jti-abxagnts-180-d6';
+    const jti = 'revoke-local-only-jti-d6';
     const result = await session.revokeCredential(jti);
 
     // Local write succeeded, no SDK notification attempted.
@@ -370,7 +356,7 @@ describe('createSessionFromDid — revokeCredential', () => {
       humanKeys.privateKey,
     );
 
-    const jti = 'some-jti-abxagnts-180-d6-sdk-fail';
+    const jti = 'revoke-sdk-fail-jti-d6';
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       const result = await session.revokeCredential(jti);

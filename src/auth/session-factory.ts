@@ -13,10 +13,8 @@
 // limitations under the License.
 
 import { createHash, createPrivateKey, createPublicKey } from 'node:crypto';
-import type {
-  AuthenticatedSession,
-  IssueCredentialOptions,
-} from '../types.js';
+import type { AuthenticatedSession } from '../types/auth.js';
+import type { IssueCredentialOptions } from '../types/credential.js';
 import { VcVerifier } from '../vc-verifier.js';
 import {
   assertScopeFitsInCeiling,
@@ -25,8 +23,8 @@ import {
 } from './ceiling.js';
 import {
   ParentCredentialRequestFailedError,
-} from '../errors.js';
-import type { IdSdkInstance } from '../id-sdk-types.js';
+} from '../errors/index.js';
+import type { IdSdkInstance } from '../types/id-sdk.js';
 import {
   issueCredential,
   issueCredentialWithSdk,
@@ -35,24 +33,14 @@ import {
 import { generateDidKeyFromSeed } from './did-key.js';
 import { base58Encode } from '../crypto/base58.js';
 import type { Logger } from '../logger.js';
-import { defaultLogger } from '../logger.js';
-import { expiresInToMs } from '../config.js';
-
-function assertExpiresInBound(
-  expiresIn: string | number,
-  maxTtlMs: number,
-): void {
-  if (expiresInToMs(expiresIn) > maxTtlMs) {
-    const maxSeconds = Math.floor(maxTtlMs / 1_000);
-    throw new Error(`expiresIn exceeds maximum credential TTL of ${maxSeconds}s`);
-  }
-}
+import { getLogger } from '../logger.js';
+import { assertExpiresInBound } from '../config.js';
 
 function revokeCredentialHelper(
   verifier: VcVerifier,
   sdk: IdSdkInstance | undefined,
   context?: string,
-  logger: Logger = defaultLogger,
+  logger: Logger = getLogger(),
 ): (credentialId: string) => Promise<{ sdkNotificationFailed?: Error }> {
   return async (credentialId: string) => {
     await verifier.revokeAsync(credentialId);
@@ -74,18 +62,7 @@ function revokeCredentialHelper(
   };
 }
 
-/**
- * Build an AuthenticatedSession for a known human DID.
- *
- * @param humanDid - the human's DID
- * @param email - optional email for the session
- * @param verifier - VcVerifier for credential verification and revocation
- * @param sdk - optional platform identity handle
- * @param oidcConfig - optional OIDC tenant config (unused internally, carried on session)
- * @param humanPrivateKey - optional raw Ed25519 private key for local signing
- * @param ceiling - scope ceiling for this session (defaults to unrestricted)
- * @param parentConfig - optional parent instance config for org-issued credentials
- */
+/** Build an AuthenticatedSession for a known human DID. */
 export function createSessionFromDid(
   humanDid: string,
   email: string | undefined,
@@ -99,14 +76,14 @@ export function createSessionFromDid(
       requestAgentCredential: (
         accessToken: string,
         agentDid: string,
-        options: { columns: string[]; actions: string[]; expiresIn: string | number },
+        options: { columns: string[]; actions: string[]; expiresIn: string | number; maxDepth?: number },
       ) => Promise<{ jwt: string; issuerDid: string }>;
     };
     accessToken: string;
     issuerDid: string;
     credentialExp: number;
   },
-  logger: Logger = defaultLogger,
+  logger: Logger = getLogger(),
 ): AuthenticatedSession {
   return {
     humanDid,
@@ -141,7 +118,7 @@ export function createSessionFromDid(
             parentConfig.provider,
             parentConfig.accessToken,
             options.agent,
-            { columns: options.columns, actions: options.actions, expiresIn: options.expiresIn },
+            { columns: options.columns, actions: options.actions, expiresIn: options.expiresIn, maxDepth: options.maxDepth },
           );
           return result.jwt;
         } catch (e) {
@@ -180,14 +157,7 @@ export function createSessionFromDid(
   };
 }
 
-/**
- * Mock authentication for the demo harness and unit tests.
- *
- * @param verifier - VcVerifier for credential verification and key registration
- * @param humanName - deterministic name for DID derivation (default: 'Demo Human')
- * @param sdk - optional platform identity handle
- * @param ceiling - scope ceiling for this session (defaults to unrestricted)
- */
+/** Mock session for demo harness and unit tests. Deterministic DID from humanName. */
 export function createMockSession(
   verifier: VcVerifier,
   humanName = 'Demo Human',
@@ -234,14 +204,7 @@ export function createMockSession(
   };
 }
 
-/**
- * Create an AuthenticatedSession from a pre-obtained OIDC identity.
- *
- * @param verifier - VcVerifier for credential verification and key registration
- * @param identity - OIDC identity with humanDid, issuer, sub, and optional email/name
- * @param sdk - optional platform identity handle
- * @param ceiling - scope ceiling for this session (defaults to unrestricted)
- */
+/** Create an AuthenticatedSession from a pre-obtained OIDC identity. */
 export function createOidcSession(
   verifier: VcVerifier,
   identity: {
@@ -253,7 +216,7 @@ export function createOidcSession(
   },
   sdk?: IdSdkInstance,
   ceiling: ScopeCeiling = unrestrictedCeiling(),
-  logger: Logger = defaultLogger,
+  logger: Logger = getLogger(),
 ): AuthenticatedSession {
   const seed = createHash('sha256')
     .update(identity.issuer + '\x00' + identity.sub)

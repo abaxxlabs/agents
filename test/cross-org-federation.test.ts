@@ -1,19 +1,3 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-// Tests cross-org federation primitives: enrollment policy, VP audience binding, replay prevention.
-
 import { describe, it, expect } from 'vitest';
 import {
   generateDidKey,
@@ -30,7 +14,7 @@ describe('Cross-org federation primitive (Beat 7)', () => {
     const agentA = generateDidKey();
     const agentASigner = createSigner(agentA.privateKey);
 
-    const credA = issueCredential(human.did, human.privateKey, {
+    const credA = await issueCredential(human.did, human.privateKey, {
       agent: agentA.did,
       columns: ['order_book.ticker', 'order_book.side'],
       actions: ['read'],
@@ -45,7 +29,7 @@ describe('Cross-org federation primitive (Beat 7)', () => {
     orgBEnrolled.add(agentA.did);
     orgBVerifier.registerKey(agentA.did, agentA.publicKey);
 
-    const vp = createPresentation(credA, agentA.did, agentASigner, {
+    const vp = await createPresentation(credA, agentA.did, agentASigner, {
       audience: orgBIdentity.did,
     });
 
@@ -64,7 +48,7 @@ describe('Cross-org federation primitive (Beat 7)', () => {
     const unknownAgent = generateDidKey();
     const unknownSigner = createSigner(unknownAgent.privateKey);
 
-    const credUnknown = issueCredential(human.did, human.privateKey, {
+    const credUnknown = await issueCredential(human.did, human.privateKey, {
       agent: unknownAgent.did,
       columns: ['order_book.ticker'],
       actions: ['read'],
@@ -77,7 +61,7 @@ describe('Cross-org federation primitive (Beat 7)', () => {
     });
     const orgBEnrolled = new Set<string>(); // empty — nobody enrolled yet
 
-    const vp = createPresentation(credUnknown, unknownAgent.did, unknownSigner, {
+    const vp = await createPresentation(credUnknown, unknownAgent.did, unknownSigner, {
       audience: orgBIdentity.did,
     });
 
@@ -96,7 +80,7 @@ describe('Cross-org federation primitive (Beat 7)', () => {
     const agentA = generateDidKey();
     const agentASigner = createSigner(agentA.privateKey);
 
-    const credA = issueCredential(human.did, human.privateKey, {
+    const credA = await issueCredential(human.did, human.privateKey, {
       agent: agentA.did,
       columns: ['order_book.ticker'],
       actions: ['read'],
@@ -111,7 +95,7 @@ describe('Cross-org federation primitive (Beat 7)', () => {
     });
     orgBVerifier.registerKey(agentA.did, agentA.publicKey);
 
-    const vp = createPresentation(credA, agentA.did, agentASigner, {
+    const vp = await createPresentation(credA, agentA.did, agentASigner, {
       audience: orgCIdentity.did,
     });
 

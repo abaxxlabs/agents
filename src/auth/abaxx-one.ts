@@ -13,11 +13,8 @@
 // limitations under the License.
 
 /**
- * OidcProvider implementation for AbaxxOne.
- *
- * AbaxxOne embeds agent DIDs in token responses so parseIdentityFromToken()
- * can return a complete identity without fetchUserInfo(). Uses the proprietary
- * X-Session-ID header and /.well-known/openid_configuration discovery path.
+ * OidcProvider for AbaxxOne. Embeds DIDs in tokens so parseIdentityFromToken()
+ * returns a complete identity without fetchUserInfo().
  */
 
 import { randomBytes, createHash } from 'node:crypto';
@@ -27,7 +24,7 @@ import type {
   OidcIdentity,
   AuthorizationUrlResult,
 } from './provider.js';
-import { AuthUnavailableError, ParentCredentialRequestFailedError } from '../errors.js';
+import { AuthUnavailableError, ParentCredentialRequestFailedError } from '../errors/index.js';
 import { PendingFlowStore, PendingFlowError } from './pending-flow-store.js';
 import { verifyIdTokenSignature, IdTokenVerificationError } from './jwks-verify.js';
 import {
@@ -61,26 +58,11 @@ export interface AbaxxOneConfig {
   /** For programmatic/CLI login only — not used in browser redirect mode. */
   email?: string;
   password?: string;
-  /** Discovery document cache TTL in milliseconds. Defaults to 1 hour.
-   * AbaxxOne key rotation is tenant-controlled — coordinate this value
-   * with the tenant's rotation schedule to minimize stale JWKS windows. */
+  /** Discovery cache TTL (ms). Defaults to 1 hour. Coordinate with the tenant's key rotation schedule. */
   discoveryCacheTtlMs?: number;
   /**
-   * Hostnames allowed to appear as cross-origin discovery endpoints.
-   *
-   * OIDC discovery documents can name token, authorization, and userinfo
-   * endpoints on a different origin than the issuer. A compromised discovery
-   * document could redirect token exchange to an attacker-controlled HTTPS
-   * host. This per-issuer allowlist blocks unlisted cross-origin hosts before
-   * any credentials are sent.
-   *
-   * Endpoints whose host matches the issuer origin do not need to be listed.
-   * If a cross-origin endpoint is discovered and this field is undefined,
-   * discovery resolution throws `DiscoveryEndpointBlockedError`.
-   *
-   * @example
-   * // AbaxxOne tenant with a separate auth service host:
-   * { allowedCrossOriginHosts: ['auth.abaxx.com'] }
+   * Hostnames allowed for cross-origin discovery endpoints.
+   * Blocks SSRF via compromised discovery documents pointing to attacker-controlled hosts.
    */
   allowedCrossOriginHosts?: readonly string[];
 }
@@ -236,16 +218,7 @@ export class AbaxxOneOidcProvider implements OidcProvider {
     return identity;
   }
 
-  /**
-   * Exchange code and return both identity and access token.
-   *
-   * Security ordering:
-   *   1. flowStore.consume(state, codeVerifier) — validates CSRF state and PKCE verifier
-   *      before any HTTP call. Throws PendingFlowError → AuthUnavailableError.
-   *   2. verifyIdTokenSignature(id_token, jwks_uri) — verifies the id_token's cryptographic
-   *      signature against the provider's JWKS. Without this, id_token claims (including the
-   *      DID) are unauthenticated — an unverified id_token is just base64-encoded JSON.
-   */
+  /** Exchange code. Step 1: CSRF/PKCE before any HTTP call. Step 2: id_token JWKS-verified before DID extraction (unverified id_token is forgeable JSON). */
   private async _exchangeCodeWithToken(
     code: string,
     state: string,
@@ -288,10 +261,7 @@ export class AbaxxOneOidcProvider implements OidcProvider {
 
     const tokens = parseOidcTokenResponse(await tokenRes.json());
 
-    // id_token signature verification. An unverified id_token is just base64-encoded JSON —
-    // anyone can forge it. AbaxxOne relies on id_token claims for DID extraction.
-    // If no id_token is returned, we MUST NOT proceed — that would trust unverified claims.
-    // Fail closed.
+    // Fail closed: no id_token means no verified identity.
     if (!tokens.id_token) {
       throw new AuthUnavailableError(
         'AbaxxOne token exchange did not return an id_token. ' +
@@ -300,8 +270,7 @@ export class AbaxxOneOidcProvider implements OidcProvider {
     }
 
     try {
-      // Pass expectedIssuer and expectedAudience to prevent token substitution attacks
-      // (a valid token from a different provider passes signature verification but not iss/aud).
+      // iss/aud checks prevent token substitution attacks.
       await verifyIdTokenSignature(tokens.id_token, discovery.jwks_uri, {
         expectedIssuer: discovery.issuer,
         expectedAudience: this.config.clientId,
@@ -326,12 +295,7 @@ export class AbaxxOneOidcProvider implements OidcProvider {
 
   // ─── OidcProvider: Identity Extraction ───────────────────────────
 
-  /**
-   * Extract identity from AbaxxOne token claims. Returns a complete OidcIdentity
-   * when DID is present; returns Partial (no humanDid) for older tenants that
-   * don't embed DID — exchangeCode() falls back to fetchUserInfo() in that case.
-   * NO network I/O.
-   */
+  /** Extract identity from token claims. Returns Partial when DID is absent (older tenants). No I/O. */
   parseIdentityFromToken(tokenResponse: OidcTokenResponse): Partial<OidcIdentity> {
     // Decode id_token claims without verification (signature already checked upstream)
     let idTokenClaims: Record<string, unknown> = {};
@@ -402,18 +366,14 @@ export class AbaxxOneOidcProvider implements OidcProvider {
   // ─── Parent-Issued Agent Credentials ────────────────────────────
 
   /**
-   * Request a scoped agent credential signed by the org's DID (not the human's).
-   * The returned JWT is verified by the caller before use — this only handles transport.
-   *
-   * @param accessToken Human's OAuth access token
-   * @param agentDid    Agent DID to bind the credential to
-   * @param options     Requested scope and TTL
-   * @throws {ParentCredentialRequestFailedError} on network failure or non-2xx
+   * Request a scoped agent credential signed by the org's DID.
+   * Returned JWT is NOT verified here -- caller must verify before use (transport only).
+   * @throws ParentCredentialRequestFailedError on network failure or non-2xx.
    */
   async requestAgentCredential(
     accessToken: string,
     agentDid: string,
-    options: { columns: string[]; actions: string[]; expiresIn: string | number },
+    options: { columns: string[]; actions: string[]; expiresIn: string | number; maxDepth?: number },
   ): Promise<{ jwt: string; issuerDid: string }> {
     const url = `${this.config.tenantUrl}/api/v1/credentials/agent`;
 
@@ -421,7 +381,7 @@ export class AbaxxOneOidcProvider implements OidcProvider {
     try {
       res = await fetch(url, {
         method: 'POST',
-        signal: AbortSignal.timeout(5000), // prevent indefinite hang if tenant is slow
+        signal: AbortSignal.timeout(5000),
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${accessToken}`,
@@ -433,6 +393,7 @@ export class AbaxxOneOidcProvider implements OidcProvider {
             actions: options.actions,
           },
           expiresIn: options.expiresIn,
+          ...(options.maxDepth !== undefined ? { maxDepth: options.maxDepth } : {}),
         }),
       });
     } catch (err) {
@@ -493,11 +454,7 @@ export class AbaxxOneOidcProvider implements OidcProvider {
 
   // ─── Programmatic Login (CLI mode) ───────────────────────────────
 
-  /**
-   * Programmatic login (CLI/tests). Uses AbaxxOne's proprietary
-   * POST /auth/login → X-Session-ID → PKCE flow (not in OidcProvider interface).
-   * Returns identity + access token so callers can call requestAgentCredential().
-   */
+  /** Programmatic login for CLI/tests. Not in the OidcProvider interface. */
   async loginProgrammatic(): Promise<{ identity: OidcIdentity; accessToken: string }> {
     if (!this.config.email || !this.config.password) {
       throw new Error('loginProgrammatic() requires email and password in config');

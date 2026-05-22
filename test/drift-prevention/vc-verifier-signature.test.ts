@@ -1,28 +1,3 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * VcVerifier signature drift prevention.
- *
- * `VcVerifierOptions.revocationStore` is a REQUIRED field. This test ensures
- * a future refactor cannot silently make it optional or ignore the injected
- * value on the verify hot path.
- *
- * Two verifiers with different stores are given the same credential. They must
- * return different results — proving each consults its own injected store.
- */
-
 import { describe, it, expect } from 'vitest';
 import { VcVerifier, decodeJwt } from '../../src/vc-verifier.js';
 import { InMemoryRevocationStore } from '../../src/storage/memory/revocation-store.js';
@@ -56,7 +31,7 @@ describe('VcVerifier required-revocationStore contract', () => {
     // upstream checks (issuer key, vc claims, scope shape, JTI, exp) before
     // reaching the revocation step. issueCredential produces the canonical
     // shape that takes the verify path all the way to revocation.
-    const jwt = issueCredential(human.did, human.privateKey, {
+    const jwt = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['patients.dob'],
       actions: ['read'],

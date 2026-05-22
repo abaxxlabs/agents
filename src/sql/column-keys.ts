@@ -22,7 +22,7 @@
 import type { Pool } from 'pg';
 import { v4 as uuidv4 } from 'uuid';
 import type { MasterKey } from '../crypto/master-key.js';
-import type { ColumnKeyRecord } from '../types.js';
+import type { ColumnKeyRecord } from '../types/encryption.js';
 import {
   encrypt,
   decrypt,
@@ -31,9 +31,9 @@ import {
   unwrapColumnKey,
   isUndefinedTableError,
 } from '../column-encryption.js';
-import { MasterKeyMismatchError, KeyRotationFailedError } from '../errors.js';
+import { MasterKeyMismatchError, KeyRotationFailedError } from '../errors/index.js';
 import type { Logger } from '../logger.js';
-import { defaultLogger } from '../logger.js';
+import { getLogger } from '../logger.js';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -56,7 +56,7 @@ export type LoadColumnKeysResult = Map<string, Buffer> | { schemaMissing: true }
 export async function loadColumnKeys(
   pool: Pool,
   masterKey: MasterKey,
-  logger: Logger = defaultLogger,
+  logger: Logger = getLogger(),
 ): Promise<LoadColumnKeysResult> {
   let rows: ColumnKeyRecord[];
   try {

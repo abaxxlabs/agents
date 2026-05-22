@@ -13,8 +13,8 @@
 // limitations under the License.
 
 import { base58Decode } from './crypto/base58.js';
-import { DidResolutionFailedError } from './errors.js';
-import type { Did } from './domain-types.js';
+import { DidResolutionFailedError } from './errors/index.js';
+import type { Did } from './types/domain.js';
 
 /**
  * Resolve a `did:key` identifier to its raw Ed25519 public key bytes.

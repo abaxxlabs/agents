@@ -1,34 +1,3 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * ESLint rule tests — BYOK trust-boundary drift prevention.
- *
- * Verifies that the two BYOK ESLint rules in eslint.config.js behave as
- * specified. Both rules are implemented as `no-restricted-syntax` selectors in
- * a single config block, scoped to `src/**` (excluding `src/bootstrap/` and
- * `src/cli/`).
- *
- * Layer 1 — Programmatic Linter API: tests selector logic directly using
- * ESLint's `Linter` class with inline config. Fast, deterministic, no
- * subprocess overhead.
- *
- * Layer 2 — CLI integration: spawns `eslint` against temporary fixture files
- * placed inside src/ to verify that `ignores` patterns correctly exempt
- * `src/bootstrap/` and `src/cli/` while enforcing rules in `src/sql/`.
- */
-
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Linter } from 'eslint';
 import { spawnSync } from 'child_process';
@@ -439,7 +408,7 @@ describe('Server-scope Rule 2 — narrowed to AGENTS_MASTER_KEY only', () => {
 describe('Server-scope Rule 3 — destructure closure', () => {
   // ── Positive (destructure pattern fires Rule 3) ──────────────────────────
 
-  it('fires on const { AGENTS_MASTER_KEY } = process.env (the C1 bypass)', () => {
+  it('fires on const { AGENTS_MASTER_KEY } = process.env', () => {
     const code = `const { AGENTS_MASTER_KEY } = process.env;`;
     const violations = byokViolations(lintServerCode(code));
     expect(violations.some((m) => m.includes('Do not destructure AGENTS_MASTER_KEY'))).toBe(true);

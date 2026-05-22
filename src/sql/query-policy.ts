@@ -19,9 +19,9 @@
  */
 
 import { loadModule, parseSync } from 'libpg-query';
-import { QueryRejectedError, ScopeViolationError } from '../errors.js';
+import { QueryRejectedError, ScopeViolationError } from '../errors/index.js';
 
-import type { Did, TableName } from '../domain-types.js';
+import type { Did, TableName } from '../types/domain.js';
 
 // ─── SQL Parser (libpg-query WASM) ──────────────────────────────
 

@@ -25,7 +25,7 @@
  * but the same VP cannot be replayed. ScopeEngine wraps raw VCs in VPs before verification.
  */
 
-import type { AgentSigner } from '../types.js';
+import type { AgentSigner } from '../types/auth.js';
 import { parseDuration } from '../config.js';
 import { generateUuid7 } from './uuid7.js';
 
@@ -62,13 +62,13 @@ export interface CreatePresentationOptions {
    * Minimum: 1 second. `'0s'` and other zero values throw.
    *
    * Practical maximum: 1 day. The library does not enforce an upper bound
-   * (consistent with `clockSkew` and `resolverCacheTtl`), but lifetimes
-   * longer than ~24h defeat the "VP is a single-use envelope" model — issue
-   * a longer-lived VC instead and re-present it with fresh, short VPs.
+   * (consistent with `resolverCacheTtl`), but lifetimes longer than ~24h
+   * defeat the "VP is a single-use envelope" model — issue a longer-lived VC
+   * instead and re-present it with fresh, short VPs.
    *
    * Tighter is better: the VP's `exp` defines the first-mover replay window for
-   * a captured presentation. Verifier-side `clockSkew` (default 30s) extends
-   * the effective accept window by that amount past `exp`. For agent-to-agent
+   * a captured presentation. Verifier-side `clockSkew` (default 5s, ceiling 30s)
+   * extends the effective accept window by that amount past `exp`. For agent-to-agent
    * RPC, 30–60s is typically sufficient. For human-in-the-loop flows where a
    * presentation may sit in a UI before being redeemed, pass a longer value
    * explicitly (e.g. `'5m'`) — the prior default.
@@ -90,12 +90,12 @@ export interface CreatePresentationOptions {
  * @param options    Optional audience binding, nonce override, and lifetime.
  * @returns          A signed VP JWT (compact JWS) containing the VC.
  */
-export function createPresentation(
+export async function createPresentation(
   vcJwt: string,
   agentDid: string,
   signer: AgentSigner,
   options: CreatePresentationOptions = {},
-): string {
+): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const nonce = options.nonce || generateUuid7();
   // parseDuration throws on malformed input — surfaces misconfiguration at call time.
@@ -124,5 +124,5 @@ export function createPresentation(
     payload.aud = options.audience;
   }
 
-  return signer.signJwt(payload);
+  return await signer.signJwt(payload);
 }

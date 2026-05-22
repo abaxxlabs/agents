@@ -20,7 +20,7 @@
  * names) before sending to untrusted clients.
  */
 
-import { AgentScopeError, ScopeViolationError } from '../errors.js';
+import { AgentScopeError, ScopeViolationError } from '../errors/index.js';
 import { ScopeExceedsCeilingError } from '../auth/ceiling.js';
 
 export interface SafeValidationIssue {
@@ -80,6 +80,7 @@ const STATUS_BY_CODE: Record<string, number> = {
   SCOPE_EXCEEDS_CEILING: 403,
   POLICY_VIOLATION: 403,
   FORBIDDEN_CREDENTIAL: 403,
+  TTL_EXCEEDED: 400,
   CAPABILITY_REQUIRES_PAID_TIER: 402,
   RATE_LIMITED: 429,
 };
@@ -95,6 +96,7 @@ const SAFE_PUBLIC_MESSAGE_CODES = new Set([
   'SCOPE_EXCEEDS_CEILING',
   'POLICY_VIOLATION',
   'FORBIDDEN_CREDENTIAL',
+  'TTL_EXCEEDED',
   'CAPABILITY_REQUIRES_PAID_TIER',
 ]);
 

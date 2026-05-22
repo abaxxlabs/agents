@@ -1,28 +1,9 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * AgentScope.create must throw MasterKeyMismatchError when agent_keys rows
- * were wrapped under a different master key. Requires live Postgres.
- */
-
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import pg from 'pg';
 import { AgentScope } from '../src/sql/index.js';
 import { asMasterKey } from '../src/crypto/master-key.js';
 import { wrapColumnKey, generateColumnKey } from '../src/column-encryption.js';
-import { MasterKeyMismatchError } from '../src/errors.js';
+import { MasterKeyMismatchError } from '../src/errors/index.js';
 import { PostgresStorageBackend } from '../src/storage/postgres/index.js';
 import { InMemoryRevocationStore } from '../src/storage/memory/revocation-store.js';
 import { composeStorageBackend } from '../src/storage/compose.js';

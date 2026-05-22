@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import { parseDuration } from './config.js';
-import type { Did } from './domain-types.js';
+import type { Did } from './types/domain.js';
 
 interface CacheEntry {
   publicKey: Uint8Array;

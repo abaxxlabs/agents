@@ -21,7 +21,7 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { AgentScope } from '../sql/index.js';
-import type { AuthenticatedSession } from '../types.js';
+import type { AuthenticatedSession } from '../types/auth.js';
 import type { AuditLogger } from '../audit-logger.js';
 import type { ServerIdentity } from '../identity/server-identity.js';
 import type { TrustAnchorStore } from '../discovery/trust-anchor.js';
@@ -227,8 +227,10 @@ export function registerTools(
         .union([z.string(), z.number()])
         .optional()
         .describe('Expiry duration — string ("4h", "1d") or integer seconds (3600)'),
+      maxDepth: z.number().int().min(1).max(10).optional()
+        .describe('Maximum delegation chain depth embedded in the issued credential. Default: 2. Pass 1 to prevent any delegation.'),
     },
-    async ({ agent, columns, actions, expiresIn }) => {
+    async ({ agent, columns, actions, expiresIn, maxDepth }) => {
       try {
         const resolvedExpiresIn = expiresIn ?? '4h';
         if (credentialMaxTtlMs !== undefined) {
@@ -239,6 +241,7 @@ export function registerTools(
           columns,
           actions: (actions ?? ['read']) as 'read'[],
           expiresIn: resolvedExpiresIn,
+          ...(maxDepth !== undefined ? { maxDepth } : {}),
         });
         return {
           content: [
@@ -489,7 +492,7 @@ export function registerTools(
 
         const prefixedPayload = `agents-sign-v1:${payload}`;
 
-        const jwt = serverIdentity.signer.signJwt({
+        const jwt = await serverIdentity.signer.signJwt({
           iss: serverIdentity.did,
           iat: Math.floor(Date.now() / 1000),
           payload: prefixedPayload,

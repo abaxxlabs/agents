@@ -1,48 +1,3 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * Key Rotation and Rewrap Tests (v0.9.7.0)
- *
- * Tests for rotateColumnKey() and rewrapColumnKey() and the tightened
- * registerColumn() footgun closure.
- *
- * Test strategy: all tests use mock pg.Pool / pg.PoolClient. No real Postgres
- * required. This keeps the test suite fast and runnable without Supabase.
- * Integration against a real database is covered by the integration test suite.
- *
- * Mock pool architecture:
- *   - pool.connect() returns a mock client
- *   - client.query(sql, params) is a vi.fn() with canned responses per SQL pattern
- *   - client.query('BEGIN') / 'COMMIT' / 'ROLLBACK' are no-ops (or controlled throws)
- *   - The test builds its own in-memory row state and verifies it was mutated correctly
- *
- * Coverage:
- *   1. rotateColumnKey — happy path (N rows), verify decrypt under new key
- *   2. rotateColumnKey — empty table, wrapped key still swaps
- *   3. rotateColumnKey — wrong master key → KeyRotationFailedError('unwrap-old-key')
- *   4. rotateColumnKey — mid-rotation failure (decrypt-row), verify rollback called
- *   5. rotateColumnKey — repeated rotation (second call after first succeeds)
- *   6. rewrapColumnKey — happy path, row ciphertext identity preserved
- *   7. rewrapColumnKey — wrong old master key → KeyRotationFailedError('unwrap-old-key')
- *   8. rewrapColumnKey — verify audit entry written inside transaction
- *   9. registerColumn — re-registration of existing column throws clear error
- *  10. registerColumn — first registration succeeds
- *  11. Concurrent rotation serialization (FOR UPDATE behavior documented via mock)
- *  12. rotateColumnKey — audit entry written inside the transaction
- */
-
 import { describe, it, expect, vi, type Mock } from 'vitest';
 import type { Pool, PoolClient } from 'pg';
 import {
@@ -59,7 +14,7 @@ import {
   verifyAllColumnKeys,
 } from '../src/sql/column-keys.js';
 import { asMasterKey } from '../src/crypto/master-key.js';
-import { KeyRotationFailedError } from '../src/errors.js';
+import { KeyRotationFailedError } from '../src/errors/index.js';
 
 // ─── Mock helpers ─────────────────────────────────────────────────────────────
 

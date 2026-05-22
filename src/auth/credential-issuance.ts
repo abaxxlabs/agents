@@ -13,42 +13,60 @@
 // limitations under the License.
 
 import { randomUUID } from 'node:crypto';
-import type { IssueCredentialOptions, AgentSigner } from '../types.js';
+import type { IssueCredentialOptions } from '../types/credential.js';
+import type { AgentSigner } from '../types/auth.js';
 import { createJwt } from '../vc-verifier.js';
 import { decodeJwt } from '../jwt-utils.js';
-import { validateScope, validateExpiry, validateChain } from './delegation-policy.js';
-import { expiresInToMs } from '../config.js';
+import {
+  validateScope,
+  validateExpiry,
+  validateChain,
+  resolveInheritedMaxDepth,
+  DEFAULT_MAX_DELEGATION_DEPTH,
+} from './delegation-policy.js';
+import { expiresInToMs, assertExpiresInBound } from '../config.js';
 import {
   assertScopeFitsInCeiling,
   type ScopeCeiling,
   type IssuanceContext,
 } from './ceiling.js';
-import type { IdSdkInstance } from '../id-sdk-types.js';
+import type { IdSdkInstance } from '../types/id-sdk.js';
 
+/** Match short-form and JSON-LD namespaced URI forms (`#`/`/` suffix) without full context resolution. */
+export function isDelegatedScopeCredentialType(types: readonly unknown[]): boolean {
+  return types.some(
+    (t): t is string =>
+      typeof t === 'string' &&
+      (t === 'DelegatedAgentScopeCredential' ||
+        t.endsWith('#DelegatedAgentScopeCredential') ||
+        t.endsWith('/DelegatedAgentScopeCredential')),
+  );
+}
 
-/**
- * Issue a scoped Verifiable Credential via the platform identity SDK.
- *
- * @param sdk - platform identity handle
- * @param humanDid - the human's DID that will be the credential issuer
- * @param options - scope, actions, TTL, and target agent
- */
+/** Issue a scoped Verifiable Credential via the platform identity SDK. */
 export async function issueCredentialWithSdk(
   sdk: IdSdkInstance,
   humanDid: string,
   options: IssueCredentialOptions,
 ): Promise<string> {
+  const maxDepth = options.maxDepth ?? DEFAULT_MAX_DELEGATION_DEPTH;
+  if (!Number.isInteger(maxDepth) || maxDepth < 1) {
+    throw new Error(
+      `issueCredentialWithSdk: maxDepth must be a positive integer, received ${String(options.maxDepth)}.`,
+    );
+  }
   const expiresInMs = expiresInToMs(options.expiresIn);
   const expirationDate = new Date(Date.now() + expiresInMs).toISOString();
 
   const credentialData = {
+    ...(options.metadata ?? {}),
     id: options.agent,
     scope: {
       columns: options.columns,
       actions: options.actions,
     },
     owner: humanDid,
-    ...(options.metadata ?? {}),
+    maxDepth,
   };
 
   const vc = await sdk.vc.createCredential(
@@ -58,25 +76,25 @@ export async function issueCredentialWithSdk(
     'AgentScopeCredential',
   );
 
-  const signerOptions = await sdk.vc.getSignerOptions(humanDid);
+  const signerOptions = await sdk.vc.getSignerOptions(humanDid, options.agent);
   return sdk.vc.signCredential(vc, { ...signerOptions, expirationDate });
 }
 
-/**
- * Issue a scoped Verifiable Credential using a local Ed25519 private key.
- *
- * @param humanDid - the human's DID
- * @param humanPrivateKey - raw 32-byte Ed25519 private key
- * @param options - scope, actions, TTL, and target agent
- */
-export function issueCredential(
+/** Issue a scoped Verifiable Credential using a local Ed25519 private key. */
+export async function issueCredential(
   humanDid: string,
   humanPrivateKey: Uint8Array,
   options: IssueCredentialOptions,
-): string {
+): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const expiresInMs = expiresInToMs(options.expiresIn);
   const exp = now + Math.floor(expiresInMs / 1000);
+  const maxDepth = options.maxDepth ?? DEFAULT_MAX_DELEGATION_DEPTH;
+  if (!Number.isInteger(maxDepth) || maxDepth < 1) {
+    throw new Error(
+      `issueCredential: maxDepth must be a positive integer, received ${String(options.maxDepth)}.`,
+    );
+  }
 
   const payload = {
     iss: humanDid,
@@ -84,6 +102,7 @@ export function issueCredential(
     jti: randomUUID(),
     iat: now,
     exp,
+    maxDepth,
     vc: {
       '@context': ['https://www.w3.org/2018/credentials/v1'],
       type: ['VerifiableCredential', 'AgentScopeCredential'],
@@ -99,20 +118,11 @@ export function issueCredential(
     },
   };
 
-  return createJwt(payload, humanPrivateKey);
+  return await createJwt(payload, humanPrivateKey);
 }
 
-/**
- * Issue a delegated credential from one agent to another.
- *
- * @param delegatorDid - the supervisor agent's DID
- * @param delegatorSigner - the supervisor's opaque signer
- * @param sourceCredentialJwt - the supervisor's own credential JWT (for the delegation chain)
- * @param sourceCredentialJti - JTI of the source credential for audit trail
- * @param sourceScope - the supervisor's authorized scope
- * @param options - target agent, requested scope subset, TTL, and metadata
- */
-export function issueDelegatedCredential(
+/** Issue a delegated credential from one agent to another. Validates scope subset and chain depth. */
+export async function issueDelegatedCredential(
   delegatorDid: string,
   delegatorSigner: AgentSigner,
   sourceCredentialJwt: string,
@@ -124,10 +134,9 @@ export function issueDelegatedCredential(
     actions: 'read'[];
     expiresIn: string | number;
     maxExpSeconds?: number;
-    operatorMaxDepth?: number;
     metadata?: Record<string, unknown>;
   },
-): string {
+): Promise<string> {
   validateScope(sourceScope, { columns: options.columns, actions: options.actions });
 
   const sourcePayload = decodeJwt(sourceCredentialJwt).payload;
@@ -138,8 +147,23 @@ export function issueDelegatedCredential(
         'A delegated credential must have at least one ancestor in the chain.',
     );
   }
-  const effectiveDepth = Array.isArray(sourceChain) ? sourceChain.length + 1 : 1;
-  validateChain(effectiveDepth, options.operatorMaxDepth ?? 2);
+  const rawType = sourcePayload.vc?.type;
+  const sourceVcType: unknown[] = Array.isArray(rawType)
+    ? rawType
+    : typeof rawType === 'string' ? [rawType] : [];
+  if (isDelegatedScopeCredentialType(sourceVcType)) {
+    throw new Error(
+      'Delegation error: source credential is itself delegated. Re-delegation is not permitted.',
+    );
+  }
+
+  const chainPayloads = Array.isArray(sourceChain)
+    ? sourceChain.map((jwt) => decodeJwt(jwt as string).payload)
+    : [];
+  const inheritedMaxDepth = resolveInheritedMaxDepth(sourcePayload, chainPayloads);
+
+  const effectiveDepth = chainPayloads.length + 1;
+  validateChain(effectiveDepth, inheritedMaxDepth);
 
   const now = Math.floor(Date.now() / 1000);
   const requestedMs = expiresInToMs(options.expiresIn);
@@ -153,6 +177,7 @@ export function issueDelegatedCredential(
     iat: now,
     exp,
     delegationChain: [sourceCredentialJwt],
+    maxDepth: inheritedMaxDepth,
     vc: {
       '@context': ['https://www.w3.org/2018/credentials/v1'],
       type: ['VerifiableCredential', 'DelegatedAgentScopeCredential'],
@@ -171,32 +196,30 @@ export function issueDelegatedCredential(
     },
   };
 
-  return delegatorSigner.signJwt(payload);
+  return await delegatorSigner.signJwt(payload);
 }
 
-/**
- * Issue an agent credential through an AbaxxOne parent instance.
- *
- * @param provider - the AbaxxOne OIDC provider instance
- * @param accessToken - the human's OAuth access token
- * @param agentDid - the agent's DID to bind the credential to
- * @param options - requested scope and TTL
- * @param opts - optional ceiling enforcement params
- * @returns the signed JWT string from the parent instance
- */
+/** Issue an agent credential through an AbaxxOne parent instance. */
 export async function issueCredentialFromParent(
   provider: {
     requestAgentCredential: (
       accessToken: string,
       agentDid: string,
-      options: { columns: string[]; actions: string[]; expiresIn: string | number },
+      options: { columns: string[]; actions: string[]; expiresIn: string | number; maxDepth?: number },
     ) => Promise<{ jwt: string; issuerDid: string }>;
   },
   accessToken: string,
   agentDid: string,
-  options: { columns: string[]; actions: string[]; expiresIn: string | number },
+  options: { columns: string[]; actions: string[]; expiresIn: string | number; maxDepth?: number },
   opts?: { ceiling?: ScopeCeiling; context?: IssuanceContext },
 ): Promise<{ jwt: string; issuerDid: string }> {
+  if (options.maxDepth !== undefined) {
+    if (!Number.isInteger(options.maxDepth) || options.maxDepth < 1) {
+      throw new Error(
+        `issueCredentialFromParent: maxDepth must be a positive integer, received ${String(options.maxDepth)}.`,
+      );
+    }
+  }
   if (opts?.ceiling) {
     assertScopeFitsInCeiling(
       { columns: options.columns, actions: options.actions },
@@ -204,11 +227,7 @@ export async function issueCredentialFromParent(
       opts.context,
     );
     if (opts.ceiling.credentialMaxTtlMs !== undefined) {
-      const requestedMs = expiresInToMs(options.expiresIn);
-      if (requestedMs > opts.ceiling.credentialMaxTtlMs) {
-        const maxSeconds = Math.floor(opts.ceiling.credentialMaxTtlMs / 1_000);
-        throw new Error(`expiresIn exceeds maximum credential TTL of ${maxSeconds}s`);
-      }
+      assertExpiresInBound(options.expiresIn, opts.ceiling.credentialMaxTtlMs);
     }
   }
   return provider.requestAgentCredential(accessToken, agentDid, options);

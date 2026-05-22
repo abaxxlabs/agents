@@ -34,18 +34,19 @@
 import { parseDuration } from './config.js';
 import { base58Decode } from './crypto/base58.js';
 import type { RevocationStore } from './storage/types.js';
+import type { CredentialScope } from './types/credential.js';
 import {
   IDENTITY_MIGRATION_CREDENTIAL,
-  type VerificationResult,
-  type VerifyOptions,
-  type DecodedCredential,
-  type CredentialScope,
   type MigrationCredentialClaims,
-} from './types.js';
-import { CredentialMalformedError, DidResolutionFailedError } from './errors.js';
-import type { Did } from './domain-types.js';
-import type { IdSdkInstance } from './id-sdk-types.js';
+} from './types/migration.js';
+import { CredentialMalformedError, DidResolutionFailedError } from './errors/index.js';
+import type { Did } from './types/domain.js';
+import type { IdSdkInstance } from './types/id-sdk.js';
+import type { VerifyOptions, VerificationResult, DecodedCredential } from './types/verification.js';
+
+export type { VerifyOptions, VerificationResult, DecodedCredential } from './types/verification.js';
 import { decodeJwt, verifyJwtSignature } from './jwt-utils.js';
+import { isDelegatedScopeCredentialType } from './auth/credential-issuance.js';
 import { DidCache } from './did-cache.js';
 import { resolveDidKeyFallback } from './did-resolve.js';
 
@@ -55,19 +56,14 @@ export { resolveDidKeyFallback, resolveDidKey } from './did-resolve.js';
 
 export interface VcVerifierOptions {
   /**
-   * Symmetric tolerance applied to BOTH credential and presentation timestamp
-   * checks. Default: `'30s'` (industry-standard for JWT verifiers).
+   * Symmetric tolerance applied to VP timestamp checks only. Default: `'5s'`.
    *
-   * Applied at four checkpoints: VC `nbf`, VC `exp`, VP `nbf`, VP `exp`.
-   * Also extends the VP JTI replay-cache TTL by `clockSkew` past the
-   * presentation's `exp`, so the replay-detection window matches the
-   * validity window. (The cache is keyed on the VP's `jti`, not the VC's.)
+   * Applied at VP `nbf`, VP `exp`, and VP JTI replay-cache TTL extension.
+   * NOT applied to VC `nbf`/`exp` — credential timestamps are authoritative
+   * business-level access control, not clock-sync artifacts.
    *
-   * Tighten this only if all upstream issuers and verifiers have synchronized
-   * clocks (NTP-disciplined) AND your VPs are intentionally short-lived. The
-   * 30s default is sized for the realistic clock-drift floor across cloud
-   * regions; going below 5s without monitored clock sync produces spurious
-   * EXPIRED rejections at the network edge.
+   * Maximum: 30 seconds. This is machine-to-machine auth at internet scale;
+   * modern NTP keeps clocks within milliseconds, sub-second even cross-region.
    */
   clockSkew?: string;
   resolverCacheTtl?: string; // default: '5m'
@@ -116,8 +112,8 @@ export class VcVerifier {
 
   constructor(options: VcVerifierOptions) {
     this.cache = new DidCache(options.resolverCacheTtl ?? '5m');
-    const MAX_CLOCK_SKEW_MS = 5 * 60 * 1_000;
-    this.clockSkewMs = parseDuration(options.clockSkew ?? '30s');
+    const MAX_CLOCK_SKEW_MS = 30 * 1_000;
+    this.clockSkewMs = parseDuration(options.clockSkew ?? '5s');
     if (this.clockSkewMs <= 0) {
       throw new Error(
         'clockSkew must be greater than zero — zero tolerance causes false rejections under any clock drift',
@@ -125,8 +121,8 @@ export class VcVerifier {
     }
     if (this.clockSkewMs > MAX_CLOCK_SKEW_MS) {
       throw new Error(
-        'clockSkew exceeds maximum of 5 minutes — ' +
-          'values beyond NTP-realistic drift extend credential lifetime, not clock tolerance',
+        'clockSkew exceeds maximum of 30 seconds — ' +
+          'this is machine-to-machine auth; values beyond NTP-realistic drift extend VP lifetime, not clock tolerance',
       );
     }
     this.knownKeys = options.knownKeys ?? new Map();
@@ -320,7 +316,7 @@ export class VcVerifier {
       let vpSigValid: boolean;
       try {
         const publicKey = await this.resolvePublicKey(payload.iss);
-        vpSigValid = verifyJwtSignature(jwt, publicKey);
+        vpSigValid = await verifyJwtSignature(jwt, publicKey);
       } catch (err) {
         if (err instanceof DidResolutionFailedError) {
           return { valid: false, status: 'UNKNOWN_ISSUER', error: `VP issuer: ${err.message}` };
@@ -503,12 +499,12 @@ export class VcVerifier {
       }
     }
 
-    // 4a. Check nbf (not before) — reject credentials not yet valid
+    // 4a. Check nbf (not before) — VC timestamps are authoritative, no clockSkew tolerance.
     const now = Date.now();
     const nbf = payload.nbf ?? payload.iat;
     if (nbf) {
       const nbfMs = nbf * 1000;
-      if (now < nbfMs - this.clockSkewMs) {
+      if (now < nbfMs) {
         return {
           valid: false,
           status: 'MALFORMED',
@@ -517,10 +513,10 @@ export class VcVerifier {
       }
     }
 
-    // 4b. Check expiry
+    // 4b. Check expiry — authoritative, no clockSkew tolerance.
     if (payload.exp) {
       const expMs = payload.exp * 1000;
-      if (now > expMs + this.clockSkewMs) {
+      if (now > expMs) {
         return {
           valid: false,
           status: 'EXPIRED',
@@ -549,7 +545,7 @@ export class VcVerifier {
         }
         throw err;
       }
-      sigValid = verifyJwtSignature(jwt, publicKey);
+      sigValid = await verifyJwtSignature(jwt, publicKey);
     }
 
     if (!sigValid) {
@@ -620,7 +616,44 @@ export class VcVerifier {
         return { valid: false, status: 'REVOKED', error: 'Credential has been revoked' };
       }
     }
-    
+
+    // 7. Build decoded credential — structural checks run before chain revocation I/O
+    // to prevent resource amplification from malformed credentials.
+    const rawVcType = payload.vc?.type;
+    const vcTypes: string[] | undefined = Array.isArray(rawVcType)
+      ? rawVcType
+      : typeof rawVcType === 'string' ? [rawVcType] : undefined;
+    // DWN-aligned: delegationChain is a top-level JWT claim, not inside
+    // credentialSubject. Matches abaxx-id-go permissions-grant.json structure.
+    const delegationChain: string[] | undefined = Array.isArray(payload.delegationChain)
+      ? payload.delegationChain
+      : undefined;
+    if (delegationChain !== undefined && delegationChain.length === 0) {
+      return {
+        valid: false,
+        status: 'MALFORMED',
+        error: 'Credential has empty delegationChain — a delegated credential must have at least one ancestor.',
+      };
+    }
+    const isDelegatedType = vcTypes !== undefined && isDelegatedScopeCredentialType(vcTypes);
+    // Require at least one string JWT entry; non-string entries are filtered in the walk
+    // and a chain of only non-strings would silently pass as non-empty without this check.
+    const hasChain = delegationChain !== undefined && delegationChain.some((e): e is string => typeof e === 'string');
+    if (isDelegatedType && !hasChain) {
+      return {
+        valid: false,
+        status: 'MALFORMED',
+        error: 'DelegatedAgentScopeCredential must include a non-empty delegationChain.',
+      };
+    }
+    if (hasChain && !isDelegatedType) {
+      return {
+        valid: false,
+        status: 'MALFORMED',
+        error: 'Credential with delegationChain must declare type DelegatedAgentScopeCredential.',
+      };
+    }
+
     const chainResult = await this.checkDelegationChainRevocation(payload.delegationChain);
     if (chainResult) return chainResult;
 
@@ -668,23 +701,6 @@ export class VcVerifier {
           error: 'Could not verify credential status — failing closed',
         };
       }
-    }
-
-    // 7. Build decoded credential
-    const vcTypes: string[] | undefined = Array.isArray(payload.vc?.type)
-      ? payload.vc.type
-      : undefined;
-    // DWN-aligned: delegationChain is a top-level JWT claim, not inside
-    // credentialSubject. Matches abaxx-id-go permissions-grant.json structure.
-    const delegationChain: string[] | undefined = Array.isArray(payload.delegationChain)
-      ? payload.delegationChain
-      : undefined;
-    if (delegationChain !== undefined && delegationChain.length === 0) {
-      return {
-        valid: false,
-        status: 'MALFORMED',
-        error: 'Credential has empty delegationChain — a delegated credential must have at least one ancestor.',
-      };
     }
 
     // Extract migration credential claims when the VC type is
@@ -767,6 +783,37 @@ export class VcVerifier {
     this.seenJtis.clear();
   }
 
+  /** Strict resolver: knownKeys or SDK only. No did:key fallback — self-asserting DIDs are not trusted delegators. */
+  private async resolveRegisteredIssuerKey(did: string): Promise<Uint8Array | null> {
+    const known = this.knownKeys.get(did);
+    if (known) return known;
+    if (!this.sdk) return null;
+    try {
+      const result = await this.sdk.did.resolve(did);
+      const doc = result.didDocument as
+        | {
+            verificationMethod?: Array<{
+              publicKeyJwk?: { x: string };
+              publicKeyMultibase?: string;
+            }>;
+          }
+        | undefined;
+      const vm = doc?.verificationMethod?.[0];
+      if (!vm) return null;
+      if (vm.publicKeyJwk) {
+        return new Uint8Array(Buffer.from(vm.publicKeyJwk.x, 'base64url'));
+      }
+      if (vm.publicKeyMultibase) {
+        const encoded = vm.publicKeyMultibase.slice(1);
+        const pk = base58Decode(encoded);
+        return pk[0] === 0xed && pk[1] === 0x01 ? pk.slice(2) : pk;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
   /** Reject when any ancestor JTI in delegationChain is revoked. Depth-capped against hostile input. */
   private async checkDelegationChainRevocation(
     rootChain: unknown,
@@ -795,6 +842,42 @@ export class VcVerifier {
             valid: false,
             status: 'MALFORMED',
             error: 'Delegation chain contains malformed JWT',
+          };
+        }
+
+        // Verify signature against a registered issuer before trusting any claim.
+        if (!ancestorPayload.iss) {
+          return {
+            valid: false,
+            status: 'MALFORMED',
+            error: 'Delegation chain ancestor missing issuer (iss) claim',
+          };
+        }
+        const ancestorKey = await this.resolveRegisteredIssuerKey(ancestorPayload.iss);
+        if (!ancestorKey) {
+          return {
+            valid: false,
+            status: 'UNKNOWN_ISSUER',
+            error: 'Delegation chain ancestor issuer not registered',
+          };
+        }
+        if (!await verifyJwtSignature(ancestorJwt, ancestorKey)) {
+          return {
+            valid: false,
+            status: 'INVALID_SIGNATURE',
+            error: 'Delegation chain ancestor signature invalid',
+          };
+        }
+
+        const rawAncestorType = ancestorPayload.vc?.type;
+        const ancestorVcType: unknown[] = Array.isArray(rawAncestorType)
+          ? rawAncestorType
+          : typeof rawAncestorType === 'string' ? [rawAncestorType] : [];
+        if (isDelegatedScopeCredentialType(ancestorVcType)) {
+          return {
+            valid: false,
+            status: 'MALFORMED',
+            error: 'Delegation chain contains a re-delegated credential.',
           };
         }
         if (ancestorPayload.jti) {

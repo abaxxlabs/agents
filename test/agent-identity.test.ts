@@ -1,25 +1,13 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-// Tests for the standalone AgentIdentity factory (SQL-free identity layer).
-
 import { describe, it, expect, vi } from 'vitest';
 import { AgentIdentity } from '../src/agent-identity.js';
+import { VcVerifier } from '../src/vc-verifier.js';
 import { InMemoryRevocationStore } from '../src/storage/memory/revocation-store.js';
 import { InMemorySessionStore } from '../src/storage/memory/session-store.js';
 import { asMasterKey } from '../src/crypto/master-key.js';
 import { deriveSessionMacKey } from '../src/storage/envelope-mac.js';
+import { generateDidKey } from '../src/auth/index.js';
+import { createMockSession } from '../src/auth/session-factory.js';
+import type { ScopeCeiling } from '../src/auth/ceiling.js';
 import type {
   StorageBackend,
   AgentStore,
@@ -27,7 +15,7 @@ import type {
   ContextStore,
   AgentRecord,
 } from '../src/storage/types.js';
-import type { AuditRecord } from '../src/types.js';
+import type { AuditRecord } from '../src/types/index.js';
 import type { Logger } from '../src/logger.js';
 
 function createInMemoryAgentStore(): AgentStore {
@@ -199,15 +187,17 @@ describe('AgentIdentity', () => {
     expect(keyBuf.every((b) => b === 0x33)).toBe(true);
   });
 
-  it('exposes verifierInstance and auditLoggerInstance', async () => {
+  it('close() zeros the SDK-internal copy of the master key', async () => {
     const storage = buildTestStorage();
+    const keyBuf = Buffer.alloc(32, 0x55);
     const identity = await AgentIdentity.create(
       { audit: { enabled: true } },
-      { storage, masterKey: asMasterKey(Buffer.alloc(32, 0x44)) },
+      { storage, masterKey: asMasterKey(keyBuf) },
     );
-    expect(identity.verifierInstance).toBeDefined();
-    expect(identity.auditLoggerInstance).toBeDefined();
     identity.close();
+    const internalKey: Buffer = (identity as any).masterKey;
+    expect(internalKey.every((b: number) => b === 0x00)).toBe(true);
+    expect(keyBuf.every((b) => b === 0x55)).toBe(true);
   });
 
   it('authenticate (mock) returns a session with humanDid', async () => {
@@ -333,5 +323,173 @@ describe('AgentIdentity', () => {
     );
     await expect(identity.listAgents()).rejects.toThrow('AgentIdentity has been closed');
     await expect(identity.getStatus()).rejects.toThrow('AgentIdentity has been closed');
+  });
+});
+
+describe('session factory credentialMaxTtlMs ceiling', () => {
+  it('rejects credential issuance exceeding ceiling TTL', async () => {
+    const verifier = new VcVerifier({ revocationStore: new InMemoryRevocationStore() });
+    const ceiling: ScopeCeiling = {
+      columns: ['*'],
+      actions: ['*'],
+      source: 'mock-unrestricted',
+      resolvedFrom: [],
+      credentialMaxTtlMs: 4 * 3600 * 1000,
+    };
+    const session = createMockSession(verifier, 'TTL Test', undefined, ceiling);
+    const agent = generateDidKey();
+
+    await expect(
+      session.issueCredential({
+        agent: agent.did,
+        columns: ['patients.name'],
+        actions: ['read'],
+        expiresIn: '24h',
+      }),
+    ).rejects.toThrow(/exceeds maximum credential TTL/);
+  });
+
+  it('allows credential issuance within ceiling TTL', async () => {
+    const verifier = new VcVerifier({ revocationStore: new InMemoryRevocationStore() });
+    const ceiling: ScopeCeiling = {
+      columns: ['*'],
+      actions: ['*'],
+      source: 'mock-unrestricted',
+      resolvedFrom: [],
+      credentialMaxTtlMs: 4 * 3600 * 1000,
+    };
+    const session = createMockSession(verifier, 'TTL OK Test', undefined, ceiling);
+    const agent = generateDidKey();
+
+    const jwt = await session.issueCredential({
+      agent: agent.did,
+      columns: ['patients.name'],
+      actions: ['read'],
+      expiresIn: '2h',
+    });
+    expect(jwt).toBeTruthy();
+  });
+
+  it('skips TTL check when credentialMaxTtlMs is not set', async () => {
+    const verifier = new VcVerifier({ revocationStore: new InMemoryRevocationStore() });
+    const session = createMockSession(verifier, 'No TTL Limit');
+    const agent = generateDidKey();
+
+    const jwt = await session.issueCredential({
+      agent: agent.did,
+      columns: ['patients.name'],
+      actions: ['read'],
+      expiresIn: '36500d',
+    });
+    expect(jwt).toBeTruthy();
+  });
+});
+
+describe('config.credential.maxTtl ceiling merging', () => {
+  it('enforces config maxTtl when no caller ceiling is provided', async () => {
+    const storage = buildTestStorage();
+    const identity = await AgentIdentity.create(
+      { credential: { maxTtl: '4h' } },
+      { storage, masterKey: asMasterKey(Buffer.alloc(32, 0xa1)) },
+    );
+    const session = await identity.authenticate({ mockHumanDid: 'did:key:z6MkCfgTtl' });
+    const agent = generateDidKey();
+
+    await expect(
+      session.issueCredential({
+        agent: agent.did,
+        columns: ['patients.name'],
+        actions: ['read'],
+        expiresIn: '24h',
+      }),
+    ).rejects.toThrow(/exceeds maximum credential TTL/);
+
+    const jwt = await session.issueCredential({
+      agent: agent.did,
+      columns: ['patients.name'],
+      actions: ['read'],
+      expiresIn: '2h',
+    });
+    expect(jwt).toBeTruthy();
+    identity.close();
+  });
+
+  it('config maxTtl wins when stricter than caller ceiling', async () => {
+    const storage = buildTestStorage();
+    const identity = await AgentIdentity.create(
+      { credential: { maxTtl: '2h' } },
+      { storage, masterKey: asMasterKey(Buffer.alloc(32, 0xa2)) },
+    );
+    const callerCeiling: ScopeCeiling = {
+      columns: ['*'],
+      actions: ['*'],
+      source: 'mock-unrestricted',
+      resolvedFrom: [],
+      credentialMaxTtlMs: 8 * 3600 * 1000,
+    };
+    const session = await identity.authenticate({
+      mockHumanDid: 'did:key:z6MkCfgWins',
+      scopeCeiling: callerCeiling,
+    });
+    const agent = generateDidKey();
+
+    await expect(
+      session.issueCredential({
+        agent: agent.did,
+        columns: ['patients.name'],
+        actions: ['read'],
+        expiresIn: '4h',
+      }),
+    ).rejects.toThrow(/exceeds maximum credential TTL/);
+    identity.close();
+  });
+
+  it('caller ceiling wins when stricter than config maxTtl', async () => {
+    const storage = buildTestStorage();
+    const identity = await AgentIdentity.create(
+      { credential: { maxTtl: '8h' } },
+      { storage, masterKey: asMasterKey(Buffer.alloc(32, 0xa3)) },
+    );
+    const callerCeiling: ScopeCeiling = {
+      columns: ['*'],
+      actions: ['*'],
+      source: 'mock-unrestricted',
+      resolvedFrom: [],
+      credentialMaxTtlMs: 2 * 3600 * 1000,
+    };
+    const session = await identity.authenticate({
+      mockHumanDid: 'did:key:z6MkCallerWins',
+      scopeCeiling: callerCeiling,
+    });
+    const agent = generateDidKey();
+
+    await expect(
+      session.issueCredential({
+        agent: agent.did,
+        columns: ['patients.name'],
+        actions: ['read'],
+        expiresIn: '4h',
+      }),
+    ).rejects.toThrow(/exceeds maximum credential TTL/);
+    identity.close();
+  });
+
+  it('no enforcement when neither config maxTtl nor caller ceiling is set', async () => {
+    const storage = buildTestStorage();
+    const identity = await AgentIdentity.create(
+      {},
+      { storage, masterKey: asMasterKey(Buffer.alloc(32, 0xa4)) },
+    );
+    const session = await identity.authenticate({ mockHumanDid: 'did:key:z6MkNoLimit' });
+    const agent = generateDidKey();
+
+    const jwt = await session.issueCredential({
+      agent: agent.did,
+      columns: ['patients.name'],
+      actions: ['read'],
+      expiresIn: '36500d',
+    });
+    expect(jwt).toBeTruthy();
+    identity.close();
   });
 });

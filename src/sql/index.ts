@@ -43,20 +43,19 @@ import { AuditLogger } from '../audit-logger.js';
 import { ScopeEngine } from './scope-engine.js';
 import { AgentIdentity } from '../agent-identity.js';
 import type { AgentIdentityConfig } from '../agent-identity.js';
-import { DbConnectionFailedError } from '../errors.js';
+import { DbConnectionFailedError } from '../errors/index.js';
 import { getLogger } from '../logger.js';
+import type { AgentScopeConfig, ScopeMode } from '../types/config.js';
 import type {
-  AgentScopeConfig,
   AuthOptions,
   AuthenticatedSession,
   CreateAgentOptions,
   RegisteredAgent,
-  DelegateCredentialOptions,
-  IdSdkInstance,
-  AuditRecord,
-  VerificationResult,
-  ScopeMode,
-} from '../types.js';
+} from '../types/auth.js';
+import type { DelegateCredentialOptions } from '../types/credential.js';
+import type { IdSdkInstance } from '../types/id-sdk.js';
+import type { AuditRecord } from '../types/audit.js';
+import type { VerificationResult } from '../types/verification.js';
 import type {
   AgentScopeInjections,
   AgentScopeInstance,
@@ -132,6 +131,14 @@ export class AgentScope implements AgentScopeInstance {
    * owned by AgentScope but NOT `.initialize()`d — migrations are a deployment concern.
    * Caller-supplied `pool` and `storage` are not closed by `AgentScope.close()`.
    */
+  private static maskConnectionCredentials(cs: string): string {
+    const proto = cs.indexOf('//');
+    if (proto === -1) return cs;
+    const at = cs.indexOf('@', proto + 2);
+    if (at === -1) return cs;
+    return cs.slice(0, proto + 2) + '***' + cs.slice(at);
+  }
+
   static async create(
     configInput: AgentScopeConfig | string,
     injections: AgentScopeInjections,
@@ -153,7 +160,7 @@ export class AgentScope implements AgentScopeInstance {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       throw new DbConnectionFailedError(
-        config.database.connectionString.replace(/\/\/.*@/, '//***@'),
+        AgentScope.maskConnectionCredentials(config.database.connectionString),
         message,
       );
     }
@@ -193,7 +200,6 @@ export class AgentScope implements AgentScopeInstance {
       log: config.log,
       orgBoundary: config.orgBoundary,
       keystore: config.keystore,
-      delegation: config.delegation,
       devMode: config.devMode,
     };
 
@@ -404,7 +410,7 @@ export {
 export type { LoadColumnKeysResult } from './column-keys.js';
 
 // AgentScopeConfig stays in the shared types module (pg-free).
-export type { AgentScopeConfig } from '../types.js';
+export type { AgentScopeConfig } from '../types/config.js';
 
 // SQL-specific types that reference pg live in sql/types.ts.
 export type {
@@ -435,4 +441,4 @@ export {
   type KeyRotationPhase,
   MasterKeyMismatchError,
   MasterKeyMissingError,
-} from '../errors.js';
+} from '../errors/index.js';

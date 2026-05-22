@@ -35,7 +35,7 @@ import { asMasterKey, type MasterKey } from './crypto/master-key.js';
 import { REDACTED_MASTER_KEY } from './crypto/redact.js';
 import { VcVerifier, decodeJwt } from './vc-verifier.js';
 import type { StorageBackend } from './storage/types.js';
-import { AuthUnavailableError } from './errors.js';
+import { AuthUnavailableError } from './errors/index.js';
 import { AuditLogger } from './audit-logger.js';
 import type { Logger } from './logger.js';
 import { getLogger } from './logger.js';
@@ -56,11 +56,11 @@ import type {
   AuthenticatedSession,
   CreateAgentOptions,
   RegisteredAgent,
-  DelegateCredentialOptions,
-  IdSdkInstance,
-  AuditRecord,
-  VerificationResult,
-} from './types.js';
+} from './types/auth.js';
+import type { DelegateCredentialOptions } from './types/credential.js';
+import type { IdSdkInstance } from './types/id-sdk.js';
+import type { AuditRecord } from './types/audit.js';
+import type { VerificationResult } from './types/verification.js';
 
 // ─── Config & Injection Types ──────────────────────────────────────────────────
 
@@ -108,9 +108,6 @@ export interface AgentIdentityConfig {
   keystore?: {
     path?: string;
   };
-  delegation?: {
-    maxDepth?: number; // default: 2 (human→agent→worker)
-  };
   /**
    * Dev-mode opt-in. See AgentScopeConfig.devMode for full docs.
    * NOT a security gate — NODE_ENV is the runtime guard.
@@ -139,7 +136,6 @@ interface AgentIdentityInternals {
   auditLogger: AuditLogger;
   agentsMap: Map<string, RegisteredAgent>;
   verifierDid: string;
-  masterKey: MasterKey;
 }
 
 // ─── AgentIdentity Class ───────────────────────────────────────────────────────
@@ -266,7 +262,6 @@ export class AgentIdentity {
       auditLogger,
       agentsMap: instance.agents,
       verifierDid: instance.verifierDid,
-      masterKey,
     };
 
     return [instance, internals];
@@ -386,6 +381,14 @@ export class AgentIdentity {
     );
   }
 
+  /**
+   * Create a new agent identity (DID + key pair) owned by an authenticated human.
+   * Both `name` and `ownerDid` are required — `ownerDid` should be the
+   * authenticated human's DID (from `authSession.humanDid`).
+   *
+   * @throws if `name` is missing or not a non-empty string.
+   * @throws if `ownerDid` is missing.
+   */
   async createAgent(options: CreateAgentOptions): Promise<RegisteredAgent> {
     this.assertOpen();
     if (!options.name || typeof options.name !== 'string' || options.name.trim() === '') {
@@ -467,7 +470,6 @@ export class AgentIdentity {
         actions: options.actions,
         expiresIn: options.expiresIn,
         maxExpSeconds,
-        operatorMaxDepth: this.config.delegation?.maxDepth ?? 2,
         metadata: options.metadata,
       },
     );

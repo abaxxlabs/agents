@@ -25,7 +25,8 @@
  */
 
 import type { Pool } from 'pg';
-import type { RegisteredAgent, ScopeMode } from '../types.js';
+import type { RegisteredAgent } from '../types/auth.js';
+import type { ScopeMode } from '../types/config.js';
 import type { QueryOptions, ScopedResult } from './types.js';
 import type { AgentStore } from '../storage/types.js';
 import { VcVerifier, decodeJwt } from '../vc-verifier.js';
@@ -41,15 +42,15 @@ import {
   UnknownIssuerError,
   QueryRejectedError,
   CredentialReplayedError,
-} from '../errors.js';
+} from '../errors/index.js';
 import type { DidAliasRegistry } from '../did-alias.js';
-import type { Did, TableName } from '../domain-types.js';
+import type { Did, TableName } from '../types/domain.js';
 import { assertReadOnlyQuery, assertProjectionBoundary } from './query-policy.js';
 
-// ScopeMode is defined in ../types.ts to keep the identity-only entry free
+// ScopeMode is defined in ../types/config.ts to keep the identity-only entry free
 // of transitive sql/ imports. Re-exported here so consumers importing from
 // @abaxxlabs/agents/sql still resolve it.
-export type { ScopeMode } from '../types.js';
+export type { ScopeMode } from '../types/config.js';
 
 export interface ScopeEngineOptions {
   pool: Pool;
@@ -193,7 +194,7 @@ export class ScopeEngine {
         );
       }
       if (!isAlreadyVP && agent?.signer) {
-        jwtToVerify = createPresentation(jwt, options.agent, agent.signer, {
+        jwtToVerify = await createPresentation(jwt, options.agent, agent.signer, {
           audience: this.verifierDid,
         });
       }

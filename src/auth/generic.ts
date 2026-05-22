@@ -13,12 +13,9 @@
 // limitations under the License.
 
 /**
- * OidcProvider implementation for any standard OIDC provider (Google, Azure AD, Okta, Keycloak).
- *
- * fetchUserInfo() is the primary path — standard tokens don't embed org/role claims.
- * humanDid is derived as ed25519.fromSeed(sha256(issuerUrl + sub)), producing a real
- * keypair. issuerUrl is included in the seed to prevent sub collisions across providers.
- * The resulting did:key is self-asserted, not institutionally bound.
+ * OidcProvider for standard providers (Google, Azure AD, Okta, Keycloak).
+ * fetchUserInfo() is the primary identity path. humanDid is derived deterministically
+ * from sha256(issuerUrl + sub) to prevent sub collisions across providers.
  */
 
 import { randomBytes, createHash, createPrivateKey, createPublicKey } from 'node:crypto';
@@ -28,7 +25,7 @@ import type {
   OidcIdentity,
   AuthorizationUrlResult,
 } from './provider.js';
-import { AuthUnavailableError } from '../errors.js';
+import { AuthUnavailableError } from '../errors/index.js';
 import { PendingFlowStore, PendingFlowError } from './pending-flow-store.js';
 import { verifyIdTokenSignature, IdTokenVerificationError } from './jwks-verify.js';
 import { base58Encode } from '../crypto/base58.js';
@@ -56,11 +53,7 @@ export interface GenericOidcConfig {
   redirectUri?: string;
   /** OAuth scopes to request. Defaults to 'openid profile email'. */
   scopes?: string[];
-  /** Discovery document cache TTL in milliseconds. Defaults to 1 hour.
-   * Lower values detect key rotations faster at the cost of more HTTP requests.
-   * Coordinating this with the provider's key rotation schedule prevents stale
-   * JWKS windows — e.g., if keys rotate every 24h, a 1h cache means at most
-   * 1h of stale keys after rotation. */
+  /** Discovery cache TTL (ms). Defaults to 1 hour. Coordinate with the provider's key rotation schedule. */
   discoveryCacheTtlMs?: number;
   /**
    * Extra consumer domains for email-domain org fallback. Must match the value
@@ -68,21 +61,8 @@ export interface GenericOidcConfig {
    */
   extraConsumerDomains?: readonly string[];
   /**
-   * Hostnames allowed to appear as cross-origin discovery endpoints.
-   *
-   * OIDC discovery documents can name token, authorization, and userinfo
-   * endpoints on a different origin than the issuer. A compromised discovery
-   * document could redirect token exchange to an attacker-controlled HTTPS
-   * host. This per-issuer allowlist blocks unlisted cross-origin hosts before
-   * any credentials are sent.
-   *
-   * Endpoints whose host matches the issuer origin do not need to be listed.
-   * If a cross-origin endpoint is discovered and this field is undefined,
-   * discovery resolution throws `DiscoveryEndpointBlockedError`.
-   *
-   * @example
-   * // Google: issuer is accounts.google.com, token endpoint is oauth2.googleapis.com
-   * { allowedCrossOriginHosts: ['oauth2.googleapis.com'] }
+   * Hostnames allowed for cross-origin discovery endpoints.
+   * Blocks SSRF via compromised discovery documents pointing to attacker-controlled hosts.
    */
   allowedCrossOriginHosts?: readonly string[];
 }
@@ -232,10 +212,7 @@ export class GenericOidcProvider implements OidcProvider {
 
   // ─── OidcProvider: Code Exchange ─────────────────────────────────
 
-  /**
-   * Exchange code for tokens, then call fetchUserInfo() to get the full identity.
-   * Security ordering: CSRF+PKCE validation first, then id_token signature verification.
-   */
+  /** Exchange code for tokens, then fetchUserInfo(). CSRF/PKCE validated before any HTTP call. */
   async exchangeCode(code: string, state: string, codeVerifier: string): Promise<OidcIdentity> {
     // CSRF + PKCE validation before any network call.
     try {
@@ -299,12 +276,7 @@ export class GenericOidcProvider implements OidcProvider {
 
   // ─── OidcProvider: Identity Extraction ───────────────────────────
 
-  /**
-   * Extract available identity from token claims alone. Returns Partial — exchangeCode()
-   * always calls fetchUserInfo() for generic OIDC. If sub is already a DID (e.g. AbaxxOne
-   * misconfigured as generic), returns it directly to avoid wrapping a real did:dht in
-   * a synthetic did:key. NO network I/O.
-   */
+  /** Extract identity from token claims only. Returns Partial. No I/O. */
   parseIdentityFromToken(tokenResponse: OidcTokenResponse): Partial<OidcIdentity> {
     let idTokenClaims: Record<string, unknown> = {};
     if (tokenResponse.id_token) {
@@ -326,11 +298,7 @@ export class GenericOidcProvider implements OidcProvider {
     };
   }
 
-  /**
-   * Fetch full identity from userinfo and derive a stable humanDid.
-   * seed = sha256(issuerUrl + sub) → ed25519 keypair → did:key.
-   * Deterministic: same issuerUrl+sub always produces the same humanDid.
-   */
+  /** Fetch full identity from userinfo and derive a stable humanDid from issuerUrl+sub. */
   async fetchUserInfo(accessToken: string): Promise<OidcIdentity> {
     const discovery = await this.discover();
 
@@ -376,11 +344,7 @@ export class GenericOidcProvider implements OidcProvider {
 
   /**
    * Derive a deterministic did:key from issuerUrl + sub.
-   * Produces a real Ed25519 keypair — same issuerUrl+sub → same keypair every time.
-   *
-   * SECURITY NOTE: the private key is derivable by anyone who knows issuerUrl+sub.
-   * Generic-provider sessions have NO key confidentiality. For key confidentiality,
-   * use a tenant-issued DID or provide key material via the SDK.
+   * WARNING: private key is derivable by anyone who knows issuerUrl+sub -- no key confidentiality.
    */
   deriveHumanDid(sub: string): string {
     // Null-byte separator prevents preimage collision across providers with identical sub values.
@@ -404,10 +368,7 @@ export class GenericOidcProvider implements OidcProvider {
     return humanDid;
   }
 
-  /**
-   * Extract org from userinfo. Priority: hd (Google) > tid (Azure) > email domain.
-   * Consumer domains (gmail.com etc.) return undefined.
-   */
+  /** Extract org: hd (Google) > tid (Azure) > email domain. Consumer domains return undefined. */
   private extractOrg(
     userInfo: Record<string, unknown>,
     email: string | undefined,

@@ -32,7 +32,7 @@ import type {
   RevocationStore,
   SessionStore,
 } from '../types.js';
-import { SqliteRuntimeUnavailableError } from '../../errors.js';
+import { SqliteRuntimeUnavailableError } from '../../errors/index.js';
 import { SqliteAgentStore } from './agent-store.js';
 import { SqliteAuditStore } from './audit-store.js';
 import { SqliteContextStore } from './context-store.js';

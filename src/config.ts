@@ -17,7 +17,10 @@
  */
 
 import { readFileSync } from 'node:fs';
-import type { AgentScopeConfig } from './types.js';
+import type { AgentScopeConfig } from './types/config.js';
+import { TtlExceededError } from './errors/index.js';
+
+export type { ScopeMode, AgentScopeConfig } from './types/config.js';
 
 const DEFAULTS: Partial<AgentScopeConfig> = {
   encryption: {
@@ -29,7 +32,7 @@ const DEFAULTS: Partial<AgentScopeConfig> = {
   },
   credential: {
     maxTtl: '24h',
-    clockSkew: '30s',
+    clockSkew: '5s',
   },
   did: {
     resolverCacheTtl: '5m',
@@ -132,7 +135,9 @@ export function loadConfig(pathOrConfig: string | AgentScopeConfig): AgentScopeC
 /**
  * Parse a duration string like '30s', '5m', '24h', '1d' into milliseconds.
  */
-const DURATION_TOKEN_RE = /(\d+(?:\.\d+)?)(ms|s|m|h|d)/g;
+// Bounded quantifiers ({1,20}) prevent polynomial backtracking on untrusted input (CodeQL js/polynomial-redos).
+const DURATION_TOKEN_RE = /(\d{1,20}(?:\.\d{1,20})?)(ms|s|m|h|d)/g;
+const MAX_DURATION_INPUT_LEN = 64;
 const DURATION_UNIT_MS: Record<string, number> = {
   ms: 1,
   s: 1_000,
@@ -160,6 +165,11 @@ const MAX_DURATION_MS = 100 * 365 * 86_400_000;
  * string that does not fully parse.
  */
 export function parseDuration(duration: string): number {
+  if (duration.length > MAX_DURATION_INPUT_LEN) {
+    throw new Error(
+      `Duration string too long (${duration.length} chars, max ${MAX_DURATION_INPUT_LEN}).`,
+    );
+  }
   const matches = [...duration.matchAll(DURATION_TOKEN_RE)];
 
   // Must fully reconstruct the input — catches trailing garbage ('30sx') or bare numbers ('90').
@@ -210,4 +220,18 @@ export function expiresInToMs(expiresIn: string | number): number {
     throw new Error(`Invalid expiresIn: ${expiresIn}. Duration must be positive.`);
   }
   return ms;
+}
+
+/**
+ * Reject expiresIn values that exceed a configured maximum TTL.
+ *
+ * @throws {TtlExceededError} when the resolved duration exceeds maxTtlMs
+ */
+export function assertExpiresInBound(
+  expiresIn: string | number,
+  maxTtlMs: number,
+): void {
+  if (expiresInToMs(expiresIn) > maxTtlMs) {
+    throw new TtlExceededError(maxTtlMs);
+  }
 }

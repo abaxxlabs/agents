@@ -1,17 +1,3 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 import { describe, it, expect, beforeEach } from 'vitest';
 import { VcVerifier, createJwt, decodeJwt } from '../src/vc-verifier.js';
 import { InMemoryRevocationStore } from '../src/storage/memory/revocation-store.js';
@@ -51,16 +37,16 @@ describe('VP Verification — VcVerifier', () => {
 
   describe('VP signature verification', () => {
     it('accepts a valid VP wrapping a valid VC', async () => {
-      const vc = issueTestVC();
-      const vp = createPresentation(vc, agent.did, signer, { audience: server.did });
+      const vc = await issueTestVC();
+      const vp = await createPresentation(vc, agent.did, signer, { audience: server.did });
       const result = await verifier.verify(vp, { expectedAudience: server.did });
       expect(result.valid).toBe(true);
       expect(result.status).toBe('VALID');
     });
 
     it('rejects a VP with tampered signature', async () => {
-      const vc = issueTestVC();
-      const vp = createPresentation(vc, agent.did, signer);
+      const vc = await issueTestVC();
+      const vp = await createPresentation(vc, agent.did, signer);
       // Tamper with the signature portion
       const parts = vp.split('.');
       parts[2] = parts[2].split('').reverse().join('');
@@ -74,12 +60,12 @@ describe('VP Verification — VcVerifier', () => {
     it('rejects a VP from an unknown issuer (falls through to inner VC subject mismatch)', async () => {
       const unknownAgent = generateDidKey();
       const unknownSigner = createSigner(unknownAgent.privateKey);
-      const vc = issueTestVC();
+      const vc = await issueTestVC();
       // VP signed by an agent whose key is NOT registered.
       // The VcVerifier resolves via did:key self-describing key, so the VP
       // signature check passes. But the inner VC subject (agent.did) won't
       // match the VP issuer (unknownAgent.did), producing WRONG_SUBJECT.
-      const vp = createPresentation(vc, unknownAgent.did, unknownSigner);
+      const vp = await createPresentation(vc, unknownAgent.did, unknownSigner);
 
       const result = await verifier.verify(vp);
       expect(result.valid).toBe(false);
@@ -96,10 +82,10 @@ describe('VP Verification — VcVerifier', () => {
         vp: {
           '@context': ['https://www.w3.org/2018/credentials/v1'],
           type: [VP_TYPE],
-          verifiableCredential: [issueTestVC()],
+          verifiableCredential: [await issueTestVC()],
         },
       };
-      const vpJwt = createJwt(vpPayload, agent.privateKey);
+      const vpJwt = await createJwt(vpPayload, agent.privateKey);
 
       const result = await verifier.verify(vpJwt);
       expect(result.valid).toBe(false);
@@ -112,16 +98,16 @@ describe('VP Verification — VcVerifier', () => {
 
   describe('VP audience binding', () => {
     it('passes when VP audience matches expectedAudience', async () => {
-      const vc = issueTestVC();
-      const vp = createPresentation(vc, agent.did, signer, { audience: server.did });
+      const vc = await issueTestVC();
+      const vp = await createPresentation(vc, agent.did, signer, { audience: server.did });
       const result = await verifier.verify(vp, { expectedAudience: server.did });
       expect(result.valid).toBe(true);
     });
 
     it('rejects when VP audience does not match expectedAudience', async () => {
       const otherServer = generateDidKey();
-      const vc = issueTestVC();
-      const vp = createPresentation(vc, agent.did, signer, { audience: otherServer.did });
+      const vc = await issueTestVC();
+      const vp = await createPresentation(vc, agent.did, signer, { audience: otherServer.did });
 
       const result = await verifier.verify(vp, { expectedAudience: server.did });
       expect(result.valid).toBe(false);
@@ -130,8 +116,8 @@ describe('VP Verification — VcVerifier', () => {
     });
 
     it('passes when no expectedAudience is specified (legacy callers)', async () => {
-      const vc = issueTestVC();
-      const vp = createPresentation(vc, agent.did, signer, { audience: server.did });
+      const vc = await issueTestVC();
+      const vp = await createPresentation(vc, agent.did, signer, { audience: server.did });
       // No expectedAudience — should still validate
       const result = await verifier.verify(vp);
       expect(result.valid).toBe(true);
@@ -140,8 +126,8 @@ describe('VP Verification — VcVerifier', () => {
     it('rejects when VP has no audience and expectedAudience is set', async () => {
       // Fail-closed: VP without aud claim is rejected when expectedAudience is set.
       // Prevents cross-server replay of VPs that omit audience binding.
-      const vc = issueTestVC();
-      const vp = createPresentation(vc, agent.did, signer); // no audience
+      const vc = await issueTestVC();
+      const vp = await createPresentation(vc, agent.did, signer); // no audience
       const result = await verifier.verify(vp, { expectedAudience: server.did });
       expect(result.valid).toBe(false);
       expect(result.status).toBe('WRONG_AUDIENCE');
@@ -152,9 +138,9 @@ describe('VP Verification — VcVerifier', () => {
       const serverA = generateDidKey();
       const serverB = generateDidKey();
       const serverC = generateDidKey();
-      const vc = issueTestVC();
+      const vc = await issueTestVC();
 
-      const vp = createPresentation(vc, agent.did, signer, {
+      const vp = await createPresentation(vc, agent.did, signer, {
         audience: [serverA.did, serverB.did],
       });
 
@@ -179,7 +165,7 @@ describe('VP Verification — VcVerifier', () => {
 
   describe('VP expiry', () => {
     it('rejects an expired VP', async () => {
-      const vc = issueTestVC();
+      const vc = await issueTestVC();
       const now = Math.floor(Date.now() / 1000);
       // Create a VP that expired 10 minutes ago
       const expiredPayload = {
@@ -193,7 +179,7 @@ describe('VP Verification — VcVerifier', () => {
           verifiableCredential: [vc],
         },
       };
-      const expiredVp = createJwt(expiredPayload, agent.privateKey);
+      const expiredVp = await createJwt(expiredPayload, agent.privateKey);
 
       // Use strict verifier
       const strictVerifier = new VcVerifier({
@@ -214,8 +200,8 @@ describe('VP Verification — VcVerifier', () => {
 
   describe('VP replay protection', () => {
     it('rejects a replayed VP (same nonce used twice)', async () => {
-      const vc = issueTestVC();
-      const vp = createPresentation(vc, agent.did, signer, { nonce: 'fixed-nonce' });
+      const vc = await issueTestVC();
+      const vp = await createPresentation(vc, agent.did, signer, { nonce: 'fixed-nonce' });
 
       const result1 = await verifier.verify(vp);
       expect(result1.valid).toBe(true);
@@ -227,9 +213,9 @@ describe('VP Verification — VcVerifier', () => {
     });
 
     it('accepts different VPs wrapping the same VC (different nonces)', async () => {
-      const vc = issueTestVC();
-      const vp1 = createPresentation(vc, agent.did, signer, { nonce: 'nonce-1' });
-      const vp2 = createPresentation(vc, agent.did, signer, { nonce: 'nonce-2' });
+      const vc = await issueTestVC();
+      const vp1 = await createPresentation(vc, agent.did, signer, { nonce: 'nonce-1' });
+      const vp2 = await createPresentation(vc, agent.did, signer, { nonce: 'nonce-2' });
 
       const result1 = await verifier.verify(vp1);
       expect(result1.valid).toBe(true);
@@ -244,7 +230,7 @@ describe('VP Verification — VcVerifier', () => {
   describe('VP malformed cases', () => {
     it('rejects a VP with no inner verifiable credentials', async () => {
       const now = Math.floor(Date.now() / 1000);
-      const emptyVp = createJwt(
+      const emptyVp = await createJwt(
         {
           iss: agent.did,
           jti: 'empty-vp-nonce',
@@ -267,7 +253,7 @@ describe('VP Verification — VcVerifier', () => {
 
     it('rejects a VP with missing verifiableCredential array', async () => {
       const now = Math.floor(Date.now() / 1000);
-      const noVcVp = createJwt(
+      const noVcVp = await createJwt(
         {
           iss: agent.did,
           jti: 'no-vc-nonce',
@@ -298,8 +284,8 @@ describe('VP Verification — VcVerifier', () => {
       const signerB = createSigner(agentB.privateKey);
       verifier.registerKey(agentB.did, agentB.publicKey);
 
-      const vcForAgentA = issueTestVC(); // VC with sub = agent.did
-      const vpByAgentB = createPresentation(vcForAgentA, agentB.did, signerB);
+      const vcForAgentA = await issueTestVC(); // VC with sub = agent.did
+      const vpByAgentB = await createPresentation(vcForAgentA, agentB.did, signerB);
 
       const result = await verifier.verify(vpByAgentB);
       expect(result.valid).toBe(false);
@@ -308,8 +294,8 @@ describe('VP Verification — VcVerifier', () => {
     });
 
     it('accepts when VP issuer matches inner VC subject', async () => {
-      const vc = issueTestVC(); // VC with sub = agent.did
-      const vp = createPresentation(vc, agent.did, signer); // VP iss = agent.did
+      const vc = await issueTestVC(); // VC with sub = agent.did
+      const vp = await createPresentation(vc, agent.did, signer); // VP iss = agent.did
 
       const result = await verifier.verify(vp);
       expect(result.valid).toBe(true);
@@ -330,15 +316,15 @@ describe('createPresentation()', () => {
     signer = createSigner(agent.privateKey);
   });
 
-  it('creates a valid JWT with VP structure', () => {
-    const vc = issueCredential(human.did, human.privateKey, {
+  it('creates a valid JWT with VP structure', async () => {
+    const vc = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['col.a'],
       actions: ['read'],
       expiresIn: '4h',
     });
 
-    const vp = createPresentation(vc, agent.did, signer);
+    const vp = await createPresentation(vc, agent.did, signer);
     expect(vp.split('.').length).toBe(3);
 
     const decoded = decodeJwt(vp);
@@ -348,8 +334,8 @@ describe('createPresentation()', () => {
     expect(decoded.payload.vp.verifiableCredential[0]).toBe(vc);
   });
 
-  it('sets audience claim when audience option is provided', () => {
-    const vc = issueCredential(human.did, human.privateKey, {
+  it('sets audience claim when audience option is provided', async () => {
+    const vc = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['col.a'],
       actions: ['read'],
@@ -357,56 +343,56 @@ describe('createPresentation()', () => {
     });
 
     const server = generateDidKey();
-    const vp = createPresentation(vc, agent.did, signer, { audience: server.did });
+    const vp = await createPresentation(vc, agent.did, signer, { audience: server.did });
     const decoded = decodeJwt(vp);
     expect(decoded.payload.aud).toBe(server.did);
   });
 
-  it('does not set audience claim when audience is not provided', () => {
-    const vc = issueCredential(human.did, human.privateKey, {
+  it('does not set audience claim when audience is not provided', async () => {
+    const vc = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['col.a'],
       actions: ['read'],
       expiresIn: '4h',
     });
 
-    const vp = createPresentation(vc, agent.did, signer);
+    const vp = await createPresentation(vc, agent.did, signer);
     const decoded = decodeJwt(vp);
     expect(decoded.payload.aud).toBeUndefined();
   });
 
-  it('uses custom nonce when provided', () => {
-    const vc = issueCredential(human.did, human.privateKey, {
+  it('uses custom nonce when provided', async () => {
+    const vc = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['col.a'],
       actions: ['read'],
       expiresIn: '4h',
     });
 
-    const vp = createPresentation(vc, agent.did, signer, { nonce: 'my-custom-nonce' });
+    const vp = await createPresentation(vc, agent.did, signer, { nonce: 'my-custom-nonce' });
     const decoded = decodeJwt(vp);
     expect(decoded.payload.jti).toBe('my-custom-nonce');
   });
 
-  it('generates a fresh nonce (UUID) when nonce is not provided', () => {
-    const vc = issueCredential(human.did, human.privateKey, {
+  it('generates a fresh nonce (UUID) when nonce is not provided', async () => {
+    const vc = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['col.a'],
       actions: ['read'],
       expiresIn: '4h',
     });
 
-    const vp1 = createPresentation(vc, agent.did, signer);
-    const vp2 = createPresentation(vc, agent.did, signer);
+    const vp1 = await createPresentation(vc, agent.did, signer);
+    const vp2 = await createPresentation(vc, agent.did, signer);
     const decoded1 = decodeJwt(vp1);
     const decoded2 = decodeJwt(vp2);
     expect(decoded1.payload.jti).not.toBe(decoded2.payload.jti);
   });
 
-  it('sets exp to 60 seconds from now by default', () => {
+  it('sets exp to 60 seconds from now by default', async () => {
     // VP lifetime defaults to 60s. The VP lifetime IS the first-mover replay
     // window for a captured presentation; 60s is generous for an RPC round-trip.
-    const vc = issueCredential(human.did, human.privateKey, {
+    const vc = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['col.a'],
       actions: ['read'],
@@ -414,7 +400,7 @@ describe('createPresentation()', () => {
     });
 
     const before = Math.floor(Date.now() / 1000);
-    const vp = createPresentation(vc, agent.did, signer);
+    const vp = await createPresentation(vc, agent.did, signer);
     const after = Math.floor(Date.now() / 1000);
 
     const decoded = decodeJwt(vp);
@@ -422,10 +408,10 @@ describe('createPresentation()', () => {
     expect(decoded.payload.exp).toBeLessThanOrEqual(after + 60);
   });
 
-  it('respects an explicit lifetime option', () => {
+  it('respects an explicit lifetime option', async () => {
     // Consumers needing a longer window (human-in-the-loop, resumable flows)
     // pass `lifetime: '5m'` — the prior default is opt-in, not removed.
-    const vc = issueCredential(human.did, human.privateKey, {
+    const vc = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['col.a'],
       actions: ['read'],
@@ -433,7 +419,7 @@ describe('createPresentation()', () => {
     });
 
     const before = Math.floor(Date.now() / 1000);
-    const vp = createPresentation(vc, agent.did, signer, { lifetime: '5m' });
+    const vp = await createPresentation(vc, agent.did, signer, { lifetime: '5m' });
     const after = Math.floor(Date.now() / 1000);
 
     const decoded = decodeJwt(vp);
@@ -441,8 +427,8 @@ describe('createPresentation()', () => {
     expect(decoded.payload.exp).toBeLessThanOrEqual(after + 300);
   });
 
-  it('accepts tight lifetimes (e.g. 10s) for high-frequency RPC', () => {
-    const vc = issueCredential(human.did, human.privateKey, {
+  it('accepts tight lifetimes (e.g. 10s) for high-frequency RPC', async () => {
+    const vc = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['col.a'],
       actions: ['read'],
@@ -450,7 +436,7 @@ describe('createPresentation()', () => {
     });
 
     const before = Math.floor(Date.now() / 1000);
-    const vp = createPresentation(vc, agent.did, signer, { lifetime: '10s' });
+    const vp = await createPresentation(vc, agent.did, signer, { lifetime: '10s' });
     const after = Math.floor(Date.now() / 1000);
 
     const decoded = decodeJwt(vp);
@@ -458,49 +444,49 @@ describe('createPresentation()', () => {
     expect(decoded.payload.exp).toBeLessThanOrEqual(after + 10);
   });
 
-  it('throws on malformed lifetime string', () => {
+  it('throws on malformed lifetime string', async () => {
     // Surface misconfiguration at call time. A bad duration would otherwise
     // produce a VP with NaN exp that only fails downstream at verify().
-    const vc = issueCredential(human.did, human.privateKey, {
+    const vc = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['col.a'],
       actions: ['read'],
       expiresIn: '4h',
     });
 
-    expect(() => createPresentation(vc, agent.did, signer, { lifetime: 'forever' })).toThrow(
+    await expect(createPresentation(vc, agent.did, signer, { lifetime: 'forever' })).rejects.toThrow(
       /Invalid duration format/,
     );
-    expect(() => createPresentation(vc, agent.did, signer, { lifetime: '30' })).toThrow(
+    await expect(createPresentation(vc, agent.did, signer, { lifetime: '30' })).rejects.toThrow(
       /Invalid duration format/,
     );
-    expect(() => createPresentation(vc, agent.did, signer, { lifetime: '' })).toThrow(
+    await expect(createPresentation(vc, agent.did, signer, { lifetime: '' })).rejects.toThrow(
       /Invalid duration format/,
     );
   });
 
-  it('throws on zero lifetime (born-expired VP footgun)', () => {
+  it('throws on zero lifetime (born-expired VP footgun)', async () => {
     // parseDuration's regex `\d+` accepts '0s'/'0m' as syntactically valid
     // and returns 0 ms. Without a floor, this would produce exp = now:
     // immediately expired under tight clockSkew, or only clockSkew-valid under
     // default. Without the floor, a zero-lifetime VP would be born-expired.
-    const vc = issueCredential(human.did, human.privateKey, {
+    const vc = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['col.a'],
       actions: ['read'],
       expiresIn: '4h',
     });
 
-    expect(() => createPresentation(vc, agent.did, signer, { lifetime: '0s' })).toThrow(
+    await expect(createPresentation(vc, agent.did, signer, { lifetime: '0s' })).rejects.toThrow(
       /at least 1 second/,
     );
-    expect(() => createPresentation(vc, agent.did, signer, { lifetime: '0m' })).toThrow(
+    await expect(createPresentation(vc, agent.did, signer, { lifetime: '0m' })).rejects.toThrow(
       /at least 1 second/,
     );
-    expect(() => createPresentation(vc, agent.did, signer, { lifetime: '0h' })).toThrow(
+    await expect(createPresentation(vc, agent.did, signer, { lifetime: '0h' })).rejects.toThrow(
       /at least 1 second/,
     );
-    expect(() => createPresentation(vc, agent.did, signer, { lifetime: '0d' })).toThrow(
+    await expect(createPresentation(vc, agent.did, signer, { lifetime: '0d' })).rejects.toThrow(
       /at least 1 second/,
     );
   });

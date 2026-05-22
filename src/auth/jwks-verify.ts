@@ -14,20 +14,9 @@
 
 /**
  * JWKS-based id_token signature verification.
- *
- * An unverified id_token is just base64-encoded JSON — anyone can forge claims in one.
- * Signature verification against the provider's JWKS is what makes identity claims trustworthy.
- *
- * Supported algorithms (covers all major OIDC providers):
- *   RS256, RS384, RS512  — RSA PKCS#1 v1.5 (Google, Azure, Okta, most generic providers)
- *   PS256, PS384, PS512  — RSA-PSS (FAPI-compliant providers)
- *   ES256, ES384, ES512  — ECDSA (Cloudflare Access, newer providers)
- *   EdDSA (Ed25519)      — AbaxxOne, did:key-based systems
- *
- * JWKS caching: module-level, 1-hour TTL per jwks_uri.
- *   On kid mismatch: automatic cache-bust and one retry (handles key rotation events).
- *   An attacker presenting tokens with unknown kids could force unlimited JWKS re-fetches
- *   (cache-bust amplification) — a per-URI 30-second cooldown limits this.
+ * Supports RS256/384/512, PS256/384/512, ES256/384/512, and EdDSA.
+ * JWKS is cached per URI with 1-hour TTL; kid mismatches trigger a single cache-bust retry
+ * rate-limited to one per 30 seconds to prevent cache-bust amplification.
  */
 
 import {
@@ -37,11 +26,9 @@ import {
   constants,
   type JsonWebKey,
 } from 'node:crypto';
-import { AuthUnavailableError } from '../errors.js';
+import { AuthUnavailableError } from '../errors/index.js';
 
-// Only accept algorithms that major OIDC providers actually use. Prevents the "none" algorithm
-// bypass and symmetric-key confusion attacks (e.g. alg:"HS256" with the JWKS public key used
-// as an HMAC secret) and other algorithm-substitution attacks.
+// Allowlist prevents "none" bypass and symmetric-key confusion (e.g. alg:HS256 with JWKS public key as HMAC secret).
 const ALLOWED_ALGS = new Set([
   'RS256',
   'RS384',
@@ -100,10 +87,7 @@ const JWKS_BUST_COOLDOWN_MS = 30_000;
 
 // ─── Key Selection ────────────────────────────────────────────────────────────
 
-/**
- * Find the JWKS key for this JWT. If kid present: exact match. If no kid: match by alg/kty.
- * Handles MockOidcServer JWTs (JWKS has kid, JWT doesn't) via the alg/kty fallback.
- */
+/** Find JWKS key by kid (exact) or alg/kty fallback when kid is absent. */
 function findKey(
   keys: Record<string, unknown>[],
   kid: string | undefined,
@@ -125,10 +109,7 @@ function algToKty(alg: string): string | undefined {
 
 // ─── Signature Verification ───────────────────────────────────────────────────
 
-/**
- * Verify a JWT's signature using the appropriate algorithm.
- * Returns true on valid signature, false on invalid. Does not throw on invalid.
- */
+/** Verify a JWT signature. Returns true/false; does not throw on invalid. */
 function verifySignature(
   alg: string,
   signingInput: string,
@@ -175,14 +156,8 @@ function algToHash(alg: string): string {
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Options for JWT claims validation beyond signature verification.
- *
- * Signature verification alone is not enough — an attacker with a valid token from a different
- * issuer or audience can pass signature checks. Pass expectedIssuer and expectedAudience to
- * prevent token substitution attacks. Without them, id_token claims are unauthenticated
- * (signature verified, but not bound to this client).
- *
- * `exp` is always validated — expired tokens must not authenticate.
+ * Claims validation beyond signature verification. Signature valid != token valid for this session.
+ * Without iss/aud checks, a token from a different issuer passes. exp is always enforced -- not optional.
  */
 export interface VerifyIdTokenOptions {
   /** Expected `iss` claim. Mismatch throws IdTokenVerificationError. */
@@ -192,23 +167,10 @@ export interface VerifyIdTokenOptions {
 }
 
 /**
- * Verify an id_token's signature against the JWKS at jwks_uri, then validate
- * standard time and identity claims.
- *
- * Fetches the JWKS (cached), finds the matching key (by kid or alg/kty),
- * imports the public key, verifies the signature, and then validates:
- *   - exp  (always): token must not be expired
- *   - iss  (if expectedIssuer provided): must match
- *   - aud  (if expectedAudience provided): must be present in aud claim
- *
- * On kid mismatch (key rotation): automatically cache-busts and retries once.
- *
- * @param idToken  The raw id_token JWT string from the token endpoint.
- * @param jwksUri  The JWKS URI from the provider's discovery document.
- * @param options  Optional claims validation (iss, aud). exp is always validated.
- * @returns        The decoded (and now trusted) JWT payload.
- * @throws         IdTokenVerificationError if the signature or any claim is invalid.
- * @throws         AuthUnavailableError if the JWKS endpoint is unreachable.
+ * Verify an id_token's signature against the provider's JWKS, then validate exp/iss/aud claims.
+ * @returns The decoded (now trusted) JWT payload.
+ * @throws IdTokenVerificationError on invalid signature or claims.
+ * @throws AuthUnavailableError if the JWKS endpoint is unreachable.
  */
 export async function verifyIdTokenSignature(
   idToken: string,
@@ -302,10 +264,7 @@ export async function verifyIdTokenSignature(
     throw new IdTokenVerificationError('id_token payload is not valid JSON');
   }
 
-  // Claims validation: signature valid != token valid for this session.
-  // exp/iss/aud bind the token to this client and prevent replay of tokens issued to other parties.
-
-  // exp: mandatory — tokens without an expiry can be replayed indefinitely.
+  // exp is mandatory -- tokens without expiry can be replayed indefinitely.
   const now = Math.floor(Date.now() / 1000);
   const exp = payload.exp;
   if (exp === undefined) {
@@ -364,13 +323,7 @@ export function clearJwksCache(): void {
 
 // ─── Error Type ───────────────────────────────────────────────────────────────
 
-/**
- * Thrown when id_token signature verification fails for any reason other than
- * an unreachable JWKS endpoint (which throws AuthUnavailableError).
- *
- * Callers should map this to a CredentialInvalidError or AuthUnavailableError
- * with appropriate context.
- */
+/** Thrown on id_token signature or claims validation failure. JWKS network errors throw AuthUnavailableError instead. */
 export class IdTokenVerificationError extends Error {
   constructor(message: string) {
     super(message);

@@ -12,17 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { sign as ed25519Sign, verify as ed25519Verify } from 'node:crypto';
-import { CredentialMalformedError } from './errors.js';
-import type { CredentialScope } from './types.js';
+import { SignJWT, compactVerify, decodeJwt as joseDecodeJwt, decodeProtectedHeader, importJWK, errors as joseErrors } from 'jose';
+import { ed25519 } from '@noble/curves/ed25519';
+import { createHash } from 'node:crypto';
+import { CredentialMalformedError } from './errors/index.js';
+import type { CredentialScope } from './types/credential.js';
 
-export function base64UrlDecode(str: string): Buffer {
-  const padded = str.replace(/-/g, '+').replace(/_/g, '/');
-  return Buffer.from(padded, 'base64');
+type ImportedKey = Awaited<ReturnType<typeof importJWK>>;
+
+const KEY_CACHE_CAP = 256;
+
+const privateKeyCache = new Map<string, ImportedKey>();
+const publicKeyCache = new Map<string, ImportedKey>();
+
+function lruGet(cache: Map<string, ImportedKey>, key: string): ImportedKey | undefined {
+  const value = cache.get(key);
+  if (value === undefined) return undefined;
+  cache.delete(key);
+  cache.set(key, value);
+  return value;
 }
 
-export function base64UrlEncode(buf: Buffer): string {
-  return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+function lruSet(cache: Map<string, ImportedKey>, key: string, value: ImportedKey): void {
+  if (cache.has(key)) cache.delete(key);
+  cache.set(key, value);
+  if (cache.size > KEY_CACHE_CAP) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey !== undefined) cache.delete(oldestKey);
+  }
 }
 
 export interface JwtHeader {
@@ -38,6 +55,7 @@ export interface JwtPayload {
   iat?: number;
   nbf?: number;
   exp?: number;
+  maxDepth?: number;
   vc?: {
     '@context'?: string[];
     type?: string[];
@@ -62,26 +80,20 @@ export interface JwtPayload {
  * Decode a JWT into its constituent parts without verifying the signature.
  *
  * @param jwt - Compact JWS string (header.payload.signature).
- * @returns Decoded header, payload, raw signature bytes, and the signing input.
- * @throws {CredentialMalformedError} if the JWT does not have exactly 3 parts.
+ * @returns Decoded header and payload.
+ * @throws {CredentialMalformedError} if the JWT is malformed.
  */
 export function decodeJwt(jwt: string): {
   header: JwtHeader;
   payload: JwtPayload;
-  signature: Buffer;
-  signingInput: string;
 } {
-  const parts = jwt.split('.');
-  if (parts.length !== 3) {
-    throw new CredentialMalformedError('JWT must have 3 parts (header.payload.signature)');
+  try {
+    const payload = joseDecodeJwt(jwt) as JwtPayload;
+    const header = decodeProtectedHeader(jwt) as JwtHeader;
+    return { header, payload };
+  } catch {
+    throw new CredentialMalformedError('Malformed JWT');
   }
-
-  const header = JSON.parse(base64UrlDecode(parts[0]).toString('utf-8')) as JwtHeader;
-  const payload = JSON.parse(base64UrlDecode(parts[1]).toString('utf-8')) as JwtPayload;
-  const signature = base64UrlDecode(parts[2]);
-  const signingInput = `${parts[0]}.${parts[1]}`;
-
-  return { header, payload, signature, signingInput };
 }
 
 /**
@@ -91,25 +103,25 @@ export function decodeJwt(jwt: string): {
  * @param privateKey - Raw 32-byte Ed25519 private key.
  * @returns Compact JWS string.
  */
-export function createJwt(payload: JwtPayload, privateKey: Uint8Array): string {
-  const header: JwtHeader = { alg: 'EdDSA', typ: 'JWT' };
-  const headerB64 = base64UrlEncode(Buffer.from(JSON.stringify(header)));
-  const payloadB64 = base64UrlEncode(Buffer.from(JSON.stringify(payload)));
-  const signingInput = `${headerB64}.${payloadB64}`;
-
-  const keyObj = {
-    key: Buffer.concat([
-      Buffer.from('302e020100300506032b657004220420', 'hex'),
-      Buffer.from(privateKey),
-    ]),
-    format: 'der' as const,
-    type: 'pkcs8' as const,
-  };
-
-  const sig = ed25519Sign(undefined, Buffer.from(signingInput), keyObj);
-  const sigB64 = base64UrlEncode(sig);
-
-  return `${signingInput}.${sigB64}`;
+export async function createJwt(payload: JwtPayload, privateKey: Uint8Array): Promise<string> {
+  const cacheKey = createHash('sha256').update(privateKey).digest('base64url');
+  let key = lruGet(privateKeyCache, cacheKey);
+  if (key === undefined) {
+    const publicKey = ed25519.getPublicKey(privateKey);
+    key = await importJWK(
+      {
+        kty: 'OKP',
+        crv: 'Ed25519',
+        x: Buffer.from(publicKey).toString('base64url'),
+        d: Buffer.from(privateKey).toString('base64url'),
+      },
+      'EdDSA',
+    );
+    lruSet(privateKeyCache, cacheKey, key);
+  }
+  return new SignJWT(payload as unknown as Record<string, unknown>)
+    .setProtectedHeader({ alg: 'EdDSA', typ: 'JWT' })
+    .sign(key);
 }
 
 /**
@@ -119,14 +131,28 @@ export function createJwt(payload: JwtPayload, privateKey: Uint8Array): string {
  * @param publicKey - Raw 32-byte Ed25519 public key.
  * @returns `true` if the signature is valid.
  */
-export function verifyJwtSignature(jwt: string, publicKey: Uint8Array): boolean {
-  const { signingInput, signature } = decodeJwt(jwt);
-
-  const keyObj = {
-    key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), Buffer.from(publicKey)]),
-    format: 'der' as const,
-    type: 'spki' as const,
-  };
-
-  return ed25519Verify(undefined, Buffer.from(signingInput), keyObj, signature);
+export async function verifyJwtSignature(jwt: string, publicKey: Uint8Array): Promise<boolean> {
+  const cacheKey = Buffer.from(publicKey).toString('base64url');
+  const cachedKey = lruGet(publicKeyCache, cacheKey);
+  const key = cachedKey ?? await importJWK(
+    {
+      kty: 'OKP',
+      crv: 'Ed25519',
+      x: cacheKey,
+    },
+    'EdDSA',
+  );
+  try {
+    await compactVerify(jwt, key, { algorithms: ['EdDSA'] });
+    if (cachedKey === undefined) lruSet(publicKeyCache, cacheKey, key);
+    return true;
+  } catch (err) {
+    if (
+      err instanceof joseErrors.JWSSignatureVerificationFailed ||
+      err instanceof joseErrors.JWSInvalid ||
+      err instanceof joseErrors.JOSEAlgNotAllowed ||
+      err instanceof joseErrors.JOSENotSupported
+    ) return false;
+    throw err;
+  }
 }

@@ -1,17 +1,3 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { InMemoryRevocationStore } from '../src/storage/memory/revocation-store.js';
 import { VcVerifier } from '../src/vc-verifier.js';
@@ -46,11 +32,11 @@ describe('InMemoryRevocationStore', () => {
     expect(store.size).toBe(1); // still one entry
   });
 
-  it('revoke throws on empty JTI (D5)', async () => {
+  it('revoke throws on empty JTI', async () => {
     await expect(store.revoke('', {})).rejects.toThrow('jti must be a non-empty string');
   });
 
-  it('revoke throws on non-string JTI (D5)', async () => {
+  it('revoke throws on non-string JTI', async () => {
     await expect(store.revoke(null as unknown as string, {})).rejects.toThrow(
       'jti must be a non-empty string',
     );
@@ -184,7 +170,7 @@ describe('SqliteRevocationStore (in-memory)', () => {
     db.close();
   });
 
-  it('D5: revoke throws on empty JTI', async () => {
+  it('revoke throws on empty JTI', async () => {
     let Database: SqliteDatabaseCtor;
     try {
       Database = require('bun:sqlite').Database;
@@ -235,7 +221,7 @@ describe('Cross-instance coherency — InMemoryRevocationStore isolation', () =>
   });
 });
 
-describe('D10: VcVerifier.revokeAsync() rejection propagation', () => {
+describe('VcVerifier.revokeAsync() rejection propagation', () => {
   it('revokeAsync() throws when store.revoke() throws', async () => {
     const failingStore = new InMemoryRevocationStore();
     vi.spyOn(failingStore, 'revoke').mockRejectedValue(new Error('D10: store write failed'));
@@ -253,13 +239,13 @@ describe('D10: VcVerifier.revokeAsync() rejection propagation', () => {
     expect(await store.isRevoked('some-jti')).toBe(true);
   });
 
-  it('revokeAsync() throws on empty JTI (D5)', async () => {
+  it('revokeAsync() throws on empty JTI', async () => {
     const verifier = new VcVerifier({ revocationStore: new InMemoryRevocationStore() });
     await expect(verifier.revokeAsync('')).rejects.toThrow('jti must be a non-empty string');
   });
 });
 
-describe('D7: revoke + isRevoked sequencing (InMemoryRevocationStore)', () => {
+describe('revoke + isRevoked sequencing (InMemoryRevocationStore)', () => {
   it('isRevoked returns true immediately after revoke', async () => {
     const store = new InMemoryRevocationStore();
     await store.revoke('jti-race-001', {});

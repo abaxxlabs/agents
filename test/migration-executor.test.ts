@@ -1,31 +1,3 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * MigrationExecutor — Unit Tests
- *
- * Tests the atomic DID migration pipeline: idempotency checks, DID validation,
- * database transaction flow, in-memory state updates, and error handling.
- * Uses mock pg Pool following the same pattern as audit-logger.test.ts.
- *
- * Why these tests matter: the migration executor handles the most security-
- * sensitive operation in the identity system — changing who owns an agent.
- * A bug here could let an attacker claim another user's agents, corrupt the
- * audit chain, or silently lose context entries. Every error path must reject
- * clearly and leave state unchanged.
- */
-
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import type { Pool } from 'pg';
 import { MigrationExecutor } from '../src/migration.js';
@@ -36,7 +8,7 @@ import {
   UntrustedMigrationIssuerError,
   type TrustedMigrationCredential,
 } from '../src/discovery/migration-trust-anchor.js';
-import type { RegisteredAgent, MigrationCredentialClaims } from '../src/types.js';
+import type { RegisteredAgent, MigrationCredentialClaims } from '../src/types/index.js';
 
 /**
  * Test migration issuer DID used by the happy-path tests below.

@@ -1,22 +1,6 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-// Tests for delegated credential acceptance and rejection by the query pipeline.
-
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { ScopeEngine } from '../src/sql/scope-engine.js';
-import { VcVerifier } from '../src/vc-verifier.js';
+import { VcVerifier, createJwt, decodeJwt } from '../src/vc-verifier.js';
 import { InMemoryRevocationStore } from '../src/storage/memory/revocation-store.js';
 import { AuditLogger } from '../src/audit-logger.js';
 import type { AgentStore, AuditStore } from '../src/storage/types.js';
@@ -28,8 +12,8 @@ import {
   issueDelegatedCredential,
   createSigner,
 } from '../src/auth/index.js';
-import { CredentialInvalidError } from '../src/errors.js';
-import type { RegisteredAgent } from '../src/types.js';
+import { CredentialInvalidError, UnknownIssuerError } from '../src/errors/index.js';
+import type { RegisteredAgent } from '../src/types/index.js';
 
 // ─── Fixtures ───────────────────────────────────────────────────
 
@@ -135,7 +119,7 @@ describe('Delegation', () => {
       const { human, supervisor, worker, engine } = createDelegationFixtures();
 
       // Human issues credential to supervisor
-      const supervisorCred = issueCredential(human.did, human.privateKey, {
+      const supervisorCred = await issueCredential(human.did, human.privateKey, {
         agent: supervisor.did,
         columns: ['patients.name', 'patients.dob', 'patients.diagnosis'],
         actions: ['read'],
@@ -143,7 +127,7 @@ describe('Delegation', () => {
       });
 
       // Supervisor delegates a subset to worker
-      const delegatedCred = issueDelegatedCredential(
+      const delegatedCred = await issueDelegatedCredential(
         supervisor.did,
         createSigner(supervisor.privateKey),
         supervisorCred,
@@ -177,14 +161,14 @@ describe('Delegation', () => {
 
       // Attacker forges a source credential (signed by an unknown key)
       const attacker = generateDidKey();
-      const forgedSourceCred = issueCredential(attacker.did, attacker.privateKey, {
+      const forgedSourceCred = await issueCredential(attacker.did, attacker.privateKey, {
         agent: supervisor.did,
         columns: ['patients.name', 'patients.dob', 'patients.diagnosis'],
         actions: ['read'],
         expiresIn: '4h',
       });
 
-      const delegatedCred = issueDelegatedCredential(
+      const delegatedCred = await issueDelegatedCredential(
         supervisor.did,
         createSigner(supervisor.privateKey),
         forgedSourceCred,
@@ -205,7 +189,7 @@ describe('Delegation', () => {
           table: 'patients',
           sql: 'SELECT name FROM patients',
         }),
-      ).rejects.toThrow(CredentialInvalidError);
+      ).rejects.toThrow(UnknownIssuerError);
     });
 
     it('rejects a delegated credential when the source credential issuer is not the human owner', async () => {
@@ -215,14 +199,14 @@ describe('Delegation', () => {
       const otherHuman = generateDidKey();
       verifier.registerKey(otherHuman.did, otherHuman.publicKey);
 
-      const sourceCred = issueCredential(otherHuman.did, otherHuman.privateKey, {
+      const sourceCred = await issueCredential(otherHuman.did, otherHuman.privateKey, {
         agent: supervisor.did,
         columns: ['patients.name', 'patients.dob'],
         actions: ['read'],
         expiresIn: '4h',
       });
 
-      const delegatedCred = issueDelegatedCredential(
+      const delegatedCred = await issueDelegatedCredential(
         supervisor.did,
         createSigner(supervisor.privateKey),
         sourceCred,
@@ -251,7 +235,7 @@ describe('Delegation', () => {
 
       // Supervisor issues a regular (non-delegated) credential directly —
       // but the C1 check requires issuer == human owner
-      const directCred = issueCredential(supervisor.did, supervisor.privateKey, {
+      const directCred = await issueCredential(supervisor.did, supervisor.privateKey, {
         agent: worker.did,
         columns: ['patients.name'],
         actions: ['read'],
@@ -273,14 +257,14 @@ describe('Delegation', () => {
     it('rejects a query when a worker presents two narrow delegated credentials from the same supervisor', async () => {
       const { human, supervisor, worker, engine } = createDelegationFixtures();
 
-      const supervisorCred = issueCredential(human.did, human.privateKey, {
+      const supervisorCred = await issueCredential(human.did, human.privateKey, {
         agent: supervisor.did,
         columns: ['patients.name', 'patients.dob', 'patients.diagnosis'],
         actions: ['read'],
         expiresIn: '4h',
       });
 
-      const credA = issueDelegatedCredential(
+      const credA = await issueDelegatedCredential(
         supervisor.did,
         createSigner(supervisor.privateKey),
         supervisorCred,
@@ -294,7 +278,7 @@ describe('Delegation', () => {
         },
       );
 
-      const credB = issueDelegatedCredential(
+      const credB = await issueDelegatedCredential(
         supervisor.did,
         createSigner(supervisor.privateKey),
         supervisorCred,
@@ -322,14 +306,14 @@ describe('Delegation', () => {
     it('accepts a single delegated credential covering the full authorized scope', async () => {
       const { human, supervisor, worker, engine } = createDelegationFixtures();
 
-      const supervisorCred = issueCredential(human.did, human.privateKey, {
+      const supervisorCred = await issueCredential(human.did, human.privateKey, {
         agent: supervisor.did,
         columns: ['patients.name', 'patients.dob', 'patients.diagnosis'],
         actions: ['read'],
         expiresIn: '4h',
       });
 
-      const credFull = issueDelegatedCredential(
+      const credFull = await issueDelegatedCredential(
         supervisor.did,
         createSigner(supervisor.privateKey),
         supervisorCred,
@@ -356,10 +340,102 @@ describe('Delegation', () => {
     });
   });
 
-  describe('source credential verification', () => {
-    it('AgentScope.delegateCredential rejects an unverified source credential', async () => {
-      // Covered at integration level by the forged-chain tests above.
-      expect(true).toBe(true);
+  describe('delegation depth constraints', () => {
+    const human = generateDidKey();
+    const supervisor = generateDidKey();
+    const worker = generateDidKey();
+
+    let hop1: string;
+
+    beforeAll(async () => {
+      hop1 = await issueCredential(human.did, human.privateKey, {
+        agent: supervisor.did,
+        columns: ['patients.name'],
+        actions: ['read'],
+        expiresIn: '4h',
+      });
+    });
+
+    it('allows single-hop delegation (human to supervisor to worker)', async () => {
+      const decoded = decodeJwt(hop1);
+      const delegated = await issueDelegatedCredential(
+        supervisor.did,
+        createSigner(supervisor.privateKey),
+        hop1,
+        decoded.payload.jti!,
+        { columns: ['patients.name'], actions: ['read'] },
+        { targetAgent: worker.did, columns: ['patients.name'], actions: ['read'], expiresIn: '2h' },
+      );
+      expect(typeof delegated).toBe('string');
+      expect(delegated.split('.').length).toBe(3);
+    });
+
+    it('rejects empty delegationChain at issuance', async () => {
+      const now = Math.floor(Date.now() / 1000);
+      const craftedJwt = await createJwt(
+        {
+          iss: human.did,
+          sub: supervisor.did,
+          jti: 'crafted-empty-chain',
+          iat: now,
+          exp: now + 3600,
+          delegationChain: [],
+          vc: {
+            '@context': ['https://www.w3.org/2018/credentials/v1'],
+            type: ['VerifiableCredential', 'AgentScopeCredential'],
+            credentialSubject: {
+              id: supervisor.did,
+              scope: { columns: ['patients.name'], actions: ['read'] },
+            },
+          },
+        },
+        human.privateKey,
+      );
+
+      await expect(
+        issueDelegatedCredential(
+          supervisor.did,
+          createSigner(supervisor.privateKey),
+          craftedJwt,
+          'crafted-empty-chain',
+          { columns: ['patients.name'], actions: ['read'] },
+          {
+            targetAgent: worker.did,
+            columns: ['patients.name'],
+            actions: ['read'],
+            expiresIn: '1h',
+          },
+        ),
+      ).rejects.toThrow(/empty delegationChain/);
+    });
+
+    it('rejects empty delegationChain at verification', async () => {
+      const verifier = new VcVerifier({ revocationStore: new InMemoryRevocationStore() });
+      const now = Math.floor(Date.now() / 1000);
+      const craftedJwt = await createJwt(
+        {
+          iss: human.did,
+          sub: supervisor.did,
+          jti: 'crafted-empty-chain-verify',
+          iat: now,
+          exp: now + 3600,
+          delegationChain: [],
+          vc: {
+            '@context': ['https://www.w3.org/2018/credentials/v1'],
+            type: ['VerifiableCredential', 'AgentScopeCredential'],
+            credentialSubject: {
+              id: supervisor.did,
+              scope: { columns: ['patients.name'], actions: ['read'] },
+            },
+          },
+        },
+        human.privateKey,
+      );
+
+      const result = await verifier.verify(craftedJwt);
+      expect(result.valid).toBe(false);
+      expect(result.status).toBe('MALFORMED');
+      expect(result.error).toMatch(/empty delegationChain/);
     });
   });
 });

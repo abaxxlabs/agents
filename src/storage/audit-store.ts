@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import type { AuditRecord } from '../types.js';
+import type { AuditRecord } from '../types/audit.js';
 
 /**
  * Filter options for AuditStore.query().
@@ -114,7 +114,7 @@ export interface AuditStore {
    * loadLastRecordLocked()+append() when absent.
    */
   appendWithChainLock?(
-    buildRecord: (lastRecord: AuditRecord | null) => AuditRecord,
+    buildRecord: (lastRecord: AuditRecord | null) => AuditRecord | Promise<AuditRecord>,
   ): Promise<AuditRecord>;
 
   /**

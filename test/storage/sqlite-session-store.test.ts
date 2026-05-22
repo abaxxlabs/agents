@@ -1,17 +1,3 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SqliteStorageBackend } from '../../src/storage/sqlite/index.js';
 import { SQLITE_SCHEMA_STATEMENTS } from '../../src/storage/sqlite/migrations.js';
@@ -63,7 +49,7 @@ describe('SqliteSessionStore', () => {
     await backend.close();
   });
 
-  it('WAL mode + synchronous=NORMAL configured (NF-7)', () => {
+  it('WAL mode + synchronous=NORMAL configured', () => {
     // In-memory databases ignore the WAL setting — SQLite reports "memory" for
     // :memory: regardless of the PRAGMA. The meaningful assertion here is that
     // the PRAGMA is issued at backend initialize time. We verify this by
@@ -100,7 +86,7 @@ describe('SqliteSessionStore', () => {
     expect(read!.expiresAt).toBeGreaterThan(Date.now());
   });
 
-  it('put() rejects mock providerKind (D12)', async () => {
+  it('put() rejects mock providerKind', async () => {
     await expect(
       backend.sessions.put(
         'tok-m',
@@ -120,7 +106,7 @@ describe('SqliteSessionStore', () => {
     expect(await backend.sessions.get('tok-e')).toBeNull();
   });
 
-  it('tampered envelope row → EnvelopeIntegrityError (D9)', async () => {
+  it('tampered envelope row → EnvelopeIntegrityError', async () => {
     await backend.sessions.put('tok-t', env({ humanDid: 'did:real' }), { ttlSeconds: 60 });
 
     // Simulate row-tamper: rewrite envelope column's humanDid to a different
@@ -138,7 +124,7 @@ describe('SqliteSessionStore', () => {
     await expect(backend.sessions.get('tok-t')).rejects.toThrow(EnvelopeIntegrityError);
   });
 
-  it('oversize envelope row → EnvelopeTooLargeError before JSON.parse (LOW-8)', async () => {
+  it('oversize envelope row → EnvelopeTooLargeError before JSON.parse', async () => {
     await backend.sessions.put('tok-big', env(), { ttlSeconds: 60 });
 
     const inner = (backend as unknown as { db: SqliteDb }).db;

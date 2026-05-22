@@ -28,7 +28,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import type { IdSdkInstance } from './types.js';
+import type { IdSdkInstance } from './types/id-sdk.js';
 
 export interface IdSdkMcpConnectOptions {
   connectedDid?: string;
@@ -211,10 +211,10 @@ export function createIdSdkMcpAdapter(
       }) as Promise<string>;
     },
 
-    getSignerOptions(issuerDid: string, subjectDid?: string) {
+    getSignerOptions(issuerDid: string, subjectDid: string) {
       return callTool('vc_get_signer_options', {
         issuerDid,
-        ...(subjectDid ? { subjectDid } : {}),
+        subjectDid,
       }) as Promise<{ kid: string; issuerDid: string; subjectDid: string; signer: (data: Uint8Array) => Promise<Uint8Array> }>;
     },
 

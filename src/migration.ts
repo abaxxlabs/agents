@@ -23,12 +23,11 @@
  */
 
 import type { Pool } from 'pg';
-import type {
-  RegisteredAgent,
-  MigrationCredentialClaims,
-  MigrationAuditFields,
-  AgentSigner,
-} from './types.js';
+import type { RegisteredAgent, AgentSigner } from './types/auth.js';
+import type { MigrationCredentialClaims, MigrationAuditFields } from './types/migration.js';
+
+export type { MigrationCredentialClaims, MigrationAuditFields } from './types/migration.js';
+export { IDENTITY_MIGRATION_CREDENTIAL } from './types/migration.js';
 import { DidAliasRegistry, type DidAlias } from './did-alias.js';
 import { AuditLogger, hashCredential } from './audit-logger.js';
 import type { Logger } from './logger.js';
@@ -39,7 +38,7 @@ import {
   decodeJwtIssuer,
   type TrustedMigrationCredential,
 } from './discovery/migration-trust-anchor.js';
-import { PrecisionLossError } from './errors.js';
+import { PrecisionLossError } from './errors/index.js';
 
 /**
  * Parse a PostgreSQL bigint string (e.g. COUNT(*) result) into a JS number,

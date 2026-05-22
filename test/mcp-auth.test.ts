@@ -1,32 +1,3 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * MCP Bearer Auth Tests — T6 PLAN-phase2.md
- *
- * Covers:
- *   - Token extraction from Authorization header (happy path + edge cases)
- *   - Token validation (valid, invalid, missing, empty)
- *   - HTTP guard (401 response format, authorized pass-through)
- *   - Token rotation (old + new both valid during overlap window)
- *   - Constant-time comparison (no timing leaks on length mismatch)
- *   - RFC 6750 compliance (WWW-Authenticate header, Bearer scheme)
- *
- * Test plan from PLAN-phase2.md:
- *   "bearer present+valid, bearer missing, bearer invalid, token rotation"
- */
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
@@ -86,7 +57,7 @@ function mockResponse(): MockResponse {
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
-describe('MCP Bearer Auth (T6)', () => {
+describe('MCP Bearer Auth', () => {
   const VALID_TOKEN = 'test-bearer-token-abc123';
   const VALID_TOKEN_2 = 'rotated-bearer-token-xyz789';
   let auth: McpBearerAuth;
@@ -102,7 +73,7 @@ describe('MCP Bearer Auth (T6)', () => {
   // ── OVERLAP_WINDOW_SECONDS constant ──────────────────────────────
 
   describe('OVERLAP_WINDOW_SECONDS', () => {
-    it('is 30 seconds (E6 spec)', () => {
+    it('is 30 seconds', () => {
       expect(OVERLAP_WINDOW_SECONDS).toBe(30);
     });
 
@@ -291,7 +262,7 @@ describe('MCP Bearer Auth (T6)', () => {
 
   // ── Token Rotation (E6) ──────────────────────────────────────────
 
-  describe('token rotation (E6)', () => {
+  describe('token rotation', () => {
     it('accepts both old and new tokens during overlap window', () => {
       // Pre-rotation: only old token valid
       expect(auth.validateToken(VALID_TOKEN)).toBe(true);

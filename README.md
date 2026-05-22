@@ -1,12 +1,14 @@
-# Agents++
+<p align="center">
+  <h1 align="center">Agents++</h1>
+  <p align="center"><strong>Agents are an attack surface. Hold yours accountable.</strong></p>
+  <p align="center">Open trust infrastructure for autonomous AI agents.</p>
+</p>
 
-[![npm](https://img.shields.io/npm/v/@abaxxlabs/agents.svg)](https://www.npmjs.com/package/@abaxxlabs/agents)
-[![CI](https://github.com/abaxxlabs/agents/actions/workflows/ci.yml/badge.svg)](https://github.com/abaxxlabs/agents/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-
-**Agents are an attack surface. Hold yours accountable.**
-
-Open trust infrastructure for autonomous AI agents. Every agent gets a cryptographic identity (DID), scoped credentials (Verifiable Credentials), and a tamper-evident audit trail -- enforced in the query layer, not the application.
+<p align="center">
+  <a href="https://www.npmjs.com/package/@abaxxlabs/agents"><img src="https://img.shields.io/npm/v/@abaxxlabs/agents?style=flat-square" alt="npm version" /></a>
+  <a href="https://github.com/abaxxlabs/agents/actions"><img src="https://img.shields.io/github/actions/workflow/status/abaxxlabs/agents/ci.yml?style=flat-square" alt="CI" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License" /></a>
+</p>
 
 ---
 
@@ -202,9 +204,55 @@ const workerCred = scope.delegateCredential(supervisor.did, supervisorCred, {
 
 See [`docs/DECISIONS.md`](docs/DECISIONS.md) for architecture decision records.
 
+## Deployment modes
+
+Agents++ ships as one npm package with multiple subpath exports. The deployment topology is your choice:
+
+| Mode | Use when | Trust boundary |
+|---|---|---|
+| **Library** | Your backend wants scoped DB access for its own agents | Your application process |
+| **MCP server** | AI agents (Claude Desktop, custom clients) need DB access across a process boundary | Standalone MCP process -- master key never crosses the wire |
+| **REST server** | Web apps, cross-language clients, anything that can't speak MCP | Standalone REST process -- HTTPS + session auth |
+
+Enforcement is identical across all three modes. The deployment shape determines *where* the trust boundary sits, not *how* enforcement works.
+
+```bash
+# MCP (Claude Desktop, Claude Code)
+agents mcp --db postgresql://localhost/mydb --mock "Trader-1"
+
+# REST
+agents serve --db postgresql://localhost/mydb --port 3100
+```
+
+## Free tier vs AbaxxOne
+
+The open-source library is genuinely useful on its own -- identity, scoping, encryption, and audit within a single trust boundary. AbaxxOne unlocks cross-organizational trust.
+
+| | Free tier | AbaxxOne |
+|---|---|---|
+| **Agent identity** | `did:key` (deterministic, recoverable from OIDC) | `did:dht` (HSM-backed, institutional) |
+| **Credential issuer** | Human's self-issued DID | Organization's DID |
+| **Trust boundary** | Single server | Cross-org, federated |
+| **Revocation** | Local (durable, cross-instance) | StatusList2021 (global, verifiable) |
+| **Agent discovery** | Local registry | AbaxxOne directory |
+| **Audit storage** | PostgreSQL | PostgreSQL + DWN (sovereign, portable) |
+
+The transition is additive. Existing code, credentials, and query patterns don't change -- you connect AbaxxOne services and unlock the network.
+
+## Documentation
+
+| Topic | Link |
+|---|---|
+| Full technical specification | [Documentation v0.11.4](docs/) |
+| v0.11 migration guide | [docs/migration-v0.11.md](docs/migration-v0.11.md) |
+| BYOK master key migration | [docs/migration-byok.md](docs/migration-byok.md) |
+| Architecture decisions | [docs/DECISIONS.md](docs/DECISIONS.md) |
+| Security policy | [SECURITY.md](SECURITY.md) |
+| Changelog | [CHANGELOG.md](CHANGELOG.md) |
+
 ## Development
 
-Requires Node.js 20+ and PostgreSQL 16 for the full test suite (Postgres-gated tests skip gracefully without a live database).
+Requires Node.js 22.12+ and PostgreSQL 16 for the full test suite (Postgres-gated tests skip gracefully without a live database).
 
 ```bash
 npm install
@@ -224,6 +272,23 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres \
 DATABASE_URL=... npm test
 ```
 
+## AI-Assisted Development
+
+This repo uses [gstack](https://github.com/garrytan/gstack) for AI-assisted development workflows. gstack is **required** for all Claude Code and Codex sessions.
+
+**One-time setup (each developer):**
+
+```bash
+git clone --depth 1 https://github.com/garrytan/gstack.git ~/.claude/skills/gstack
+cd ~/.claude/skills/gstack && ./setup --team
+```
+
+After install, skills like `/qa`, `/ship`, `/review`, `/investigate`, and `/browse` are available in Claude Code sessions. A pre-tool hook in `.claude/settings.json` enforces the requirement -- sessions without gstack installed will be blocked from using skills.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## License
 
-Apache 2.0 -- see [LICENSE](LICENSE).
+[Apache-2.0](LICENSE)

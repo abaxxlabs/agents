@@ -1,19 +1,12 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 import { describe, it, expect } from 'vitest';
-import { validateScope, validateExpiry, validateChain } from '../src/auth/delegation-policy.js';
+import {
+  validateScope,
+  validateExpiry,
+  validateChain,
+  extractMaxDepth,
+  resolveInheritedMaxDepth,
+  DEFAULT_MAX_DELEGATION_DEPTH,
+} from '../src/auth/delegation-policy.js';
 
 describe('delegation-policy', () => {
   describe('validateScope', () => {
@@ -87,17 +80,65 @@ describe('delegation-policy', () => {
 
   describe('validateChain', () => {
     it('accepts chain within max depth', () => {
-      expect(() => validateChain(2, 3)).not.toThrow();
+      expect(() => validateChain(1, 3)).not.toThrow();
     });
 
-    it('accepts chain at exact max depth', () => {
-      expect(() => validateChain(3, 3)).not.toThrow();
+    it('throws at exact max depth boundary', () => {
+      expect(() => validateChain(3, 3)).toThrow(
+        'chain depth 3 exceeds maximum 3',
+      );
     });
 
     it('throws when chain depth exceeds max', () => {
       expect(() => validateChain(5, 3)).toThrow(
         'chain depth 5 exceeds maximum 3',
       );
+    });
+
+    it('blocks third hop with default maxDepth of 2', () => {
+      expect(() => validateChain(1, 2)).not.toThrow();
+      expect(() => validateChain(2, 2)).toThrow(
+        'chain depth 2 exceeds maximum 2',
+      );
+    });
+  });
+
+  describe('extractMaxDepth', () => {
+    it('returns the embedded value for positive integers', () => {
+      expect(extractMaxDepth({ maxDepth: 3 })).toBe(3);
+      expect(extractMaxDepth({ maxDepth: 1 })).toBe(1);
+    });
+
+    it('returns undefined when field is missing', () => {
+      expect(extractMaxDepth({})).toBeUndefined();
+    });
+
+    it('returns undefined for malformed values', () => {
+      expect(extractMaxDepth({ maxDepth: 0 })).toBeUndefined();
+      expect(extractMaxDepth({ maxDepth: -1 })).toBeUndefined();
+      expect(extractMaxDepth({ maxDepth: 1.5 })).toBeUndefined();
+      expect(extractMaxDepth({ maxDepth: '3' })).toBeUndefined();
+      expect(extractMaxDepth({ maxDepth: null })).toBeUndefined();
+    });
+  });
+
+  describe('resolveInheritedMaxDepth', () => {
+    it('returns the source ceiling when no ancestors', () => {
+      expect(resolveInheritedMaxDepth({ maxDepth: 3 }, [])).toBe(3);
+    });
+
+    it('picks the most restrictive ancestor', () => {
+      expect(
+        resolveInheritedMaxDepth({ maxDepth: 5 }, [{ maxDepth: 3 }, { maxDepth: 4 }]),
+      ).toBe(3);
+    });
+
+    it('treats a missing ancestor ceiling as the library default', () => {
+      expect(resolveInheritedMaxDepth({ maxDepth: 5 }, [{}])).toBe(DEFAULT_MAX_DELEGATION_DEPTH);
+    });
+
+    it('falls back to the library default when neither source nor chain embed one', () => {
+      expect(resolveInheritedMaxDepth({}, [])).toBe(DEFAULT_MAX_DELEGATION_DEPTH);
     });
   });
 });
