@@ -20,18 +20,20 @@
  * 2. Parse scope from VC
  * 3. Execute SQL query via pg.Pool
  * 4. Decrypt in-scope columns, pass through out-of-scope as ciphertext
- * 5. Log audit record (audit-logger)
+ * 5. Log audit record (audit/logger)
  * 6. Return ScopedResult
  */
 
 import type { Pool } from 'pg';
-import type { RegisteredAgent, ScopeMode } from '../types.js';
+import type { RegisteredAgent } from '#types/auth.js';
+import type { ScopeMode } from '#types/config.js';
 import type { QueryOptions, ScopedResult } from './types.js';
-import type { AgentStore } from '../storage/types.js';
-import { VcVerifier, decodeJwt } from '../vc-verifier.js';
-import { decryptRow } from '../column-encryption.js';
-import { AuditLogger } from '../audit-logger.js';
-import { createPresentation } from '../identity/presentation.js';
+import type { AgentStore } from '#storage/types.js';
+import { VcVerifier } from '#identity/index.js';
+import { decodeJwt } from '#crypto/jwt.js';
+import { decryptRow } from '#encryption/index.js';
+import { AuditLogger } from '#audit/index.js';
+import { createPresentation } from '#identity/index.js';
 import {
   AgentScopeError,
   CredentialInvalidError,
@@ -41,15 +43,15 @@ import {
   UnknownIssuerError,
   QueryRejectedError,
   CredentialReplayedError,
-} from '../errors.js';
-import type { DidAliasRegistry } from '../did-alias.js';
-import type { Did, TableName } from '../domain-types.js';
+} from '#errors/index.js';
+import type { DidAliasRegistry } from '#did/alias.js';
+import type { Did, TableName } from '#types/domain.js';
 import { assertReadOnlyQuery, assertProjectionBoundary } from './query-policy.js';
 
-// ScopeMode is defined in ../types.ts to keep the identity-only entry free
+// ScopeMode is defined in src/types/config.ts to keep the identity-only entry free
 // of transitive sql/ imports. Re-exported here so consumers importing from
 // @abaxxlabs/agents/sql still resolve it.
-export type { ScopeMode } from '../types.js';
+export type { ScopeMode } from '#types/config.js';
 
 export interface ScopeEngineOptions {
   pool: Pool;
@@ -193,7 +195,7 @@ export class ScopeEngine {
         );
       }
       if (!isAlreadyVP && agent?.signer) {
-        jwtToVerify = createPresentation(jwt, options.agent, agent.signer, {
+        jwtToVerify = await createPresentation(jwt, options.agent, agent.signer, {
           audience: this.verifierDid,
         });
       }
@@ -237,6 +239,11 @@ export class ScopeEngine {
             throw new CredentialInvalidError(
               options.agent,
               result.error ?? 'VP audience does not match this server',
+            );
+          case 'POLICY_VIOLATION':
+            throw new CredentialInvalidError(
+              options.agent,
+              result.error ?? 'Delegation chain exceeds maximum depth',
             );
           case 'MALFORMED':
           default:

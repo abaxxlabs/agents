@@ -1,22 +1,6 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-// Unit tests for loadConfig: validator branches, devMode, and field round-trips.
-
 import { describe, it, expect } from 'vitest';
-import { loadConfig, parseDuration } from '../src/config.js';
-import type { AgentScopeConfig } from '../src/types.js';
+import { loadConfig, parseDuration } from '#config.js';
+import type { AgentScopeConfig } from '#types/index.js';
 
 const DB = { connectionString: 'postgresql://test:test@localhost:54322/postgres' };
 
@@ -223,7 +207,11 @@ describe('parseDuration', () => {
   });
 
   it('rejects durations that overflow to Infinity', () => {
-    expect(() => parseDuration('9'.repeat(400) + 'd')).toThrow(/out of range/);
+    expect(() => parseDuration('9'.repeat(19) + 'd')).toThrow(/out of range/);
+  });
+
+  it('rejects oversized input strings', () => {
+    expect(() => parseDuration('9'.repeat(400) + 'd')).toThrow(/too long/);
   });
 
   it('accepts durations up to the 100-year cap', () => {

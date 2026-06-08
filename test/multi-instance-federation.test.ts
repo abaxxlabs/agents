@@ -1,40 +1,14 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * Multi-instance AgentScope federation.
- *
- * Two independent AgentScope instances (org A and org B) with separate master
- * keys and storage backends. Verifies that org A's credentials are correctly
- * accepted or rejected by org B's verifier.
- *
- * Both scopes are initialised before any agents are created — restoreAgents
- * runs during AgentScope.create, so initialising scope B after scope A has
- * persisted agents would cause a MasterKeyMismatchError.
- */
-
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import pg from 'pg';
-import { AgentScope } from '../src/sql/index.js';
-import { asMasterKey } from '../src/crypto/master-key.js';
-import { PostgresStorageBackend } from '../src/storage/postgres/index.js';
-import { InMemoryRevocationStore } from '../src/storage/memory/revocation-store.js';
-import { InMemorySessionStore } from '../src/storage/memory/session-store.js';
-import { composeStorageBackend } from '../src/storage/compose.js';
-import { deriveSessionMacKey } from '../src/storage/envelope-mac.js';
+import { AgentScope } from '#sql/index.js';
+import { asMasterKey } from '#crypto/master-key.js';
+import { PostgresStorageBackend } from '#storage/postgres/index.js';
+import { InMemoryRevocationStore } from '#storage/memory/revocation-store.js';
+import { InMemorySessionStore } from '#storage/memory/session-store.js';
+import { composeStorageBackend } from '#storage/compose.js';
+import { deriveSessionMacKey } from '#storage/envelope-mac.js';
 import { deterministicSessionMacKey } from './support/deterministic-session-mac-key.js';
-import { createPresentation } from '../src/index.js';
+import { createPresentation } from '#index.js';
 
 const { Pool } = pg;
 
@@ -126,7 +100,7 @@ describeFn('Multi-instance AgentScope federation (live Postgres required)', () =
     });
 
     // VP audience is bound to org B's verifier DID — prevents replay at org A.
-    const vp = createPresentation(credential, agent.did, agent.signer, {
+    const vp = await createPresentation(credential, agent.did, agent.signer, {
       audience: scopeB.verifierDid,
     });
 
@@ -154,7 +128,7 @@ describeFn('Multi-instance AgentScope federation (live Postgres required)', () =
     });
 
     // VP is bound to org A's own verifier — not org B's.
-    const vp = createPresentation(credential, agent.did, agent.signer, {
+    const vp = await createPresentation(credential, agent.did, agent.signer, {
       audience: scopeA.verifierDid,
     });
 

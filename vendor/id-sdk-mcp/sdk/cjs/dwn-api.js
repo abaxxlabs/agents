@@ -13,7 +13,7 @@ var __rest = (this && this.__rest) || function (s, e) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DwnApi = void 0;
 const index_js_1 = require("./common/index.js");
-const id_1 = require("@dwn-protocol/id");
+const id_1 = require("@abaxxtech/id");
 const record_js_1 = require("./record.js");
 const protocol_js_1 = require("./protocol.js");
 const utils_js_1 = require("./utils.js");

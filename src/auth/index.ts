@@ -20,4 +20,4 @@ export * from './generic.js';
 export * from './agent.js';
 export { PendingFlowStore, PendingFlowError } from './pending-flow-store.js';
 // backward compat — canonical home is src/crypto/base58.ts
-export { base58Encode, base58Decode } from '../crypto/base58.js';
+export { base58Encode, base58Decode } from '#crypto/base58.js';

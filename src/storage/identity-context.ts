@@ -19,7 +19,7 @@
  * that the server verifies before constructing one on their behalf.
  */
 
-import type { AgentVerifyResult } from '../identity/agent-verifier.js';
+import type { AgentVerifyResult } from '#identity/index.js';
 import type { IdentityContext } from './types.js';
 
 /**

@@ -10,7 +10,12 @@
     "types": ["node", "vitest"],
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "noEmit": true
+    "noEmit": true,
+    "baseUrl": "../..",
+    "paths": {
+      "@abaxxlabs/agents": ["src/index.ts"],
+      "@abaxxlabs/agents/sql": ["src/sql/index.ts"]
+    }
   },
   "include": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"]
 }

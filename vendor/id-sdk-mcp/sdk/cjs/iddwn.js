@@ -27,7 +27,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.IDDwn = void 0;
-const Sdk = __importStar(require("@dwn-protocol/id"));
+const Sdk = __importStar(require("@abaxxtech/id"));
 const ms_1 = __importDefault(require("ms"));
 const index_js_1 = require("./user-agent/index.js");
 const dwn_api_js_1 = require("./dwn-api.js");
@@ -40,7 +40,7 @@ const services_js_1 = require("./interfaces/services.js");
 const transactions_js_1 = require("./interfaces/transactions.js");
 const index_js_3 = require("./crypto/index.js");
 const vc_api_js_1 = require("./vc-api.js");
-const id_1 = require("@dwn-protocol/id");
+const id_1 = require("@abaxxtech/id");
 class IDDwn {
     constructor(options) {
         const { agent, connectedDid } = options;

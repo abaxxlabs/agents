@@ -1,26 +1,3 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * Release npm cache guard tests.
- *
- * The release gate depends on npm's configured cache being either the
- * maintainer's user-owned cache or a CI-provided runner-owned cache. These
- * tests exercise the guard directly so ownership and permission regressions
- * fail before packaging checks fall back to npm's less actionable cache error.
- */
-
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -53,7 +30,7 @@ describe('release npm cache guard', () => {
     await expect(stat(cachePath)).resolves.toMatchObject({ uid: process.getuid?.() });
   });
 
-  it.runIf(typeof process.getuid === 'function')(
+  it.skipIf(typeof process.getuid !== 'function')(
     'reports an actionable ownership repair when the cache owner is wrong',
     async () => {
       const cachePath = path.join(tmpRoot, 'cache');

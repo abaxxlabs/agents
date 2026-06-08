@@ -1,36 +1,6 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * GenericOidcProvider — Unit Tests
- *
- * Covers:
- *   - deriveHumanDid(): determinism, uniqueness, format, Ryan spec compliance
- *   - parseIdentityFromToken(): purity, partial return, no network
- *   - fetchUserInfo(): org extraction, consumer domain exclusion
- *   - buildAuthorizationUrl(): PKCE S256, state ownership
- *
- * Key invariants from Ryan Rawson (Decision #36):
- *   - deriveHumanDid() must return a valid did:key:z... DID
- *   - Same inputs always produce same DID (deterministic)
- *   - Different issuerUrl + same sub → different DID
- *   - Same issuerUrl + different sub → different DID
- *   - parseIdentityFromToken() must be pure (no network, no async side effects)
- */
-
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { GenericOidcProvider } from '../src/auth/generic.js';
+import { GenericOidcProvider } from '#auth/generic.js';
+import { mockJsonResponse } from './mocks/response.js';
 
 const TEST_CONFIG = {
   issuerUrl: 'https://accounts.google.com',
@@ -40,7 +10,6 @@ const TEST_CONFIG = {
 };
 
 describe('GenericOidcProvider', () => {
-  // ─── deriveHumanDid (Decision #36, Ryan Rawson) ───────────────────
 
   describe('deriveHumanDid', () => {
     it('returns a valid did:key DID', () => {
@@ -107,7 +76,6 @@ describe('GenericOidcProvider', () => {
     });
   });
 
-  // ─── parseIdentityFromToken (Decision #32) ────────────────────────
 
   describe('parseIdentityFromToken', () => {
     it('is synchronous and returns Partial<OidcIdentity>', () => {
@@ -253,7 +221,6 @@ describe('GenericOidcProvider', () => {
     });
   });
 
-  // ─── fetchUserInfo (Decision #33) ─────────────────────────────────
 
   describe('fetchUserInfo', () => {
     afterEach(() => {
@@ -376,7 +343,6 @@ describe('GenericOidcProvider', () => {
     });
   });
 
-  // ─── buildAuthorizationUrl ────────────────────────────────────────
 
   describe('buildAuthorizationUrl', () => {
     afterEach(() => {
@@ -434,7 +400,6 @@ describe('GenericOidcProvider', () => {
     });
   });
 
-  // ─── issuerUrl property ───────────────────────────────────────────
 
   describe('issuerUrl', () => {
     it('exposes issuerUrl from config', () => {
@@ -444,8 +409,6 @@ describe('GenericOidcProvider', () => {
   });
 });
 
-// ─── Helpers ──────────────────────────────────────────────────────────────
-
 function makeIdToken(claims: Record<string, unknown>): string {
   return [
     Buffer.from('{"alg":"RS256"}').toString('base64url'),
@@ -454,9 +417,3 @@ function makeIdToken(claims: Record<string, unknown>): string {
   ].join('.');
 }
 
-function mockJsonResponse(data: unknown): Response {
-  return new Response(JSON.stringify(data), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-  });
-}

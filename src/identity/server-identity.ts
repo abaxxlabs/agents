@@ -25,9 +25,9 @@
 
 import { createPrivateKey, createPublicKey } from 'node:crypto';
 import type { KeystoreBackend } from './keystore.js';
-import type { AgentSigner } from '../types.js';
-import { generateDidKey, createSigner } from '../auth/agent.js';
-import { VcVerifier } from '../vc-verifier.js';
+import type { AgentSigner } from '#types/index.js';
+import { generateDidKey, createSigner } from '#auth/agent.js';
+import { VcVerifier } from './vc-verifier.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 

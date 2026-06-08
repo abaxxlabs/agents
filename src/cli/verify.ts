@@ -24,12 +24,12 @@
 
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
-import type { AuditRecord } from '../types.js';
-import { VcVerifier } from '../vc-verifier.js';
-import { InMemoryRevocationStore } from '../storage/memory/revocation-store.js';
-import { AuditLogger } from '../audit-logger.js';
-import { PostgresAuditStore } from '../storage/postgres/audit-store.js';
-import type { AuditStore } from '../storage/types.js';
+import type { AuditRecord } from '#types/audit.js';
+import { VcVerifier } from '#identity/index.js';
+import { InMemoryRevocationStore } from '#storage/memory/revocation-store.js';
+import { AuditLogger } from '#audit/index.js';
+import { PostgresAuditStore } from '#storage/postgres/audit-store.js';
+import type { AuditStore } from '#storage/types.js';
 
 const { Pool } = pg;
 
@@ -82,7 +82,7 @@ export async function runVerify(auditFileOrDb: string, options: VerifyOptions): 
   console.log(`\n[agents] Verifying ${records.length} audit record(s)...\n`);
 
   const verifier = new VcVerifier({
-    clockSkew: '30s',
+    clockSkew: '5s',
     revocationStore: new InMemoryRevocationStore(),
   });
   let passed = 0;

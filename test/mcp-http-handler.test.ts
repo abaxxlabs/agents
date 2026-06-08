@@ -1,17 +1,3 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
@@ -33,8 +19,8 @@ vi.mock('@modelcontextprotocol/sdk/server/sse.js', () => {
   return { SSEServerTransport: FakeSSEServerTransport };
 });
 
-import { createMcpHttpHandler } from '../src/mcp/http-handler.js';
-import type { McpBearerAuth } from '../src/mcp/auth.js';
+import { createMcpHttpHandler } from '#mcp/http-handler.js';
+import type { McpBearerAuth } from '#mcp/auth.js';
 
 interface MockReq extends EventEmitter {
   url: string;
@@ -90,7 +76,7 @@ describe('createMcpHttpHandler — multi-session routing', () => {
     vi.clearAllMocks();
   });
 
-  it('AC1: two concurrent /sse clients each get their own transport; POST routes by sessionId', async () => {
+  it('two concurrent /sse clients each get their own transport; POST routes by sessionId', async () => {
     const handler = createMcpHttpHandler({
       mcpServer: mcpServer as unknown as Parameters<typeof createMcpHttpHandler>[0]['mcpServer'],
       bearerGuard: null,
@@ -133,7 +119,7 @@ describe('createMcpHttpHandler — multi-session routing', () => {
     expect(transportB.handlePostMessage.mock.calls[0][0]).toBe(postReqB);
   });
 
-  it('AC2: POST /messages with no sessionId returns 400; no transport invoked', () => {
+  it('POST /messages with no sessionId returns 400; no transport invoked', () => {
     const handler = createMcpHttpHandler({
       mcpServer: mcpServer as unknown as Parameters<typeof createMcpHttpHandler>[0]['mcpServer'],
       bearerGuard: null,
@@ -163,7 +149,7 @@ describe('createMcpHttpHandler — multi-session routing', () => {
     expect(transport.handlePostMessage).not.toHaveBeenCalled();
   });
 
-  it('AC2: POST /messages with bogus sessionId returns 400; no transport invoked', () => {
+  it('POST /messages with bogus sessionId returns 400; no transport invoked', () => {
     const handler = createMcpHttpHandler({
       mcpServer: mcpServer as unknown as Parameters<typeof createMcpHttpHandler>[0]['mcpServer'],
       bearerGuard: null,
@@ -188,7 +174,7 @@ describe('createMcpHttpHandler — multi-session routing', () => {
     expect(transport.handlePostMessage).not.toHaveBeenCalled();
   });
 
-  it('AC4: a reconnect after a notional bearer rotation does not hijack the existing client', () => {
+  it('a reconnect after a notional bearer rotation does not hijack the existing client', () => {
     const handler = createMcpHttpHandler({
       mcpServer: mcpServer as unknown as Parameters<typeof createMcpHttpHandler>[0]['mcpServer'],
       bearerGuard: null,
@@ -221,7 +207,7 @@ describe('createMcpHttpHandler — multi-session routing', () => {
     expect(transportA.handlePostMessage.mock.calls[0][0]).toBe(postReqA);
   });
 
-  it('AC3: second /sse while one is open returns 409 Conflict in single-session mode', () => {
+  it('second /sse while one is open returns 409 Conflict in single-session mode', () => {
     const handler = createMcpHttpHandler({
       mcpServer: mcpServer as unknown as Parameters<typeof createMcpHttpHandler>[0]['mcpServer'],
       bearerGuard: null,
@@ -253,7 +239,7 @@ describe('createMcpHttpHandler — multi-session routing', () => {
     expect(mcpServer.connect).toHaveBeenCalledTimes(1);
   });
 
-  it('AC3: reconnect succeeds in single-session mode after the previous session closes', () => {
+  it('reconnect succeeds in single-session mode after the previous session closes', () => {
     const handler = createMcpHttpHandler({
       mcpServer: mcpServer as unknown as Parameters<typeof createMcpHttpHandler>[0]['mcpServer'],
       bearerGuard: null,

@@ -1,24 +1,8 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-// Tests concurrent audit chain init races and timing-safe hash comparison.
-
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { AuditLogger, hashAuditRecord } from '../src/audit-logger.js';
-import { generateDidKey, createSigner } from '../src/auth/index.js';
-import type { AuditEntry, AuditRecord } from '../src/types.js';
-import { SqliteStorageBackend } from '../src/storage/sqlite/index.js';
+import { AuditLogger, hashAuditRecord } from '#audit/index.js';
+import { generateDidKey, createSigner } from '#auth/index.js';
+import type { AuditEntry, AuditRecord } from '#types/index.js';
+import { SqliteStorageBackend } from '#storage/sqlite/index.js';
 import { deterministicSessionMacKey } from './support/deterministic-session-mac-key.js';
 
 // ─── Shared test fixtures ────────────────────────────────────────────────────
@@ -169,11 +153,11 @@ describe('concurrent append — Postgres-style mock store', () => {
     return {
       append: vi.fn(delayedWriter),
       appendWithChainLock: vi.fn(async (
-        buildRecord: (lastRecord: AuditRecord | null) => AuditRecord,
+        buildRecord: (lastRecord: AuditRecord | null) => AuditRecord | Promise<AuditRecord>,
       ) => {
         return withAdvisoryLock(async () => {
           const lastRecord = records.length === 0 ? null : records[records.length - 1];
-          const record = buildRecord(lastRecord);
+          const record = await buildRecord(lastRecord);
           await delayedWriter(record);
           return record;
         });

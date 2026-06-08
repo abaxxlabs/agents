@@ -1,36 +1,17 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * Unified regression suite for AGENTS_* env coupling. No AGENTS_* vars are
- * read inside policy modules; configuration enters through typed config objects.
- */
-
 import { describe, it, expect } from 'vitest';
-import { loadConfig } from '../../src/config.js';
-import { OrgBoundary } from '../../src/identity/org-boundary.js';
-import { LocalTrustAnchorStore } from '../../src/discovery/trust-anchor.js';
-import { createKeystore, JsonFileBackend } from '../../src/identity/keystore.js';
-import type { AgentScopeConfig } from '../../src/types.js';
-import type { ScopeMode } from '../../src/sql/scope-engine.js';
-import { ScopeEngine } from '../../src/sql/scope-engine.js';
-import { VcVerifier } from '../../src/vc-verifier.js';
-import { InMemoryRevocationStore } from '../../src/storage/memory/revocation-store.js';
-import { AuditLogger } from '../../src/audit-logger.js';
-import type { AgentStore, AuditStore } from '../../src/storage/types.js';
+import { loadConfig } from '#config.js';
+import { OrgBoundary } from '#identity/org-boundary.js';
+import { LocalTrustAnchorStore } from '#discovery/trust-anchor.js';
+import { createKeystore, JsonFileBackend } from '#identity/keystore.js';
+import type { AgentScopeConfig } from '#types/index.js';
+import type { ScopeMode } from '#sql/scope-engine.js';
+import { ScopeEngine } from '#sql/scope-engine.js';
+import { VcVerifier } from '#identity/index.js';
+import { InMemoryRevocationStore } from '#storage/memory/revocation-store.js';
+import { AuditLogger } from '#audit/index.js';
+import type { AgentStore, AuditStore } from '#storage/types.js';
 import type { Pool } from 'pg';
-import { generateDidKey } from '../../src/auth/index.js';
+import { generateDidKey } from '#auth/index.js';
 import { vi } from 'vitest';
 
 const DB_URL = 'postgresql://test:test@localhost:54322/postgres';

@@ -10,7 +10,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 import { Level } from 'level';
 import { Convert } from '../common/index.js';
 import { utils as didUtils } from '../dids/index.js';
-import { DataStream } from '@dwn-protocol/id';
+import { DataStream } from '@abaxxtech/id';
 import { webReadableToIsomorphicNodeReadable } from './utils.js';
 const is2xx = (code) => code >= 200 && code <= 299;
 const is4xx = (code) => code >= 400 && code <= 499;

@@ -1,5 +1,5 @@
 import type { IDAgent } from './agent/index.js';
-import type { ProtocolsConfigure } from '@dwn-protocol/id';
+import type { ProtocolsConfigure } from '@abaxxtech/id';
 /**
  * The protocol configure message carries the protocol definition and is used
  * to setup the protocol.
@@ -29,12 +29,12 @@ export declare class Protocol {
     /**
      * The protocol definition: types, structure and publish status
      */
-    get definition(): import("@dwn-protocol/id").ProtocolDefinition;
+    get definition(): import("@abaxxtech/id").ProtocolDefinition;
     constructor(agent: IDAgent, protocolsConfigureMessage: ProtocolsConfigureMessage, metadata: ProtocolMetadata);
     /**
      * Returns the protocol as a JSON object.
      */
-    toJSON(): import("@dwn-protocol/id").ProtocolsConfigureMessage;
+    toJSON(): import("@abaxxtech/id").ProtocolsConfigureMessage;
     /**
      * Sends the protocol to a remote DWN by specifying their DID
      * @param target - the DID to send the protocol to

@@ -15,33 +15,26 @@
 import type {
   CreateAgentOptions,
   RegisteredAgent,
-} from '../types.js';
-import type { AgentStore, AgentRecord } from '../storage/types.js';
-import { VcVerifier } from '../vc-verifier.js';
+} from '#types/auth.js';
+import type { AgentStore, AgentRecord } from '#storage/types.js';
+import { VcVerifier } from '#identity/index.js';
 import { generateDidKey, createSigner } from './did-key.js';
-import { wrapColumnKey, unwrapColumnKey, isUndefinedTableError } from '../column-encryption.js';
-import type { MasterKey } from '../crypto/master-key.js';
+import { wrapColumnKey, unwrapColumnKey, isUndefinedTableError } from '#encryption/index.js';
+import type { MasterKey } from '#crypto/master-key.js';
 import {
   DecryptionFailedError,
   MasterKeyMismatchError,
-} from '../errors.js';
-import type { IdSdkInstance } from '../id-sdk-types.js';
-import type { Logger } from '../logger.js';
-import { defaultLogger } from '../logger.js';
+} from '#errors/index.js';
+import type { IdSdkInstance } from '#types/id-sdk.js';
+import type { Logger } from '#observability/logger.js';
+import { getLogger } from '#observability/logger.js';
 
-/**
- * Create a new agent identity (DID + key pair) and register it in the store.
- *
- * @param agents - AgentStore persistence layer for agent registry
- * @param options - Agent name and ownerDid
- * @param verifier - VcVerifier registers the new public key for local resolution
- * @param _sdk - Unused; kept for API compat (SDK DID creation is unusable: HSM/KMS hides private key)
- * @param masterKey - Optional master key for encrypting the agent's private key at rest
- */
+/** Create a new agent identity (DID + key pair), persist it, and register the public key. */
 export async function createAgent(
   agents: AgentStore,
   options: CreateAgentOptions & { ownerDid: string },
   verifier: VcVerifier,
+  // Unused; kept for API compat. SDK DID creation hides the private key in HSM/KMS -- local key gen required.
   _sdk?: IdSdkInstance,
   masterKey?: MasterKey,
 ): Promise<RegisteredAgent> {
@@ -79,27 +72,15 @@ export async function createAgent(
   };
 }
 
-/**
- * Result shape for `restoreAgents`: either the populated Map of
- * AgentIdentities, or a sentinel signalling that the `agents` table is absent
- * (legitimate pre-migration boot).
- */
+/** Either the restored agents map, or a sentinel when the `agents` table doesn't exist yet. */
 export type RestoreAgentsResult = Map<string, RegisteredAgent> | { schemaMissing: true };
 
-/**
- * Restore all persisted agents from the store on startup.
- * Unwraps encrypted private keys, recreates signer closures, and registers
- * public keys with the verifier.
- *
- * @param agents - AgentStore persistence layer
- * @param masterKey - Master key for unwrapping encrypted private keys
- * @param verifier - VcVerifier for registering public keys
- */
+/** Restore persisted agents on startup: unwrap encrypted keys, recreate signers, register with verifier. */
 export async function restoreAgents(
   agents: AgentStore,
   masterKey: MasterKey,
   verifier: VcVerifier,
-  logger: Logger = defaultLogger,
+  logger: Logger = getLogger(),
 ): Promise<RestoreAgentsResult> {
   let rows: AgentRecord[];
   try {

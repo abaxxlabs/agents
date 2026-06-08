@@ -20,19 +20,21 @@
  * Telemetry hooks are optional and one-way — they cannot alter service behavior.
  */
 
-import { hashAuditRecord } from '../audit-logger.js';
-import { assertScopeFitsInCeiling, type ScopeCeiling } from '../auth/ceiling.js';
-import { RequestValidationError } from '../transport/errors.js';
+import { hashAuditRecord } from '#audit/index.js';
+import { assertScopeFitsInCeiling, type ScopeCeiling } from '#auth/ceiling.js';
+import { RequestValidationError } from '#transport/errors.js';
 import type {
-  AuditRecord,
   AuthenticatedSession,
   CreateAgentOptions,
+  RegisteredAgent,
+} from '#types/auth.js';
+import type {
   DelegateCredentialOptions,
   IssueCredentialOptions,
-  RegisteredAgent,
-  VerificationResult,
-} from '../types.js';
-import type { AuditQueryFilter } from '../storage/types.js';
+} from '#types/credential.js';
+import type { AuditRecord } from '#types/audit.js';
+import type { VerificationResult } from '#types/verification.js';
+import type { AuditQueryFilter } from '#storage/types.js';
 
 const AUDIT_EXPORT_DEFAULT_LIMIT = 100;
 const AUDIT_EXPORT_MAX_LIMIT = 1000;

@@ -1,52 +1,9 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-// Tests DID alias expansion in AuditLogger.export() for audit trail continuity.
-
 import { describe, it, expect, vi } from 'vitest';
-import { AuditLogger } from '../src/audit-logger.js';
-import { DidAliasRegistry, type DidAlias } from '../src/did-alias.js';
-import type { AuditRecord } from '../src/types.js';
-import type { AuditStore } from '../src/storage/types.js';
-
-function createMockAuditStore(records: AuditRecord[] = []) {
-  return {
-    append: vi.fn().mockResolvedValue(undefined),
-    loadLastRecord: vi.fn().mockResolvedValue(null),
-    loadLastRecordLocked: vi.fn().mockResolvedValue(null),
-    query: vi.fn().mockResolvedValue(records),
-  } satisfies AuditStore;
-}
-
-function makeAuditRecord(agentDid: string, overrides: Partial<AuditRecord> = {}): AuditRecord {
-  return {
-    id: overrides.id ?? 'test-id',
-    timestamp: overrides.timestamp ?? new Date().toISOString(),
-    agentDid,
-    ownerDid: overrides.ownerDid ?? 'did:key:zOwner',
-    credentialId: overrides.credentialId ?? 'cred-hash',
-    queryHash: overrides.queryHash ?? 'query-hash',
-    columnsAccessed: overrides.columnsAccessed ?? ['col1'],
-    rowCount: overrides.rowCount ?? 1,
-    durationMs: overrides.durationMs ?? 10,
-    previousHash: overrides.previousHash ?? 'GENESIS',
-    signature: overrides.signature ?? 'sig-xyz',
-    version: overrides.version ?? 2,
-    status: overrides.status ?? 'success',
-    ...overrides,
-  };
-}
+import { AuditLogger } from '#audit/index.js';
+import { DidAliasRegistry, type DidAlias } from '#did/alias.js';
+import type { AuditRecord } from '#types/index.js';
+import { createMockAuditStore } from './mocks/audit-store.js';
+import { createMockAuditRecord } from './mocks/audit-record.js';
 
 describe('AuditLogger — alias-aware export', () => {
   const oldDid = 'did:key:z6MkOldUser';
@@ -68,10 +25,12 @@ describe('AuditLogger — alias-aware export', () => {
     const registry = new DidAliasRegistry();
     registry.addAlias(makeAlias());
 
-    const store = createMockAuditStore([
-      makeAuditRecord(oldDid, { id: 'old-record' }),
-      makeAuditRecord(newDid, { id: 'new-record' }),
-    ]);
+    const store = createMockAuditStore({
+      records: [
+        createMockAuditRecord({ agentDid: oldDid, id: 'old-record' }),
+        createMockAuditRecord({ agentDid: newDid, id: 'new-record' }),
+      ],
+    });
 
     const logger = new AuditLogger({
       auditStore: store,
@@ -93,9 +52,9 @@ describe('AuditLogger — alias-aware export', () => {
     const registry = new DidAliasRegistry();
     // No aliases registered
 
-    const store = createMockAuditStore([
-      makeAuditRecord('did:key:z6MkSolo', { id: 'solo-record' }),
-    ]);
+    const store = createMockAuditStore({
+      records: [createMockAuditRecord({ agentDid: 'did:key:z6MkSolo', id: 'solo-record' })],
+    });
 
     const logger = new AuditLogger({
       auditStore: store,
@@ -108,7 +67,7 @@ describe('AuditLogger — alias-aware export', () => {
   });
 
   it('works without aliasRegistry (backward compatibility)', async () => {
-    const store = createMockAuditStore([makeAuditRecord('did:key:z6MkAgent', { id: 'record-1' })]);
+    const store = createMockAuditStore({ records: [createMockAuditRecord({ agentDid: 'did:key:z6MkAgent', id: 'record-1' })] });
 
     // No aliasRegistry passed
     const logger = new AuditLogger({
@@ -124,7 +83,7 @@ describe('AuditLogger — alias-aware export', () => {
     const registry = new DidAliasRegistry();
     registry.addAlias(makeAlias());
 
-    const store = createMockAuditStore([makeAuditRecord(oldDid, { id: 'r1' })]);
+    const store = createMockAuditStore({ records: [createMockAuditRecord({ agentDid: oldDid, id: 'r1' })] });
 
     const logger = new AuditLogger({
       auditStore: store,

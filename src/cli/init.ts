@@ -23,8 +23,8 @@
 import pg from 'pg';
 import { randomBytes } from 'node:crypto';
 import { writeFileSync, existsSync } from 'node:fs';
-import { encryptColumnInPlace } from '../sql/column-keys.js';
-import { parseMasterKeyHex } from '../bootstrap/index.js';
+import { encryptColumnInPlace } from '#sql/column-keys.js';
+import { parseMasterKeyHex } from '#bootstrap/index.js';
 
 const { Pool } = pg;
 

@@ -37,7 +37,7 @@
  */
 
 import { EventEmitter } from 'node:events';
-import type { KeystoreBackend } from '../identity/keystore.js';
+import type { KeystoreBackend } from '#identity/index.js';
 
 // ─── Public Types ─────────────────────────────────────────────────────────────
 

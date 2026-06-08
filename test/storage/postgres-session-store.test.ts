@@ -1,32 +1,13 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * PostgresSessionStore tests. Uses live Supabase-local Postgres (port 54322).
- * Skips if unreachable.
- */
-
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import pg from 'pg';
-import { PostgresSessionStore } from '../../src/storage/postgres/session-store.js';
-import { deriveSessionMacKey } from '../../src/storage/envelope-mac.js';
-import { asMasterKey } from '../../src/crypto/master-key.js';
+import { PostgresSessionStore } from '#storage/postgres/session-store.js';
+import { deriveSessionMacKey } from '#storage/envelope-mac.js';
+import { asMasterKey } from '#crypto/master-key.js';
 import {
   EnvelopeIntegrityError,
   ProviderNotAllowedError,
   type SessionEnvelope,
-} from '../../src/storage/types.js';
+} from '#storage/types.js';
 
 type StoreInternals = { cache: Map<string, unknown> };
 import { readFileSync } from 'node:fs';
@@ -105,7 +86,7 @@ describeFn('PostgresSessionStore (live Postgres required)', () => {
     expect(read!.expiresAt).toBeGreaterThan(Date.now());
   });
 
-  it('put() rejects mock providerKind (D12)', async () => {
+  it('put() rejects mock providerKind', async () => {
     await expect(
       store.put(
         'pg-m',
@@ -115,7 +96,7 @@ describeFn('PostgresSessionStore (live Postgres required)', () => {
     ).rejects.toThrow(ProviderNotAllowedError);
   });
 
-  it('tampered envelope row → EnvelopeIntegrityError (D9)', async () => {
+  it('tampered envelope row → EnvelopeIntegrityError', async () => {
     await store.put('pg-tamper', env(), { ttlSeconds: 60 });
     // Clear cache so we read from DB.
     (store as unknown as StoreInternals).cache.clear();
@@ -150,7 +131,7 @@ describeFn('PostgresSessionStore (live Postgres required)', () => {
     expect(pruned).toBeGreaterThanOrEqual(1);
   });
 
-  it('D15 cache: second get within TTL does not re-query DB', async () => {
+  it('cache: second get within TTL does not re-query DB', async () => {
     await store.put('pg-cache-1', env({ humanDid: 'did:c' }), { ttlSeconds: 60 });
     // Clear cache after put (put invalidates) so first get populates.
     expect((store as unknown as StoreInternals).cache.size).toBe(0);
@@ -173,7 +154,7 @@ describeFn('PostgresSessionStore (live Postgres required)', () => {
     expect(r2!.humanDid).toBe('did:c');
   });
 
-  it('D15 cache: delete() evicts cache', async () => {
+  it('cache: delete() evicts cache', async () => {
     await store.put('pg-evict', env(), { ttlSeconds: 60 });
     // Populate cache
     await store.get('pg-evict');
@@ -183,7 +164,7 @@ describeFn('PostgresSessionStore (live Postgres required)', () => {
     expect(await store.get('pg-evict')).toBeNull();
   });
 
-  it('D15 cache: put() evicts cache (so next get sees fresh row)', async () => {
+  it('cache: put() evicts cache (so next get sees fresh row)', async () => {
     await store.put('pg-refresh', env({ humanDid: 'did:v1' }), { ttlSeconds: 60 });
     // Populate cache
     const r1 = await store.get('pg-refresh');
@@ -195,7 +176,7 @@ describeFn('PostgresSessionStore (live Postgres required)', () => {
     expect(r2!.humanDid).toBe('did:v2');
   });
 
-  it('D13 singleflight: concurrent get() for unknown token coalesces to 1 SELECT', async () => {
+  it('singleflight: concurrent get() for unknown token coalesces to 1 SELECT', async () => {
     // We proxy-monkeypatch pool.query to count calls for this one test.
     type PoolQueryFn = pg.Pool['query'];
     const originalQuery = pool.query.bind(pool) as PoolQueryFn;
@@ -225,7 +206,7 @@ describeFn('PostgresSessionStore (live Postgres required)', () => {
     }
   });
 
-  it('D14: backing-store failure propagates', async () => {
+  it('backing-store failure propagates', async () => {
     // Construct a store with a pool whose connection string is bogus.
     const deadPool = new Pool({
       connectionString: 'postgresql://nobody@127.0.0.1:1/nodb',

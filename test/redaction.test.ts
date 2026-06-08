@@ -1,26 +1,12 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 import { describe, it, expect } from 'vitest';
 import { inspect } from 'node:util';
 import {
   REDACTED_MASTER_KEY,
   REDACTED_SIGNER,
   withRedactedSerialization,
-} from '../src/crypto/redact.js';
-import { createSigner } from '../src/auth/did-key.js';
-import { generateDidKey } from '../src/auth/did-key.js';
+} from '#crypto/redact.js';
+import { createSigner } from '#auth/did-key.js';
+import { generateDidKey } from '#auth/did-key.js';
 
 // ─── shared constants ──────────────────────────────────────────────
 describe('redaction constants', () => {
@@ -56,8 +42,8 @@ describe('createSigner redaction', () => {
     expect(out).not.toContain(privateKeyHex);
   });
 
-  it('signJwt still works after redaction wiring', () => {
-    const jwt = signer.signJwt({ sub: 'test' });
+  it('signJwt still works after redaction wiring', async () => {
+    const jwt = await signer.signJwt({ sub: 'test' });
     expect(jwt.split('.')).toHaveLength(3);
   });
 });

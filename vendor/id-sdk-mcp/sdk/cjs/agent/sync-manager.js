@@ -4,7 +4,7 @@ exports.SyncManagerLevel = void 0;
 const level_1 = require("level");
 const index_js_1 = require("../common/index.js");
 const index_js_2 = require("../dids/index.js");
-const id_1 = require("@dwn-protocol/id");
+const id_1 = require("@abaxxtech/id");
 const utils_js_1 = require("./utils.js");
 const is2xx = (code) => code >= 200 && code <= 299;
 const is4xx = (code) => code >= 400 && code <= 499;

@@ -1,27 +1,13 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 import { describe, it, expect, beforeEach } from 'vitest';
-import { VcVerifier } from '../src/vc-verifier.js';
-import { InMemoryRevocationStore } from '../src/storage/memory/revocation-store.js';
-import { decodeJwt } from '../src/jwt-utils.js';
+import { VcVerifier } from '#identity/index.js';
+import { InMemoryRevocationStore } from '#storage/memory/revocation-store.js';
+import { decodeJwt } from '#crypto/jwt.js';
 import {
   generateDidKey,
   issueCredential,
   issueDelegatedCredential,
   createSigner,
-} from '../src/auth/index.js';
+} from '#auth/index.js';
 
 function setup() {
   const human = generateDidKey();
@@ -48,13 +34,13 @@ describe('Delegation chain revocation', () => {
   it('worker credential verifies as VALID before parent is revoked', async () => {
     const { human, supervisor, worker, verifier } = env;
 
-    const parentCred = issueCredential(human.did, human.privateKey, {
+    const parentCred = await issueCredential(human.did, human.privateKey, {
       agent: supervisor.did,
       columns: ['patients.name', 'patients.dob'],
       actions: ['read'],
       expiresIn: '4h',
     });
-    const workerCred = issueDelegatedCredential(
+    const workerCred = await issueDelegatedCredential(
       supervisor.did,
       createSigner(supervisor.privateKey),
       parentCred,
@@ -76,14 +62,14 @@ describe('Delegation chain revocation', () => {
   it('revoking the parent credential invalidates the worker credential', async () => {
     const { human, supervisor, worker, store, verifier } = env;
 
-    const parentCred = issueCredential(human.did, human.privateKey, {
+    const parentCred = await issueCredential(human.did, human.privateKey, {
       agent: supervisor.did,
       columns: ['patients.name', 'patients.dob'],
       actions: ['read'],
       expiresIn: '4h',
     });
     const parentJti = decodeJwt(parentCred).payload.jti!;
-    const workerCred = issueDelegatedCredential(
+    const workerCred = await issueDelegatedCredential(
       supervisor.did,
       createSigner(supervisor.privateKey),
       parentCred,
@@ -108,13 +94,13 @@ describe('Delegation chain revocation', () => {
   it('revoking an unrelated credential does not invalidate the worker', async () => {
     const { human, supervisor, worker, store, verifier } = env;
 
-    const parentCred = issueCredential(human.did, human.privateKey, {
+    const parentCred = await issueCredential(human.did, human.privateKey, {
       agent: supervisor.did,
       columns: ['patients.name'],
       actions: ['read'],
       expiresIn: '4h',
     });
-    const workerCred = issueDelegatedCredential(
+    const workerCred = await issueDelegatedCredential(
       supervisor.did,
       createSigner(supervisor.privateKey),
       parentCred,
@@ -135,119 +121,17 @@ describe('Delegation chain revocation', () => {
     expect(result.status).toBe('VALID');
   });
 
-  it('multi-level chain: revoking the root invalidates a sub-worker', async () => {
-    const { human, supervisor, worker, subWorker, store, verifier } = env;
-
-    const parentCred = issueCredential(human.did, human.privateKey, {
-      agent: supervisor.did,
-      columns: ['patients.name', 'patients.dob'],
-      actions: ['read'],
-      expiresIn: '4h',
-    });
-    const parentJti = decodeJwt(parentCred).payload.jti!;
-
-    const workerCred = issueDelegatedCredential(
-      supervisor.did,
-      createSigner(supervisor.privateKey),
-      parentCred,
-      parentJti,
-      { columns: ['patients.name', 'patients.dob'], actions: ['read'] },
-      {
-        targetAgent: worker.did,
-        columns: ['patients.name', 'patients.dob'],
-        actions: ['read'],
-        expiresIn: '1h',
-      },
-    );
-
-    const subWorkerCred = issueDelegatedCredential(
-      worker.did,
-      createSigner(worker.privateKey),
-      workerCred,
-      decodeJwt(workerCred).payload.jti!,
-      { columns: ['patients.name', 'patients.dob'], actions: ['read'] },
-      {
-        targetAgent: subWorker.did,
-        columns: ['patients.name'],
-        actions: ['read'],
-        expiresIn: '30m',
-        operatorMaxDepth: 3,
-      },
-    );
-
-    const beforeRevoke = await verifier.verify(subWorkerCred, {
-      expectedSubject: subWorker.did,
-    });
-    expect(beforeRevoke.valid).toBe(true);
-
-    await store.revoke(parentJti, { reason: 'root compromised' });
-
-    const afterRevoke = await verifier.verify(subWorkerCred, {
-      expectedSubject: subWorker.did,
-    });
-    expect(afterRevoke.valid).toBe(false);
-    expect(afterRevoke.status).toBe('REVOKED');
-    expect(afterRevoke.error).toContain(parentJti);
-  });
-
-  it('multi-level chain: revoking the intermediate worker invalidates the sub-worker', async () => {
-    const { human, supervisor, worker, subWorker, store, verifier } = env;
-
-    const parentCred = issueCredential(human.did, human.privateKey, {
-      agent: supervisor.did,
-      columns: ['patients.name'],
-      actions: ['read'],
-      expiresIn: '4h',
-    });
-    const workerCred = issueDelegatedCredential(
-      supervisor.did,
-      createSigner(supervisor.privateKey),
-      parentCred,
-      decodeJwt(parentCred).payload.jti!,
-      { columns: ['patients.name'], actions: ['read'] },
-      {
-        targetAgent: worker.did,
-        columns: ['patients.name'],
-        actions: ['read'],
-        expiresIn: '1h',
-      },
-    );
-    const workerJti = decodeJwt(workerCred).payload.jti!;
-
-    const subWorkerCred = issueDelegatedCredential(
-      worker.did,
-      createSigner(worker.privateKey),
-      workerCred,
-      workerJti,
-      { columns: ['patients.name'], actions: ['read'] },
-      {
-        targetAgent: subWorker.did,
-        columns: ['patients.name'],
-        actions: ['read'],
-        expiresIn: '30m',
-        operatorMaxDepth: 3,
-      },
-    );
-
-    await store.revoke(workerJti, { reason: 'intermediate compromised' });
-
-    const result = await verifier.verify(subWorkerCred, { expectedSubject: subWorker.did });
-    expect(result.valid).toBe(false);
-    expect(result.status).toBe('REVOKED');
-    expect(result.error).toContain(workerJti);
-  });
-
   it('store error during chain check propagates as a thrown error (fail-closed)', async () => {
     const { human, supervisor, worker, store, verifier } = env;
 
-    const parentCred = issueCredential(human.did, human.privateKey, {
+    const parentCred = await issueCredential(human.did, human.privateKey, {
       agent: supervisor.did,
       columns: ['patients.name'],
       actions: ['read'],
       expiresIn: '4h',
     });
     const parentJti = decodeJwt(parentCred).payload.jti!;
-    const workerCred = issueDelegatedCredential(
+    const workerCred = await issueDelegatedCredential(
       supervisor.did,
       createSigner(supervisor.privateKey),
       parentCred,

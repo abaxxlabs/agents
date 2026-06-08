@@ -17,16 +17,12 @@ import {
   createPrivateKey,
   createPublicKey,
 } from 'node:crypto';
-import type { AgentSigner } from '../types.js';
-import { createJwt } from '../vc-verifier.js';
-import { base58Encode } from '../crypto/base58.js';
-import { REDACTED_SIGNER, withRedactedSerialization } from '../crypto/redact.js';
+import type { AgentSigner } from '#types/auth.js';
+import { createJwt } from '#crypto/jwt.js';
+import { base58Encode } from '#crypto/base58.js';
+import { REDACTED_SIGNER, withRedactedSerialization } from '#crypto/redact.js';
 
-/**
- * Generate a deterministic Ed25519 did:key from a 32-byte seed.
- * Same seed -> same DID every time. Used by mock sessions so re-authentication
- * with the same humanName returns the same DID and audit records stay visible.
- */
+/** Generate a deterministic Ed25519 did:key from a 32-byte seed. Same seed = same DID. */
 export function generateDidKeyFromSeed(seed: Buffer): {
   did: string;
   publicKey: Uint8Array;
@@ -55,11 +51,7 @@ export function generateDidKeyFromSeed(seed: Buffer): {
   return { did, publicKey: rawPublic, privateKey: rawPrivate };
 }
 
-/**
- * Generate an Ed25519 key pair and return as a did:key DID.
- *
- * @returns did:key DID string, raw 32-byte public key, raw 32-byte private key
- */
+/** Generate a random Ed25519 key pair and return as a did:key DID. */
 export function generateDidKey(): { did: string; publicKey: Uint8Array; privateKey: Uint8Array } {
   const { publicKey, privateKey } = generateKeyPairSync('ed25519', {
     publicKeyEncoding: { type: 'spki', format: 'der' },
@@ -79,18 +71,12 @@ export function generateDidKey(): { did: string; publicKey: Uint8Array; privateK
   return { did, publicKey: rawPublic, privateKey: rawPrivate };
 }
 
-/**
- * Create an opaque AgentSigner that wraps a private key in a closure.
- * The raw key material is never exposed through the public API.
- *
- * @param privateKey - raw 32-byte Ed25519 private key
- * @returns frozen AgentSigner whose signJwt method signs payloads without exposing the key
- */
+/** Create an opaque AgentSigner wrapping a private key. Raw key material is never exposed. */
 export function createSigner(privateKey: Uint8Array): AgentSigner {
   const key = new Uint8Array(privateKey);
   const signer = withRedactedSerialization(
     {
-      signJwt(payload: Record<string, unknown>): string {
+      signJwt(payload: Record<string, unknown>): Promise<string> {
         return createJwt(payload, key);
       },
     },
@@ -99,14 +85,7 @@ export function createSigner(privateKey: Uint8Array): AgentSigner {
   return Object.freeze(signer);
 }
 
-/**
- * Adapt an opaque AgentSigner to the external Signer interface used by
- * compatible platform identity and AbaxxOne credential issuance APIs.
- *
- * @param agentSigner - opaque signer from createSigner() or RegisteredAgent.signer
- * @param did - the agent's DID (did:key:z6Mk...), used to construct the kid
- * @returns a function with .kid and .algorithm that satisfies the id-sdk Signer shape
- */
+/** Adapt an AgentSigner to the external Signer interface used by id-sdk and AbaxxOne APIs. */
 export function toExternalSigner(
   agentSigner: AgentSigner,
   did: string,
@@ -118,7 +97,7 @@ export function toExternalSigner(
       _raw: Buffer.from(data).toString('base64url'),
     };
 
-    const jws = agentSigner.signJwt(payload);
+    const jws = await agentSigner.signJwt(payload);
 
     const parts = jws.split('.');
     if (parts.length !== 3) {

@@ -1,17 +1,3 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -108,7 +94,7 @@ describe('public artifact audit policy', () => {
         '.mcp.json',
         'docs/plan-v0.11.1-prelanding-fixes.md',
         'docs/support-runbook-v0.9.10.0.md',
-        'demo/hackathon/findings/example-finding.md',
+        'demo/hackathon/findings/matias/01-createagent-missing-returning.md',
         '.env.local',
         'client_secret.json',
       ],
@@ -121,7 +107,7 @@ describe('public artifact audit policy', () => {
       '.mcp.json: forbidden path (.mcp.json)',
       'docs/plan-v0.11.1-prelanding-fixes.md: forbidden path (docs/plan-*.md)',
       'docs/support-runbook-v0.9.10.0.md: forbidden path (docs/support-runbook-*.md)',
-      'demo/hackathon/findings/example-finding.md: forbidden path (demo/hackathon/findings/**)',
+      'demo/hackathon/findings/matias/01-createagent-missing-returning.md: forbidden path (demo/hackathon/findings/**)',
       '.env.local: forbidden path (**/.env.*)',
       'client_secret.json: forbidden path (**/client_secret.json)',
     ]);

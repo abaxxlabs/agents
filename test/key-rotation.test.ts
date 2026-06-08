@@ -1,113 +1,50 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * Key Rotation and Rewrap Tests (v0.9.7.0)
- *
- * Tests for rotateColumnKey() and rewrapColumnKey() and the tightened
- * registerColumn() footgun closure.
- *
- * Test strategy: all tests use mock pg.Pool / pg.PoolClient. No real Postgres
- * required. This keeps the test suite fast and runnable without Supabase.
- * Integration against a real database is covered by the integration test suite.
- *
- * Mock pool architecture:
- *   - pool.connect() returns a mock client
- *   - client.query(sql, params) is a vi.fn() with canned responses per SQL pattern
- *   - client.query('BEGIN') / 'COMMIT' / 'ROLLBACK' are no-ops (or controlled throws)
- *   - The test builds its own in-memory row state and verifies it was mutated correctly
- *
- * Coverage:
- *   1. rotateColumnKey — happy path (N rows), verify decrypt under new key
- *   2. rotateColumnKey — empty table, wrapped key still swaps
- *   3. rotateColumnKey — wrong master key → KeyRotationFailedError('unwrap-old-key')
- *   4. rotateColumnKey — mid-rotation failure (decrypt-row), verify rollback called
- *   5. rotateColumnKey — repeated rotation (second call after first succeeds)
- *   6. rewrapColumnKey — happy path, row ciphertext identity preserved
- *   7. rewrapColumnKey — wrong old master key → KeyRotationFailedError('unwrap-old-key')
- *   8. rewrapColumnKey — verify audit entry written inside transaction
- *   9. registerColumn — re-registration of existing column throws clear error
- *  10. registerColumn — first registration succeeds
- *  11. Concurrent rotation serialization (FOR UPDATE behavior documented via mock)
- *  12. rotateColumnKey — audit entry written inside the transaction
- */
-
 import { describe, it, expect, vi, type Mock } from 'vitest';
 import type { Pool, PoolClient } from 'pg';
+import { createMockClient, createMockPool, createMockPoolThrowing } from './mocks/pool.js';
 import {
   encrypt,
   decrypt,
   generateColumnKey,
   wrapColumnKey,
   unwrapColumnKey,
-} from '../src/column-encryption.js';
+} from '#encryption/index.js';
 import {
   rotateColumnKey,
   rewrapColumnKey,
   registerColumn,
   verifyAllColumnKeys,
-} from '../src/sql/column-keys.js';
-import { asMasterKey } from '../src/crypto/master-key.js';
-import { KeyRotationFailedError } from '../src/errors.js';
+} from '#sql/column-keys.js';
+import { asMasterKey } from '#crypto/master-key.js';
+import { KeyRotationFailedError } from '#errors/index.js';
 
-// ─── Mock helpers ─────────────────────────────────────────────────────────────
 
-/**
- * Build a mock pg PoolClient.
- * queryFn receives ALL queries including BEGIN/COMMIT/ROLLBACK so tests can
- * track ordering. Returns the result from queryFn, with sensible defaults for
- * BEGIN/COMMIT/ROLLBACK if the queryFn doesn't handle them.
- */
-type MockClient = PoolClient & { query: Mock; release: Mock };
+type MockClientType = PoolClient & { query: Mock; release: Mock };
+type MockPool = Pool & { query: Mock; connect: Mock };
 
 function makeMockClient(
   queryFn: (sql: string, params?: unknown[]) => { rows: unknown[] } | Promise<{ rows: unknown[] }>,
 ): {
-  client: MockClient;
+  client: MockClientType;
   released: boolean;
   queries: Array<{ sql: string; params?: unknown[] }>;
 } {
   const state = { released: false };
   const queries: Array<{ sql: string; params?: unknown[] }> = [];
 
-  const client = {
-    query: vi.fn(async (sql: string, params?: unknown[]) => {
-      queries.push({ sql, params });
-      const result = await Promise.resolve(queryFn(sql, params));
-      // Default for transaction control statements that queryFn doesn't handle
-      return result ?? { rows: [] };
-    }),
-    release: vi.fn(() => {
-      state.released = true;
-    }),
-  };
+  const base = createMockClient(async (sql, params) => {
+    queries.push({ sql, params });
+    const result = await Promise.resolve(queryFn(sql, params));
+    return result ?? { rows: [] };
+  });
+  base.release.mockImplementation(() => {
+    state.released = true;
+  });
 
-  return { client: client as unknown as MockClient, ...state, queries };
+  return { client: base as unknown as MockClientType, ...state, queries };
 }
 
-/**
- * Build a mock pg Pool.
- * - pool.connect() returns the given client.
- * - pool.query(sql, params) is a separate vi.fn() for the PK catalog query
- *   that rotateColumnKey() issues OUTSIDE the transaction.
- * The poolQueryFn handles the PK query (SELECT a.attname FROM pg_index ...).
- * Defaults to returning { rows: [{ attname: 'id' }] } if not provided.
- */
-type MockPool = Pool & { query: Mock; connect: Mock };
-
 function makeMockPool(
-  client: MockClient,
+  client: MockClientType,
   poolQueryFn?: (sql: string, params?: unknown[]) => { rows: unknown[] },
 ): MockPool {
   const defaultPoolQuery =
@@ -116,13 +53,9 @@ function makeMockPool(
       if (sql.trim().includes('pg_index')) return { rows: [{ attname: 'id' }] };
       return { rows: [] };
     });
-  return {
-    connect: vi.fn().mockResolvedValue(client),
-    query: vi.fn(async (sql: string, params?: unknown[]) => defaultPoolQuery(sql, params)),
-  } as unknown as MockPool;
+  return createMockPool({ client, queryImpl: defaultPoolQuery }) as unknown as MockPool;
 }
 
-// ─── rotateColumnKey ──────────────────────────────────────────────────────────
 
 describe('rotateColumnKey', () => {
   const tableName = 'patients';
@@ -475,7 +408,6 @@ describe('rotateColumnKey', () => {
   });
 });
 
-// ─── rewrapColumnKey ──────────────────────────────────────────────────────────
 
 describe('rewrapColumnKey', () => {
   const tableName = 'patients';
@@ -650,16 +582,13 @@ describe('rewrapColumnKey', () => {
   });
 });
 
-// ─── registerColumn footgun closure ──────────────────────────────────────────
 
 describe('registerColumn — ON CONFLICT tightening', () => {
   it('first registration succeeds and returns keyId + columnKey', async () => {
     const masterKey = asMasterKey(generateColumnKey());
     const fakeId = 'new-key-uuid';
 
-    const mockPool = {
-      query: vi.fn().mockResolvedValue({ rows: [{ id: fakeId }] }),
-    } as unknown as Pool;
+    const mockPool = createMockPool({ queryImpl: () => ({ rows: [{ id: fakeId }] }) });
 
     const result = await registerColumn(mockPool, masterKey, 'patients', 'ssn');
 
@@ -668,7 +597,7 @@ describe('registerColumn — ON CONFLICT tightening', () => {
     expect(result.columnKey.length).toBe(32);
 
     // The SQL uses ON CONFLICT DO NOTHING (not DO UPDATE)
-    const insertCall = mockPool.query.mock.calls[0];
+    const insertCall = (mockPool.query as unknown as Mock).mock.calls[0];
     const sql: string = insertCall[0];
     expect(sql).toContain('DO NOTHING');
     expect(sql).not.toContain('DO UPDATE');
@@ -677,10 +606,7 @@ describe('registerColumn — ON CONFLICT tightening', () => {
   it('second registration for the same (table, column) throws clear error', async () => {
     const masterKey = asMasterKey(generateColumnKey());
 
-    // Simulate conflict: RETURNING returns 0 rows
-    const mockPool = {
-      query: vi.fn().mockResolvedValue({ rows: [] }),
-    } as unknown as Pool;
+    const mockPool = createMockPool();
 
     await expect(registerColumn(mockPool, masterKey, 'patients', 'ssn')).rejects.toThrow(
       /already has a wrapped key/,
@@ -693,9 +619,7 @@ describe('registerColumn — ON CONFLICT tightening', () => {
 
   it('error message mentions both rotateColumnKey and rewrapColumnKey', async () => {
     const masterKey = asMasterKey(generateColumnKey());
-    const mockPool = {
-      query: vi.fn().mockResolvedValue({ rows: [] }), // conflict
-    } as unknown as Pool;
+    const mockPool = createMockPool();
 
     const err4 = await registerColumn(mockPool, masterKey, 'patients', 'diagnosis').catch((e) => e);
     expect((err4 as Error).message).toContain('rotateColumnKey()');
@@ -703,7 +627,6 @@ describe('registerColumn — ON CONFLICT tightening', () => {
   });
 });
 
-// ─── KeyRotationFailedError ───────────────────────────────────────────────────
 
 describe('KeyRotationFailedError', () => {
   it('has correct name and phase field', () => {
@@ -731,7 +654,6 @@ describe('KeyRotationFailedError', () => {
   });
 });
 
-// ─── Concurrent rotation serialization (documented behavior) ─────────────────
 
 describe('concurrent rotation serialization', () => {
   it('SELECT...FOR UPDATE appears in the rotation SQL (serialization mechanism present)', async () => {
@@ -796,7 +718,6 @@ describe('concurrent rotation serialization', () => {
   });
 });
 
-// ─── verifyAllColumnKeys ───────────────────────────
 //
 // Consumer-facing diagnostic for the BYOK migration protocol (steps 3 + 5 of
 // the rewrapColumnKey procedure documented in docs/migration-byok.md). The
@@ -817,19 +738,11 @@ describe('verifyAllColumnKeys (BYOK migration verification)', () => {
   function makePoolReturning(
     rows: Array<{ table_name: string; column_name: string; encrypted_key: Buffer }>,
   ): MockPool {
-    return {
-      query: vi.fn(async () => ({ rows })),
-      connect: vi.fn(),
-    } as unknown as MockPool;
+    return createMockPool({ queryImpl: () => ({ rows }) }) as unknown as MockPool;
   }
 
   function makePoolThrowing(error: unknown): MockPool {
-    return {
-      query: vi.fn(async () => {
-        throw error;
-      }),
-      connect: vi.fn(),
-    } as unknown as MockPool;
+    return createMockPoolThrowing(error) as unknown as MockPool;
   }
 
   it('empty agent_keys table → ok=0, failed=[]', async () => {

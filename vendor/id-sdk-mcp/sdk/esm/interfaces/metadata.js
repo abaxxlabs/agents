@@ -8,7 +8,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 import { CID } from 'multiformats';
-import { Encoder, Encryption } from '@dwn-protocol/id';
+import { Encoder, Encryption } from '@abaxxtech/id';
 import bs58 from 'bs58';
 import IPFS from 'ipfs-infura';
 import { getServiceDwnEndpoints } from '../service-options.js';

@@ -19,7 +19,7 @@ var __rest = (this && this.__rest) || function (s, e) {
     return t;
 };
 import { ReadableWebToNodeStream } from 'readable-web-to-node-stream';
-import { DataStream, DwnInterfaceName, DwnMethodName, Encoder } from '@dwn-protocol/id';
+import { DataStream, DwnInterfaceName, DwnMethodName, Encoder } from '@abaxxtech/id';
 import { BbsCredential, VC_DATA_FORMAT_LDP } from './credentials/credential-bbs.js';
 import { dataToBlob } from './utils.js';
 /**

@@ -19,7 +19,7 @@ var __rest = (this && this.__rest) || function (s, e) {
     return t;
 };
 import { isEmptyObject } from './common/index.js';
-import { DwnInterfaceName, DwnMethodName, RecordsWrite } from '@dwn-protocol/id';
+import { DwnInterfaceName, DwnMethodName, RecordsWrite } from '@abaxxtech/id';
 import { Record } from './record.js';
 import { Protocol } from './protocol.js';
 import { dataToBlob } from './utils.js';

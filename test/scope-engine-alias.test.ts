@@ -1,28 +1,15 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 import { describe, it, expect, vi } from 'vitest';
-import { ScopeEngine } from '../src/sql/scope-engine.js';
-import { VcVerifier } from '../src/vc-verifier.js';
-import { InMemoryRevocationStore } from '../src/storage/memory/revocation-store.js';
-import { AuditLogger } from '../src/audit-logger.js';
-import type { AgentStore, AuditStore } from '../src/storage/types.js';
+import { ScopeEngine } from '#sql/scope-engine.js';
+import { VcVerifier } from '#identity/index.js';
+import { InMemoryRevocationStore } from '#storage/memory/revocation-store.js';
+import { AuditLogger } from '#audit/index.js';
+import type { AgentStore } from '#storage/types.js';
+import { createMockAuditStore } from './mocks/audit-store.js';
 import type { Pool } from 'pg';
-import { encrypt, generateColumnKey } from '../src/column-encryption.js';
-import { generateDidKey, issueCredential, createSigner } from '../src/auth/index.js';
-import { DidAliasRegistry } from '../src/did-alias.js';
-import type { RegisteredAgent } from '../src/types.js';
+import { encrypt, generateColumnKey } from '#encryption/index.js';
+import { generateDidKey, issueCredential, createSigner } from '#auth/index.js';
+import { DidAliasRegistry } from '#did/alias.js';
+import type { RegisteredAgent } from '#types/index.js';
 
 function createAliasTestFixtures() {
   // The "old" human DID (pre-migration, did:key from free tier)
@@ -73,14 +60,8 @@ function createAliasTestFixtures() {
     ],
   ]);
 
-  const mockAuditStore: AuditStore = {
-    append: vi.fn().mockResolvedValue(undefined),
-    loadLastRecord: vi.fn().mockResolvedValue(null),
-    loadLastRecordLocked: vi.fn().mockResolvedValue(null),
-    query: vi.fn().mockResolvedValue([]),
-  };
   const auditLogger = new AuditLogger({
-    auditStore: mockAuditStore,
+    auditStore: createMockAuditStore(),
     enabled: true,
   });
   const server = generateDidKey();
@@ -114,7 +95,7 @@ function createAliasTestFixtures() {
 }
 
 describe('ScopeEngine — alias-aware DID comparison', () => {
-  it('accepts credential from old DID when agent has migrated to new DID (C1 owner check)', async () => {
+  it('accepts credential from old DID when agent has migrated to new DID', async () => {
     const {
       humanOld,
       agentA,
@@ -141,7 +122,7 @@ describe('ScopeEngine — alias-aware DID comparison', () => {
     });
 
     // Issue credential from the OLD human DID (pre-migration credential)
-    const credential = issueCredential(humanOld.did, humanOld.privateKey, {
+    const credential = await issueCredential(humanOld.did, humanOld.privateKey, {
       agent: agentA.did,
       columns: ['patients.name'],
       actions: ['read'],
@@ -184,7 +165,7 @@ describe('ScopeEngine — alias-aware DID comparison', () => {
       agentStore: { findByDid: vi.fn().mockResolvedValue(null) } as unknown as AgentStore,
     });
 
-    const credential = issueCredential(humanOld.did, humanOld.privateKey, {
+    const credential = await issueCredential(humanOld.did, humanOld.privateKey, {
       agent: agentA.did,
       columns: ['patients.name'],
       actions: ['read'],
@@ -229,7 +210,7 @@ describe('ScopeEngine — alias-aware DID comparison', () => {
     const unrelated = generateDidKey();
     verifier.registerKey(unrelated.did, unrelated.publicKey);
 
-    const credential = issueCredential(unrelated.did, unrelated.privateKey, {
+    const credential = await issueCredential(unrelated.did, unrelated.privateKey, {
       agent: agentA.did,
       columns: ['patients.name'],
       actions: ['read'],

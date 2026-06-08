@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.IDUserAgent = void 0;
-// import { DateSort, DataStream } from '@dwn-protocol/id';
+// import { DateSort, DataStream } from '@abaxxtech/id';
 // import { DwnApi } from '../dwn-api.js';
 const index_js_1 = require("../common/index.js");
 const index_js_2 = require("../crypto/index.js");

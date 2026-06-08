@@ -22,19 +22,14 @@ import { registerTools, type ToolDependencies } from './tools.js';
 import { registerResources, type ResourceDependencies } from './resources.js';
 import type { McpBearerAuthOptions } from './auth.js';
 
-// Read version from package.json — works in both ESM and CJS
-function getVersion(): string {
+/** @internal Exported for testing only. Skips package.json stubs without a version field. */
+export function getVersion(candidates?: string[]): string {
   try {
-    // Try CJS __dirname first, then fall back to path traversal from dist/
-    const base = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
-    const paths = [
-      resolve(base, '../../package.json'),
-      resolve(base, '../package.json'),
-      resolve(process.cwd(), 'package.json'),
-    ];
+    const paths = candidates ?? defaultVersionCandidates();
     for (const p of paths) {
       try {
-        return JSON.parse(readFileSync(p, 'utf-8')).version;
+        const v = JSON.parse(readFileSync(p, 'utf-8')).version;
+        if (typeof v === 'string' && v.length > 0) return v;
       } catch {
         /* try next */
       }
@@ -44,6 +39,17 @@ function getVersion(): string {
   }
   return '0.0.0';
 }
+
+function defaultVersionCandidates(): string[] {
+  const base = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
+  return [
+    resolve(base, '../../package.json'),
+    resolve(base, '../../../package.json'),
+    resolve(base, '../package.json'),
+    resolve(process.cwd(), 'package.json'),
+  ];
+}
+
 const version = getVersion();
 
 export interface McpServerOptions extends ToolDependencies, ResourceDependencies {

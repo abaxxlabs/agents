@@ -1,28 +1,5 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * id-sdk MCP adapter tests.
- *
- * These tests avoid launching the real platform server because the server owns
- * identity/session state and may need platform network configuration. The unit
- * boundary here is the Agents++ compatibility contract: each historical id-sdk
- * method must map to the MCP tool and payload shape the vendored server exposes.
- */
-
 import { describe, expect, it } from 'vitest';
-import { createIdSdkMcpAdapter } from '../src/id-sdk-mcp.js';
+import { createIdSdkMcpAdapter } from '#mcp/id-sdk.js';
 
 describe('createIdSdkMcpAdapter', () => {
   it('maps VC issuance calls onto id-sdk-mcp tools', async () => {
@@ -86,19 +63,19 @@ describe('createIdSdkMcpAdapter', () => {
     ]);
   });
 
-  it('does not invent a credential subject when signer options are requested with only an issuer', async () => {
+  it('sends both issuer and subject DIDs to vc_get_signer_options', async () => {
     const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
     const sdk = createIdSdkMcpAdapter(async (name, args) => {
       calls.push({ name, args });
-      return { issuerDid: args.issuerDid };
+      return { issuerDid: args.issuerDid, subjectDid: args.subjectDid };
     });
 
-    await sdk.vc.getSignerOptions('did:dht:issuer');
+    await sdk.vc.getSignerOptions('did:dht:issuer', 'did:dht:subject');
 
     expect(calls).toEqual([
       {
         name: 'vc_get_signer_options',
-        args: { issuerDid: 'did:dht:issuer' },
+        args: { issuerDid: 'did:dht:issuer', subjectDid: 'did:dht:subject' },
       },
     ]);
   });

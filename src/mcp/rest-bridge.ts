@@ -28,7 +28,7 @@
 
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { parseDuration } from '../config.js';
+import { parseDuration } from '#config.js';
 
 const expiresInDurationString = z
   .string()
@@ -156,13 +156,16 @@ export function registerRestBridgeTools(server: McpServer, config: RestBridgeCon
       columns: z.array(z.string()).describe('Columns to authorize'),
       actions: z.array(z.string()).optional().describe('Actions (default: ["read"])'),
       expiresIn: expiresInField.optional().describe('Expiry ("4h", "1d", or seconds)'),
+      maxDepth: z.number().int().min(1).max(10).optional()
+        .describe('Maximum delegation chain depth embedded in the issued credential. Default: 2. Pass 1 to prevent any delegation.'),
     },
-    async ({ agent, columns, actions, expiresIn }) => {
+    async ({ agent, columns, actions, expiresIn, maxDepth }) => {
       const { data, status } = await restPost(config, '/credentials', {
         agent,
         columns,
         actions: actions ?? ['read'],
         expiresIn,
+        ...(maxDepth !== undefined ? { maxDepth } : {}),
       });
       return status === 200 ? mcpResult(data) : mcpError(data);
     },
