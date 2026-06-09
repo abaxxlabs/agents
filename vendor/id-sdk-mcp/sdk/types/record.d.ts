@@ -1,8 +1,8 @@
 import type { IDAgent } from './agent/index.js';
 import type { Readable } from 'readable-stream';
-import type { RecordsWriteMessage, RecordsWriteDescriptor } from '@dwn-protocol/id';
+import type { RecordsWriteMessage, RecordsWriteDescriptor } from '@abaxxtech/id';
 import type { BbsSignedCredentialBundle } from './credentials/credential-bbs.js';
-import { DwnInterfaceName, DwnMethodName } from '@dwn-protocol/id';
+import { DwnInterfaceName, DwnMethodName } from '@abaxxtech/id';
 import type { ResponseStatus } from './dwn-api.js';
 /**
  * Options that are passed to Record constructor.

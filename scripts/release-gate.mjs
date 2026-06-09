@@ -19,7 +19,8 @@
  */
 
 import { spawn } from 'node:child_process';
-import { mkdtemp, readdir, rm, stat } from 'node:fs/promises';
+import { copyFile, mkdtemp, readdir, rm, stat } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
@@ -129,6 +130,13 @@ async function runStep(label, fn) {
   return await fn();
 }
 
+async function copyRootNpmrcIfPresent(targetDir) {
+  const rootNpmrc = path.resolve(process.cwd(), '.npmrc');
+  if (existsSync(rootNpmrc)) {
+    await copyFile(rootNpmrc, path.join(targetDir, '.npmrc'));
+  }
+}
+
 export function formatDirtyTreeFailure(statusOutput) {
   const dirtyLines = statusOutput
     .trim()
@@ -195,6 +203,7 @@ async function smokeInstallTarball() {
     tarball = path.join(packDir, tarballs[0]);
 
     await runCommand('npm', ['init', '-y', '--silent'], { cwd: consumerDir });
+    await copyRootNpmrcIfPresent(consumerDir);
     await runCommand(
       'npm',
       [
@@ -231,6 +240,7 @@ async function smokeInstallMcpWithoutManualPeers(tarball) {
 
   try {
     await runCommand('npm', ['init', '-y', '--silent'], { cwd: consumerDir });
+    await copyRootNpmrcIfPresent(consumerDir);
     await runCommand(
       'npm',
       [

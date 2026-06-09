@@ -1,17 +1,3 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 import { describe, it, expect } from 'vitest';
 import {
   canonicalizeEnvelope,
@@ -22,10 +8,10 @@ import {
   HKDF_SALT_SESSION_MAC,
   MAX_ENVELOPE_BYTES,
   MAC_BYTES,
-} from '../../src/storage/envelope-mac.js';
-import { EnvelopeTooLargeError } from '../../src/storage/types.js';
-import type { SessionEnvelope } from '../../src/storage/types.js';
-import { asMasterKey } from '../../src/crypto/master-key.js';
+} from '#storage/envelope-mac.js';
+import { EnvelopeTooLargeError } from '#storage/types.js';
+import type { SessionEnvelope } from '#storage/types.js';
+import { asMasterKey } from '#crypto/master-key.js';
 import { hkdfSync } from 'node:crypto';
 
 /** Build a 32-byte branded MasterKey from a short label by zero-padding. */
@@ -73,7 +59,7 @@ describe('envelope-mac — HKDF key derivation', () => {
     expect(k1.equals(k2)).toBe(false);
   });
 
-  it('HKDF context string regression (RY-7): derived keys must use distinct context strings', () => {
+  it('HKDF derived keys must use distinct context strings', () => {
     expect(HKDF_CONTEXT_SESSION_MAC).toBe('agents:SessionStore:mac:v1');
     expect(HKDF_SALT_SESSION_MAC.length).toBe(0);
 
@@ -87,7 +73,7 @@ describe('envelope-mac — HKDF key derivation', () => {
   });
 });
 
-describe('envelope-mac — canonical encoding (D18 / RFC 8785)', () => {
+describe('envelope-mac — canonical encoding (RFC 8785)', () => {
   it('canonicalizeEnvelope returns UTF-8 bytes', () => {
     const env = freshEnvelope();
     const bytes = canonicalizeEnvelope(env);
@@ -159,7 +145,7 @@ describe('envelope-mac — canonical encoding (D18 / RFC 8785)', () => {
   });
 });
 
-describe('envelope-mac — MAC round-trip (D9)', () => {
+describe('envelope-mac — MAC round-trip', () => {
   const macKey = deriveSessionMacKey(padMaster('test-master-key-32-bytes-padding'));
 
   it('computeMac + verifyMac round-trips OK', () => {
@@ -207,7 +193,7 @@ describe('envelope-mac — MAC round-trip (D9)', () => {
   });
 });
 
-describe('envelope-mac — size cap (D21 / RY-6)', () => {
+describe('envelope-mac — size cap', () => {
   const macKey = deriveSessionMacKey(padMaster('size-cap-test-key'));
 
   it('MAX_ENVELOPE_BYTES constant is 32768 (32KB)', () => {
@@ -253,7 +239,7 @@ describe('envelope-mac — size cap (D21 / RY-6)', () => {
     }
   });
 
-  it('size is measured on canonical output, not pre-canonicalization JSON (RY-6)', () => {
+  it('size is measured on canonical output, not pre-canonicalization JSON', () => {
     // Construct an envelope that's fine in JSON but bloats under canonicalization.
     // Canonicalization typically NORMALIZES sizes, but let's verify that the
     // size-check function is wired to canonical bytes, not an input-JSON-string

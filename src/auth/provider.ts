@@ -12,13 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/**
- * Generic interface for OIDC authentication providers.
- *
- * Two-method design: `parseIdentityFromToken` is pure (no I/O, testable offline);
- * `fetchUserInfo` is an explicit network call. Callers opt in to network when needed.
- * Providers validate tokens — they do NOT issue credentials. That is the binding layer's job.
- */
+/** OIDC authentication provider interface. Providers validate tokens; they do not issue credentials. */
 
 export interface OidcTokenResponse {
   access_token: string;
@@ -29,22 +23,13 @@ export interface OidcTokenResponse {
   scope?: string;
 }
 
-/**
- * Identity from an OIDC provider. `issuer` and `sub` are required for
- * IdentityBindingCredential issuance — without them the binding VC is non-verifiable.
- */
+/** Identity from an OIDC provider. `issuer` + `sub` are required for binding VC issuance. */
 export interface OidcIdentity {
   /** The human's unique identifier within this provider. For AbaxxOne, a DID. */
   humanDid: string;
-  /**
-   * OIDC issuer URL (the `iss` claim). Required for binding VC issuance.
-   * Examples: "https://accounts.google.com", "https://login.microsoftonline.com/{tid}/v2.0"
-   */
+  /** OIDC issuer URL (`iss` claim). */
   issuer: string;
-  /**
-   * OIDC subject identifier (the `sub` claim). Stable, unique per user per provider.
-   * Required for binding VC issuance. Combined with issuer, globally unique.
-   */
+  /** OIDC subject identifier (`sub` claim). Stable, unique per user per provider. */
   sub: string;
   /** Email address — used for OrgBoundary domain extraction. */
   email?: string;
@@ -66,53 +51,20 @@ export interface AuthorizationUrlResult {
   codeVerifier: string;
 }
 
-/**
- * Implement this interface to add a new identity provider.
- * @see AbaxxOneOidcProvider, GenericOidcProvider
- */
+/** @see AbaxxOneOidcProvider, GenericOidcProvider */
 export interface OidcProvider {
-  /**
-   * Build a PKCE S256 authorization URL for the configured provider.
-   * The library generates and owns the PKCE state and code verifier.
-   * Returns the URL to redirect to and the state/verifier to pass back later.
-   */
+  /** Build a PKCE S256 authorization URL. Library generates and owns state + code verifier. */
   buildAuthorizationUrl(): Promise<AuthorizationUrlResult>;
 
-  /**
-   * Exchange an authorization code for tokens and return the agent's identity.
-   * Calls parseIdentityFromToken internally; calls fetchUserInfo if needed.
-   *
-   * @param code          The authorization code from the callback.
-   * @param state         The state value returned by buildAuthorizationUrl().
-   * @param codeVerifier  The code verifier returned by buildAuthorizationUrl().
-   */
+  /** Exchange an authorization code for tokens and return the identity. */
   exchangeCode(code: string, state: string, codeVerifier: string): Promise<OidcIdentity>;
 
-  /**
-   * Pure transform: extract as much identity as possible from token claims.
-   * No network I/O. Returns Partial<OidcIdentity> — some fields may be missing
-   * for providers that don't embed profile claims in tokens (most generic OIDC).
-   * AbaxxOne tokens carry all fields and return a complete OidcIdentity.
-   *
-   * This method MUST remain pure (no I/O, no async side effects) so it stays
-   * testable offline. If you need the network, use fetchUserInfo().
-   */
+  /** Extract identity from token claims only. Pure (no I/O). Returns Partial when claims are incomplete. */
   parseIdentityFromToken(tokenResponse: OidcTokenResponse): Partial<OidcIdentity>;
 
-  /**
-   * Explicit network call: fetch full identity from the userinfo endpoint.
-   * Call this after parseIdentityFromToken() when token claims are insufficient.
-   * For AbaxxOne, this is optional (token claims are complete).
-   * For generic OIDC, this is typically required to get org/role claims.
-   *
-   * @param accessToken  The access token from a completed token exchange.
-   */
+  /** Fetch full identity from the userinfo endpoint. */
   fetchUserInfo(accessToken: string): Promise<OidcIdentity>;
 
-  /**
-   * The issuer URL for this provider (e.g. https://accounts.google.com).
-   * Used to derive a deterministic humanDid for non-DID sub claims (see
-   * GenericOidcProvider.deriveHumanDid).
-   */
+  /** Issuer URL. Used for humanDid derivation in GenericOidcProvider. */
   readonly issuerUrl: string;
 }

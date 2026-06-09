@@ -24,11 +24,11 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DwnManager = void 0;
-const id_1 = require("@dwn-protocol/id");
+const id_1 = require("@abaxxtech/id");
 const index_js_1 = require("../common/index.js");
 const index_js_2 = require("../crypto/index.js");
 const didUtils = __importStar(require("../dids/utils.js"));
-const id_2 = require("@dwn-protocol/id");
+const id_2 = require("@abaxxtech/id");
 const utils_js_1 = require("./utils.js");
 const utils_js_2 = require("./utils.js");
 const dwnMessageCreators = {

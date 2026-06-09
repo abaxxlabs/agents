@@ -103,7 +103,7 @@ const config = [
     },
   },
 
-  // ─── 4. TypeScript base for packages/server/src/ ──────────────────────────
+  // ─── 4. TypeScript base for ──────────────────────────
   {
     files: ['packages/server/src/**/*.ts'],
     languageOptions: {
@@ -122,7 +122,7 @@ const config = [
     },
   },
 
-  // ─── 5. BYOK trust-boundary rules — packages/server/src/ ──────────────────
+  // ─── 5. BYOK trust-boundary rules — ──────────────────
   //
   // The server legitimately reads many env vars (DATABASE_URL, OIDC_*, etc.).
   // Only AGENTS_MASTER_KEY is restricted: it must come from
@@ -138,7 +138,7 @@ const config = [
         {
           selector: "Literal[value='AGENTS_MASTER_KEY']",
           message:
-            "[BYOK] Do not reference 'AGENTS_MASTER_KEY' as a string literal in packages/server/src/. " +
+            "[BYOK] Do not reference 'AGENTS_MASTER_KEY' as a string literal in. " +
             "Use resolveMasterKeyFromEnv() from '@abaxxlabs/agents/bootstrap' at bootstrap, " +
             "then thread the Buffer through AgentScope.create({ masterKey }).",
         },
@@ -148,7 +148,7 @@ const config = [
           selector:
             "TemplateLiteral[expressions.length=0][quasis.0.value.cooked='AGENTS_MASTER_KEY']",
           message:
-            "[BYOK] Do not reference 'AGENTS_MASTER_KEY' as a template literal in packages/server/src/. " +
+            "[BYOK] Do not reference 'AGENTS_MASTER_KEY' as a template literal in. " +
             'Use resolveMasterKeyFromEnv() from @abaxxlabs/agents/bootstrap instead.',
         },
 
@@ -157,7 +157,7 @@ const config = [
           selector:
             "MemberExpression[object.type='MemberExpression'][object.object.name='process'][object.property.name='env'][property.name='AGENTS_MASTER_KEY']",
           message:
-            '[BYOK] Do not read process.env.AGENTS_MASTER_KEY directly in packages/server/src/. ' +
+            '[BYOK] Do not read process.env.AGENTS_MASTER_KEY directly in. ' +
             'Use resolveMasterKeyFromEnv() at startup. Other env reads (DATABASE_URL, OIDC_*) remain unrestricted.',
         },
 
@@ -166,7 +166,7 @@ const config = [
         {
           selector: "Property[key.name='AGENTS_MASTER_KEY']",
           message:
-            "[BYOK] Do not destructure AGENTS_MASTER_KEY from process.env in packages/server/src/. " +
+            "[BYOK] Do not destructure AGENTS_MASTER_KEY from process.env in. " +
             'Use resolveMasterKeyFromEnv() from @abaxxlabs/agents/bootstrap at startup.',
         },
       ],

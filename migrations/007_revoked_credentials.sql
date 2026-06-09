@@ -1,6 +1,6 @@
 -- Migration 007: revoked_credentials
 --
--- ABXAGNTS-180 — makes JTI revocation durable across process restart and coherent
+-- — makes JTI revocation durable across process restart and coherent
 -- across instances. Previously, revocations lived in a process-local Set<string>
 -- inside VcVerifier and disappeared on restart — a security-posture gap.
 --
@@ -19,7 +19,7 @@
 --   Row-level locking (D7): migration 007 required for SELECT ... FOR UPDATE on
 --   revoked_credentials. If rolled back, PostgresRevocationStore falls back to
 --   InMemoryRevocationStore with a warning (NOT the default server behavior —
---   see packages/server/src/index.ts: server fails to start without the table).
+--   seeindex.ts: server fails to start without the table).
 --
 -- Data retention: 30 days post-expiry. See session-3-release/data-retention.md.
 -- GDPR Article 5(1)(e) / SOC 2 CC7.1 alignment: data minimization, storage limitation.

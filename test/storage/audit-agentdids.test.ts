@@ -1,22 +1,9 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { SqliteStorageBackend } from '../../src/storage/sqlite/index.js';
-import type { StorageBackend } from '../../src/storage/types.js';
-import type { AuditRecord } from '../../src/types.js';
+import { SqliteStorageBackend } from '#storage/sqlite/index.js';
+import type { StorageBackend } from '#storage/types.js';
+import type { AuditRecord } from '#types/index.js';
 import { deterministicSessionMacKey } from '../support/deterministic-session-mac-key.js';
+import { createMockAuditRecord } from '../mocks/audit-record.js';
 
 interface SqliteDb {
   prepare(sql: string): {
@@ -34,25 +21,14 @@ async function createBackend(): Promise<StorageBackend> {
 }
 
 function mockRecord(overrides: Partial<AuditRecord> = {}): AuditRecord {
-  return {
+  return createMockAuditRecord({
     id: 'test-uuid-' + Math.random().toString(36).slice(2, 8),
-    timestamp: new Date().toISOString(),
     agentDid: 'did:key:zDefaultAgent',
-    ownerDid: 'did:key:zHuman1',
-    credentialId: 'cred-hash-123',
-    queryHash: 'query-hash-abc',
-    columnsAccessed: ['col1'],
-    rowCount: 1,
-    durationMs: 10,
-    previousHash: 'GENESIS',
-    signature: 'jws-sig-xyz',
-    version: 2 as 1 | 2,
-    status: 'success',
     ...overrides,
-  };
+  });
 }
 
-describe('AuditStore — agentDids filter (AS-6)', () => {
+describe('AuditStore — agentDids filter', () => {
   let backend: StorageBackend;
 
   beforeEach(async () => {
@@ -169,8 +145,6 @@ describe('AuditStore — agentDids filter (AS-6)', () => {
     expect(ids).not.toContain('old-early');
   });
 });
-
-// ─── DID Aliases Table Schema ─────────────────────────────────────
 
 describe('SQLite schema — agent_did_aliases table', () => {
   let backend: StorageBackend;

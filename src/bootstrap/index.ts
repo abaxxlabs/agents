@@ -20,8 +20,8 @@
  * `Buffer.from(hex, 'hex')` silently drops non-hex chars; this helper validates format first.
  */
 
-import { MasterKeyMissingError } from '../errors.js';
-import { asMasterKey, type MasterKey } from '../crypto/master-key.js';
+import { MasterKeyMissingError } from '#errors/index.js';
+import { asMasterKey, type MasterKey } from '#crypto/master-key.js';
 
 /**
  * Hex-only pattern: exactly 64 characters from [0-9a-fA-F].

@@ -1,6 +1,6 @@
 import type { Readable } from 'readable-stream';
 import type { DidResolutionOptions, DidResolutionResult, PortableDid } from '../../dids/index.js';
-import type { EventsGetMessage, RecordsReadReply, UnionMessageReply, MessagesGetMessage, RecordsQueryMessage, RecordsWriteMessage, RecordsDeleteMessage, ProtocolsQueryMessage, ProtocolsConfigureMessage } from '@dwn-protocol/id';
+import type { EventsGetMessage, RecordsReadReply, UnionMessageReply, MessagesGetMessage, RecordsQueryMessage, RecordsWriteMessage, RecordsDeleteMessage, ProtocolsQueryMessage, ProtocolsConfigureMessage } from '@abaxxtech/id';
 import { DidResolver } from '../../dids/index.js';
 import type { Outbox } from '../outbox.js';
 import type { SyncManager } from '../sync-manager.js';

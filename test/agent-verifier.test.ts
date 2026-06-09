@@ -1,19 +1,3 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-// Tests for AgentVerifier: four-check sequence and all error paths.
-
 import { describe, test, expect } from 'vitest';
 import {
   AgentVerifier,
@@ -23,24 +7,23 @@ import {
   AgentUnauthorizedError,
   type AgentVerifyResult,
   type AgentVerifier,
-} from '../src/identity/agent-verifier.js';
-import type { VcVerifier } from '../src/vc-verifier.js';
-import type { VerificationResult, DecodedCredential } from '../src/types.js';
-import { LocalTrustAnchorStore } from '../src/discovery/trust-anchor.js';
-import { CapabilityEngine } from '../src/capability/engine.js';
+} from '#identity/agent-verifier.js';
+import type { VerificationResult, DecodedCredential } from '#types/index.js';
+import { createMockVcVerifier } from './mocks/vc-verifier.js';
+import { LocalTrustAnchorStore } from '#discovery/trust-anchor.js';
+import { CapabilityEngine } from '#capability/engine.js';
 import {
   CredentialInvalidError,
   CredentialMalformedError,
   UnknownIssuerError,
-} from '../src/errors.js';
-import type { CapabilitySet } from '../src/capability/types.js';
+} from '#errors/index.js';
+import type { CapabilitySet } from '#capability/types.js';
 import {
   CapabilityParseError,
   CapabilitySetTooLargeError,
   MAX_CAPABILITY_SET_SIZE,
-} from '../src/capability/index.js';
+} from '#capability/index.js';
 
-// ─── Test fixtures ────────────────────────────────────────────────────────────
 
 const TEST_ISSUER_DID = 'did:key:z6MkTestIssuer1234567890';
 const TEST_AGENT_DID = 'did:key:z6MkTestAgent1234567890';
@@ -97,11 +80,6 @@ function makeBindingJwt(subject?: {
   return `${header}.${encodedPayload}.fakesignature`;
 }
 
-function mockVcVerifier(result: VerificationResult): VcVerifier {
-  return {
-    verify: async (_jwt: string, _opts?: unknown): Promise<VerificationResult> => result,
-  } as unknown as VcVerifier;
-}
 
 function validVcResult(credentialOverrides?: Partial<DecodedCredential>): VerificationResult {
   return {
@@ -121,7 +99,6 @@ async function makeTrustStore(trusted: boolean = true): Promise<LocalTrustAnchor
   return store;
 }
 
-// ─── Constructor validation ───────────────────────────────────────────────────
 
 describe('AgentVerifier — constructor', () => {
   test('throws TypeError if vcVerifier is missing', () => {
@@ -138,7 +115,7 @@ describe('AgentVerifier — constructor', () => {
     expect(
       () =>
         new AgentVerifier({
-          vcVerifier: mockVcVerifier(validVcResult()),
+          vcVerifier: createMockVcVerifier(validVcResult()),
           trustAnchorStore: null as unknown as LocalTrustAnchorStore,
         }),
     ).toThrow(TypeError);
@@ -148,7 +125,7 @@ describe('AgentVerifier — constructor', () => {
     const engine = new CapabilityEngine();
     const store = await makeTrustStore();
     const verifier = new AgentVerifier({
-      vcVerifier: mockVcVerifier(validVcResult()),
+      vcVerifier: createMockVcVerifier(validVcResult()),
       trustAnchorStore: store,
       capabilityEngine: engine,
     });
@@ -158,20 +135,19 @@ describe('AgentVerifier — constructor', () => {
   test('creates default CapabilityEngine when not provided', async () => {
     const store = await makeTrustStore();
     const verifier = new AgentVerifier({
-      vcVerifier: mockVcVerifier(validVcResult()),
+      vcVerifier: createMockVcVerifier(validVcResult()),
       trustAnchorStore: store,
     });
     expect(verifier).toBeInstanceOf(AgentVerifier);
   });
 });
 
-// ─── Layer 1 failure mapping ──────────────────────────────────────────────────
 
 describe('AgentVerifier — Layer 1 failures (VcVerifier rejects)', () => {
   async function verifyWithResult(result: VerificationResult): Promise<Error> {
     const store = await makeTrustStore();
     const verifier = createAgentVerifier({
-      vcVerifier: mockVcVerifier(result),
+      vcVerifier: createMockVcVerifier(result),
       trustAnchorStore: store,
     });
     try {
@@ -264,13 +240,12 @@ describe('AgentVerifier — Layer 1 failures (VcVerifier rejects)', () => {
   });
 });
 
-// ─── Layer 2a: Trust anchor check ────────────────────────────────────────────
 
 describe('AgentVerifier — Layer 2a: trust anchor check', () => {
   test('throws UntrustedIssuerError when issuer is not in trust store', async () => {
     const store = await makeTrustStore(false); // untrusted store
     const verifier = createAgentVerifier({
-      vcVerifier: mockVcVerifier(validVcResult()),
+      vcVerifier: createMockVcVerifier(validVcResult()),
       trustAnchorStore: store,
     });
 
@@ -282,7 +257,7 @@ describe('AgentVerifier — Layer 2a: trust anchor check', () => {
   test('UntrustedIssuerError has code UNTRUSTED_ISSUER and issuerDid in details', async () => {
     const store = await makeTrustStore(false);
     const verifier = createAgentVerifier({
-      vcVerifier: mockVcVerifier(validVcResult()),
+      vcVerifier: createMockVcVerifier(validVcResult()),
       trustAnchorStore: store,
     });
 
@@ -301,7 +276,7 @@ describe('AgentVerifier — Layer 2a: trust anchor check', () => {
   test('passes when issuer DID is in the trust anchor store', async () => {
     const store = await makeTrustStore(true); // trusted
     const verifier = createAgentVerifier({
-      vcVerifier: mockVcVerifier(validVcResult()),
+      vcVerifier: createMockVcVerifier(validVcResult()),
       trustAnchorStore: store,
     });
 
@@ -317,7 +292,7 @@ describe('AgentVerifier — Layer 2a: trust anchor check', () => {
     const store = new LocalTrustAnchorStore({ ownServerDid: ownDid });
 
     const verifier = createAgentVerifier({
-      vcVerifier: mockVcVerifier(validVcResult({ issuer: ownDid })),
+      vcVerifier: createMockVcVerifier(validVcResult({ issuer: ownDid })),
       trustAnchorStore: store,
     });
 
@@ -327,13 +302,12 @@ describe('AgentVerifier — Layer 2a: trust anchor check', () => {
   });
 });
 
-// ─── Layer 2b: Org boundary check ────────────────────────────────────────────
 
 describe('AgentVerifier — Layer 2b: org boundary check', () => {
   async function makeVerifier(trusted = true): Promise<AgentVerifier> {
     const store = await makeTrustStore(trusted);
     return createAgentVerifier({
-      vcVerifier: mockVcVerifier(validVcResult()),
+      vcVerifier: createMockVcVerifier(validVcResult()),
       trustAnchorStore: store,
     });
   }
@@ -442,7 +416,6 @@ describe('AgentVerifier — Layer 2b: org boundary check', () => {
   });
 });
 
-// ─── Layer 2c: Capability check ──────────────────────────────────────────────
 
 describe('AgentVerifier — Layer 2c: capability check', () => {
   const TEST_CAPS: CapabilitySet = [
@@ -453,7 +426,7 @@ describe('AgentVerifier — Layer 2c: capability check', () => {
   async function makeVerifier(): Promise<AgentVerifier> {
     const store = await makeTrustStore();
     return createAgentVerifier({
-      vcVerifier: mockVcVerifier(validVcResult()),
+      vcVerifier: createMockVcVerifier(validVcResult()),
       trustAnchorStore: store,
     });
   }
@@ -584,7 +557,6 @@ describe('AgentVerifier — Layer 2c: capability check', () => {
   });
 });
 
-// ─── Full happy path ──────────────────────────────────────────────────────────
 
 describe('AgentVerifier — full happy path', () => {
   test('all four checks pass — returns complete result', async () => {
@@ -595,7 +567,7 @@ describe('AgentVerifier — full happy path', () => {
 
     const store = await makeTrustStore();
     const verifier = createAgentVerifier({
-      vcVerifier: mockVcVerifier(validVcResult()),
+      vcVerifier: createMockVcVerifier(validVcResult()),
       trustAnchorStore: store,
     });
 
@@ -618,7 +590,7 @@ describe('AgentVerifier — full happy path', () => {
   test('result has correct shape without optional checks', async () => {
     const store = await makeTrustStore();
     const verifier = createAgentVerifier({
-      vcVerifier: mockVcVerifier(validVcResult()),
+      vcVerifier: createMockVcVerifier(validVcResult()),
       trustAnchorStore: store,
     });
 
@@ -635,13 +607,12 @@ describe('AgentVerifier — full happy path', () => {
   });
 });
 
-// ─── Input validation guards ──────────────────────────────────────────────────
 
 describe('AgentVerifier — input validation', () => {
   test('throws TypeError for empty-string agentDid (empty string bypasses TypeScript type)', async () => {
     const store = await makeTrustStore();
     const verifier = createAgentVerifier({
-      vcVerifier: mockVcVerifier(validVcResult()),
+      vcVerifier: createMockVcVerifier(validVcResult()),
       trustAnchorStore: store,
     });
     await expect(
@@ -653,13 +624,12 @@ describe('AgentVerifier — input validation', () => {
   });
 });
 
-// ─── Factory ──────────────────────────────────────────────────────────────────
 
 describe('AgentVerifier — createAgentVerifier factory', () => {
   test('returns an AgentVerifier instance', async () => {
     const store = await makeTrustStore();
     const verifier = createAgentVerifier({
-      vcVerifier: mockVcVerifier(validVcResult()),
+      vcVerifier: createMockVcVerifier(validVcResult()),
       trustAnchorStore: store,
     });
     expect(verifier).toBeInstanceOf(AgentVerifier);
@@ -668,7 +638,7 @@ describe('AgentVerifier — createAgentVerifier factory', () => {
   test('satisfies AgentVerifier interface (verify method exists)', async () => {
     const store = await makeTrustStore();
     const verifier: AgentVerifier = createAgentVerifier({
-      vcVerifier: mockVcVerifier(validVcResult()),
+      vcVerifier: createMockVcVerifier(validVcResult()),
       trustAnchorStore: store,
     });
     expect(typeof verifier.verify).toBe('function');

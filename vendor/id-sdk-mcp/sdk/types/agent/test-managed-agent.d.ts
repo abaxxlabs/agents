@@ -1,7 +1,7 @@
 import type { KeyValueStore } from '../common/index.js';
 import type { DidResolverCache, PortableDid } from '../dids/index.js';
 import { Level } from 'level';
-import { Dwn, MessageStoreLevel, DataStoreLevel, EventLogLevel } from '@dwn-protocol/id';
+import { Dwn, MessageStoreLevel, DataStoreLevel, EventLogLevel } from '@abaxxtech/id';
 import type { IDManagedAgent } from './types/agent.js';
 import { ManagedIdentity } from './identity-manager.js';
 type CreateMethodOptions = {

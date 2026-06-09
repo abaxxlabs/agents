@@ -1,31 +1,9 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * Identity migration tests — AS-1 through AS-8.
- *
- * Verifies the full migration pipeline: DID alias registry, migration
- * credential detection in VcVerifier, alias-aware DID comparison in
- * ScopeEngine, and the atomic migration executor.
- */
-
 import { describe, it, expect, beforeEach } from 'vitest';
-import { DidAliasRegistry, type DidAlias } from '../src/did-alias.js';
-import { VcVerifier } from '../src/vc-verifier.js';
-import { InMemoryRevocationStore } from '../src/storage/memory/revocation-store.js';
-import { generateDidKey, createSigner } from '../src/auth/index.js';
-import { IDENTITY_MIGRATION_CREDENTIAL } from '../src/types.js';
+import { DidAliasRegistry, type DidAlias } from '#did/alias.js';
+import { VcVerifier } from '#identity/index.js';
+import { InMemoryRevocationStore } from '#storage/memory/revocation-store.js';
+import { generateDidKey, createSigner } from '#auth/index.js';
+import { IDENTITY_MIGRATION_CREDENTIAL } from '#types/index.js';
 
 // ─── DidAliasRegistry Tests ───────────────────────────────────
 
@@ -160,7 +138,7 @@ describe('VcVerifier — IdentityMigrationCredential', () => {
     verifier.registerKey(newIdentity.did, newIdentity.publicKey);
   });
 
-  function createMigrationCredential(overrides?: Record<string, unknown>): string {
+  async function createMigrationCredential(overrides?: Record<string, unknown>): Promise<string> {
     const now = Math.floor(Date.now() / 1000);
     const payload = {
       iss: tenantAdmin.did,
@@ -186,7 +164,7 @@ describe('VcVerifier — IdentityMigrationCredential', () => {
   }
 
   it('detects IdentityMigrationCredential type and extracts claims', async () => {
-    const jwt = createMigrationCredential();
+    const jwt = await createMigrationCredential();
     const result = await verifier.verify(jwt, { skipScopeCheck: true });
 
     expect(result.valid).toBe(true);
@@ -201,7 +179,7 @@ describe('VcVerifier — IdentityMigrationCredential', () => {
   });
 
   it('rejects migration credential with missing previousDid', async () => {
-    const jwt = createMigrationCredential({ previousDid: undefined });
+    const jwt = await createMigrationCredential({ previousDid: undefined });
     const result = await verifier.verify(jwt, { skipScopeCheck: true });
 
     expect(result.valid).toBe(false);
@@ -210,7 +188,7 @@ describe('VcVerifier — IdentityMigrationCredential', () => {
   });
 
   it('rejects migration credential with missing oidcSubject', async () => {
-    const jwt = createMigrationCredential({ oidcSubject: undefined });
+    const jwt = await createMigrationCredential({ oidcSubject: undefined });
     const result = await verifier.verify(jwt, { skipScopeCheck: true });
 
     expect(result.valid).toBe(false);
@@ -219,7 +197,7 @@ describe('VcVerifier — IdentityMigrationCredential', () => {
   });
 
   it('rejects migration credential with invalid signature', async () => {
-    const jwt = createMigrationCredential();
+    const jwt = await createMigrationCredential();
     // Tamper with the JWT
     const parts = jwt.split('.');
     parts[2] = parts[2].slice(0, -4) + 'XXXX';
@@ -231,7 +209,7 @@ describe('VcVerifier — IdentityMigrationCredential', () => {
   });
 
   it('verifies subject binding on migration credential', async () => {
-    const jwt = createMigrationCredential();
+    const jwt = await createMigrationCredential();
     const result = await verifier.verify(jwt, {
       skipScopeCheck: true,
       expectedSubject: 'did:key:z6MkWrongAgent',
@@ -242,7 +220,7 @@ describe('VcVerifier — IdentityMigrationCredential', () => {
   });
 
   it('detects migration credential inside a VP', async () => {
-    const migrationJwt = createMigrationCredential();
+    const migrationJwt = await createMigrationCredential();
 
     // Wrap in a VP
     const agentSigner = createSigner(newIdentity.privateKey);
@@ -258,7 +236,7 @@ describe('VcVerifier — IdentityMigrationCredential', () => {
         verifiableCredential: [migrationJwt],
       },
     };
-    const vpJwt = agentSigner.signJwt(vpPayload);
+    const vpJwt = await agentSigner.signJwt(vpPayload);
 
     const result = await verifier.verify(vpJwt, { skipScopeCheck: true });
     expect(result.valid).toBe(true);

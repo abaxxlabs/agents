@@ -38,7 +38,7 @@ const canonicalize = (
 ).default;
 import type { SessionEnvelope } from './types.js';
 import { EnvelopeTooLargeError } from './types.js';
-import type { MasterKey } from '../crypto/master-key.js';
+import type { MasterKey } from '#crypto/master-key.js';
 
 // ─── Public constants ───────────────────────────────────────────────────────────
 

@@ -13,7 +13,7 @@ var __rest = (this && this.__rest) || function (s, e) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Record = void 0;
 const readable_web_to_node_stream_1 = require("readable-web-to-node-stream");
-const id_1 = require("@dwn-protocol/id");
+const id_1 = require("@abaxxtech/id");
 const credential_bbs_js_1 = require("./credentials/credential-bbs.js");
 const utils_js_1 = require("./utils.js");
 /**

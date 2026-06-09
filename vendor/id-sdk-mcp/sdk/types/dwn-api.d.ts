@@ -1,5 +1,5 @@
 import type { IDAgent } from './agent/index.js';
-import type { RecordsReadOptions, RecordsQueryOptions, RecordsWriteOptions, RecordsDeleteOptions, ProtocolsQueryOptions, ProtocolsConfigureOptions, ProtocolsConfigureDescriptor } from '@dwn-protocol/id';
+import type { RecordsReadOptions, RecordsQueryOptions, RecordsWriteOptions, RecordsDeleteOptions, ProtocolsQueryOptions, ProtocolsConfigureOptions, ProtocolsConfigureDescriptor } from '@abaxxtech/id';
 import { Record } from './record.js';
 import { Protocol } from './protocol.js';
 /**

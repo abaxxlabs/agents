@@ -1,25 +1,11 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-// Unit tests for DID generation, credential issuance, mock sessions, and OIDC flow.
-
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { generateDidKey, issueCredential, createMockSession } from '../src/auth/index.js';
-import { issueCredentialFromParent } from '../src/auth/agent.js';
-import { ScopeExceedsCeilingError, type ScopeCeiling } from '../src/auth/ceiling.js';
-import { VcVerifier, decodeJwt, verifyJwtSignature } from '../src/vc-verifier.js';
-import { InMemoryRevocationStore } from '../src/storage/memory/revocation-store.js';
+import { generateDidKey, issueCredential, createMockSession } from '#auth/index.js';
+import { issueCredentialFromParent } from '#auth/agent.js';
+import { ScopeExceedsCeilingError, type ScopeCeiling } from '#auth/ceiling.js';
+import { VcVerifier } from '#identity/index.js';
+import { decodeJwt, verifyJwtSignature } from '#crypto/jwt.js';
+import { InMemoryRevocationStore } from '#storage/memory/revocation-store.js';
+import { createMockSdk, createFailingSdk } from './mocks/index.js';
 
 describe('Auth', () => {
   describe('generateDidKey', () => {
@@ -38,11 +24,11 @@ describe('Auth', () => {
   });
 
   describe('issueCredential (legacy)', () => {
-    it('creates a valid JWT credential', () => {
+    it('creates a valid JWT credential', async () => {
       const human = generateDidKey();
       const agent = generateDidKey();
 
-      const jwt = issueCredential(human.did, human.privateKey, {
+      const jwt = await issueCredential(human.did, human.privateKey, {
         agent: agent.did,
         columns: ['patients.name', 'patients.dob'],
         actions: ['read'],
@@ -61,11 +47,11 @@ describe('Auth', () => {
       expect(payload.vc?.credentialSubject?.scope?.actions).toEqual(['read']);
     });
 
-    it('sets correct expiry', () => {
+    it('sets correct expiry', async () => {
       const human = generateDidKey();
       const agent = generateDidKey();
 
-      const jwt = issueCredential(human.did, human.privateKey, {
+      const jwt = await issueCredential(human.did, human.privateKey, {
         agent: agent.did,
         columns: ['patients.name'],
         actions: ['read'],
@@ -78,25 +64,25 @@ describe('Auth', () => {
       expect(Math.abs((payload.exp ?? 0) - expectedExp)).toBeLessThan(2);
     });
 
-    it('signature is verifiable with human public key', () => {
+    it('signature is verifiable with human public key', async () => {
       const human = generateDidKey();
       const agent = generateDidKey();
 
-      const jwt = issueCredential(human.did, human.privateKey, {
+      const jwt = await issueCredential(human.did, human.privateKey, {
         agent: agent.did,
         columns: ['patients.name'],
         actions: ['read'],
         expiresIn: '4h',
       });
 
-      expect(verifyJwtSignature(jwt, human.publicKey)).toBe(true);
+      expect(await verifyJwtSignature(jwt, human.publicKey)).toBe(true);
     });
 
-    it('includes metadata in credential', () => {
+    it('includes metadata in credential', async () => {
       const human = generateDidKey();
       const agent = generateDidKey();
 
-      const jwt = issueCredential(human.did, human.privateKey, {
+      const jwt = await issueCredential(human.did, human.privateKey, {
         agent: agent.did,
         columns: ['patients.name'],
         actions: ['read'],
@@ -108,18 +94,18 @@ describe('Auth', () => {
       expect(payload.vc?.credentialSubject?.department).toBe('claims');
     });
 
-    it('rejects invalid duration format', () => {
+    it('rejects invalid duration format', async () => {
       const human = generateDidKey();
       const agent = generateDidKey();
 
-      expect(() =>
+      await expect(
         issueCredential(human.did, human.privateKey, {
           agent: agent.did,
           columns: ['patients.name'],
           actions: ['read'],
           expiresIn: 'invalid',
         }),
-      ).toThrow('Invalid duration');
+      ).rejects.toThrow('Invalid duration');
     });
   });
 
@@ -224,20 +210,7 @@ describe('Auth', () => {
         revocationStore: new InMemoryRevocationStore(),
       });
 
-      // Mock SDK that fails on credential operations
-      const mockSdk = {
-        vc: {
-          createCredential: vi.fn().mockRejectedValue(new Error('SDK not ready')),
-          signCredential: vi.fn().mockRejectedValue(new Error('SDK not ready')),
-          getSignerOptions: vi.fn().mockRejectedValue(new Error('SDK not ready')),
-          verifyJWT: vi.fn(),
-          revokeCredential: vi.fn().mockRejectedValue(new Error('not available')),
-          EdDsaSigner: vi.fn(),
-        },
-        did: { resolve: vi.fn(), create: vi.fn() },
-        agent: {},
-        connectedDid: 'did:key:z6MkFake',
-      } as unknown as Parameters<typeof createMockSession>[2];
+      const mockSdk = createFailingSdk() as unknown as Parameters<typeof createMockSession>[2];
 
       const session = createMockSession(verifier, 'Test User', mockSdk);
       const agent = generateDidKey();
@@ -264,24 +237,9 @@ describe('Auth', () => {
 
       const mockSignedJwt = 'eyJhbGciOiJFZERTQSJ9.eyJpc3MiOiJkaWQ6a2V5Ono2TWtGYWtlIn0.fakesig';
 
-      const mockSdk = {
-        vc: {
-          createCredential: vi.fn().mockResolvedValue({ type: 'vc' }),
-          signCredential: vi.fn().mockResolvedValue(mockSignedJwt),
-          getSignerOptions: vi.fn().mockResolvedValue({
-            kid: 'test-kid',
-            issuerDid: 'did:key:z6MkFake',
-            subjectDid: 'did:key:z6MkAgent',
-            signer: vi.fn(),
-          }),
-          verifyJWT: vi.fn(),
-          revokeCredential: vi.fn(),
-          EdDsaSigner: vi.fn(),
-        },
-        did: { resolve: vi.fn(), create: vi.fn() },
-        agent: {},
-        connectedDid: 'did:key:z6MkFake',
-      } as unknown as Parameters<typeof createMockSession>[2];
+      const mockSdk = createMockSdk({
+        vc: { signCredential: vi.fn().mockResolvedValue(mockSignedJwt) },
+      }) as unknown as Parameters<typeof createMockSession>[2];
 
       const session = createMockSession(verifier, 'Test User', mockSdk);
       const agent = generateDidKey();

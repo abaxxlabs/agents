@@ -38,8 +38,8 @@ import { PostgresRevocationStore } from './revocation-store.js';
 import type { PostgresRevocationStoreOptions } from './revocation-store.js';
 import { PostgresSessionStore } from './session-store.js';
 import type { PostgresSessionStoreOptions } from './session-store.js';
-import type { Logger } from '../../logger.js';
-import { defaultLogger } from '../../logger.js';
+import type { Logger } from '#observability/logger.js';
+import { getLogger } from '#observability/logger.js';
 
 const { Pool } = pg;
 
@@ -75,7 +75,7 @@ export class PostgresStorageBackend implements StorageBackend {
           'Derive one via deriveSessionMacKey(masterKey) from @abaxxlabs/agents.',
       );
     }
-    this._logger = extraOptions.logger ?? defaultLogger;
+    this._logger = getLogger(extraOptions.logger);
     this._pool = new Pool({
       connectionString: options.connectionString,
       max: options.poolSize ?? 10,
@@ -119,7 +119,7 @@ export class PostgresStorageBackend implements StorageBackend {
     }
     const backend = Object.create(PostgresStorageBackend.prototype) as PostgresStorageBackend;
     const macKey = extraOptions.sessionMacKey;
-    const logger = extraOptions.logger ?? defaultLogger;
+    const logger = getLogger(extraOptions.logger);
     // Bypass readonly to populate the prototype-created instance from an externally-owned pool.
     const mut = backend as unknown as {
       _pool: pg.Pool;

@@ -245,7 +245,7 @@ function assertBuiltArtifacts() {
     'dist/services/index.js',
     'dist/sql/scope-engine.js',
     'dist/vc-verifier.js',
-    'dist/column-encryption.js',
+    'dist/encryption/column.js',
   ];
   const missing = required.filter((relativePath) => !existsSync(resolve(ROOT, relativePath)));
   if (missing.length > 0) {
@@ -275,7 +275,7 @@ async function loadRuntime() {
     importDist('dist/vc-verifier.js'),
     importDist('dist/storage/memory/revocation-store.js'),
     importDist('dist/audit-logger.js'),
-    importDist('dist/column-encryption.js'),
+    importDist('dist/encryption/column.js'),
     importDist('dist/auth/index.js'),
   ]);
 

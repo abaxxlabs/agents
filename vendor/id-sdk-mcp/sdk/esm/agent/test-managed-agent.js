@@ -9,7 +9,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 import { Level } from 'level';
 import { Jose } from '../crypto/index.js';
-import { Dwn, MessageStoreLevel, DataStoreLevel, EventLogLevel } from '@dwn-protocol/id';
+import { Dwn, MessageStoreLevel, DataStoreLevel, EventLogLevel } from '@abaxxtech/id';
 import { LevelStore, MemoryStore } from '../common/index.js';
 import { DidIonMethod, DidKeyMethod, DidResolver, DidResolverCacheLevel } from '../dids/index.js';
 import { LocalKms } from './kms-local.js';

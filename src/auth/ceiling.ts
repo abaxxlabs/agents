@@ -13,50 +13,21 @@
 // limitations under the License.
 
 /**
- * Scope Ceiling — session-level authorization bound for credential issuance.
- *
- * Computed once at authenticate() time from OIDC claims via RoleScopeConfig.
- * Every issueCredential() call must fit inside the ceiling or throws
- * ScopeExceedsCeilingError (REST server maps this to 403 + rejection audit record).
- *
- * Trust boundaries:
- *   - `oidcIdentity.groups` MUST come from a cryptographically verified id_token or userinfo
- *     response. The SDK does not re-verify here — that's the caller's responsibility (jwks-verify.ts).
- *   - `RoleScopeConfig` is trusted code-level configuration (loaded at server startup).
- *     It is NOT user-controllable at runtime.
- *
- * Putting the check at issuance time (not query time) matters: at query time the credential
- * already exists and can be replayed to other servers. Refusing to issue is the correct boundary.
+ * Session-level authorization bound for credential issuance.
+ * Checked at issuance time, not query time -- once a credential exists it can be replayed.
+ * Trust boundary: oidcIdentity.groups MUST come from a cryptographically verified id_token.
+ * RoleScopeConfig is trusted startup-loaded config, NOT runtime-user-controllable.
  */
 
 // ─── Types ─────────────────────────────────────────────────────────
 
-/**
- * The authorization ceiling for an authenticated session.
- *
- * Semantics:
- *   - `columns: ['*']` or `actions: ['*']` means "unrestricted for that axis."
- *     Use sparingly — primarily for `mock-unrestricted` sessions in tests.
- *     Never set `['*']` for a real OIDC session without an explicit group mapping.
- *   - Empty arrays (`[]`) mean "no access granted." Requests will always fail.
- *   - Otherwise the arrays are literal allow-lists.
- *
- * The ceiling carries `source` and `resolvedFrom` so audit records can answer
- * "why was this session allowed to issue that credential?" after the fact.
- */
+/** Authorization ceiling for an authenticated session. `['*']` = unrestricted (test only). `[]` = no access. */
 export interface ScopeCeiling {
   /** Columns the session may issue credentials for. `['*']` = unrestricted. */
   columns: string[];
   /** Actions the session may issue credentials for. `['*']` = unrestricted. */
   actions: string[];
-  /**
-   * Where the ceiling came from.
-   * - `oidc-claims` — read directly from `scope_columns` / `scope_actions`
-   *   OIDC token claims (the Keycloak-native path, primary for the demo)
-   * - `oidc-groups` — derived from the `groups` claim via a RoleScopeConfig
-   *   mapping table (fallback for IdPs that emit groups but not scope arrays)
-   * - `mock-unrestricted` — test/mock sessions, wildcard `['*']` on both axes
-   */
+  /** How the ceiling was resolved -- drives audit trail. */
   source:
     | 'oidc-claims'
     | 'oidc-groups'
@@ -64,31 +35,15 @@ export interface ScopeCeiling {
     | 'oidc-microsoft-roles'
     | 'oidc-abaxxone'
     | 'mock-unrestricted';
-  /**
-   * The specific group names (or equivalent identifiers) that resolved to
-   * this ceiling. Empty for `mock-unrestricted`. Used for audit and for
-   * explaining denials to the caller ("you are in groups X, Y; requested
-   * action requires membership in Z").
-   */
+  /** Group names or identifiers that produced this ceiling. Empty for mock sessions. */
   resolvedFrom: string[];
-  /**
-   * Optional policy rules evaluated inside issueCredential() after scope checks pass.
-   * Any rule that throws PolicyViolationError blocks issuance.
-   *
-   * Without this field, temporal and contextual rules would have to be enforced
-   * via external wrappers that can be bypassed by holders of the original
-   * session reference. Co-locating rules with the ceiling means there is no
-   * unwrapped session that callers can hold onto.
-   */
+  /** Policy rules evaluated at issuance time. Co-located with the ceiling so callers can't bypass them. */
   rules?: IssuanceRule[];
   /** Max credential TTL in milliseconds. Enforced at issuance time across all paths. */
   credentialMaxTtlMs?: number;
 }
 
-/**
- * Maps role/group names to their granted scope. Multiple groups produce a UNION ceiling —
- * friendlier for admins who accumulate roles rather than replace them.
- */
+/** Maps role/group names to granted scope. Multiple groups produce a UNION ceiling. */
 export type RoleScopeConfig = Record<
   string,
   {
@@ -97,11 +52,7 @@ export type RoleScopeConfig = Record<
   }
 >;
 
-/**
- * A scope request, as submitted by a caller wanting to issue a credential.
- * Shape matches the `columns` + `actions` subset of `IssueCredentialOptions`
- * (see types.ts) so callers can pass the options directly.
- */
+/** Scope request submitted by a caller wanting to issue a credential. */
 export interface RequestedScope {
   columns: string[];
   actions: string[];
@@ -109,10 +60,7 @@ export interface RequestedScope {
 
 // ─── Issuance Policy ───────────────────────────────────────────────
 
-/**
- * Thrown by an IssuanceRule when it blocks issuance.
- * Distinct from ScopeExceedsCeilingError — the scope is valid but a policy rule rejects it.
- */
+/** Thrown by an IssuanceRule. Distinct from ScopeExceedsCeilingError -- scope is valid but policy rejects. */
 export class PolicyViolationError extends Error {
   readonly code = 'POLICY_VIOLATION' as const;
 
@@ -123,18 +71,8 @@ export class PolicyViolationError extends Error {
 }
 
 /**
- * Thrown by `timeOfDayRule` when a caller-supplied timezone string is not a
- * recognised IANA timezone.
- *
- * Security rationale: passing an unrecognised timezone to `Intl.DateTimeFormat`
- * produces implementation-defined behaviour (Node/V8 may silently fall back to
- * UTC, throw a RangeError, or return NaN). In all cases the policy window is
- * evaluated under the wrong timezone, potentially opening an issuance window
- * that the ceiling owner did not intend. Validation before use closes the gap.
- *
- * This is a caller error, not a configuration error — the ceiling's built-in
- * `timezone` param is code-level and under the deployer's control. This error
- * fires only for the `context.timezone` path (caller-supplied at request time).
+ * Thrown when a caller-supplied timezone is not a recognized IANA timezone.
+ * Unrecognized timezones cause implementation-defined behavior that could shift the policy window.
  */
 export class InvalidTimezoneError extends Error {
   readonly code = 'INVALID_TIMEZONE' as const;
@@ -145,20 +83,14 @@ export class InvalidTimezoneError extends Error {
   }
 }
 
-/**
- * Context passed to IssuanceRule.check() at issuance time.
- * Rules may inspect who is issuing (`humanDid`) and when (`requestedAt`).
- */
+/** Context passed to IssuanceRule.check() at issuance time. */
 export interface IssuanceContext {
   humanDid: string;
   requestedAt: Date;
   timezone?: string;
 }
 
-/**
- * A single policy rule evaluated inside issueCredential() before the
- * credential is signed. Throw PolicyViolationError to block issuance.
- */
+/** Policy rule evaluated before credential signing. Throw PolicyViolationError to block issuance. */
 export interface IssuanceRule {
   type: string;
   check(context: IssuanceContext): void;
@@ -177,12 +109,7 @@ function resolveHourFromDate(date: Date, timezone?: string): number {
   return raw === 24 ? 0 : raw;
 }
 
-/**
- * Validate a caller-supplied IANA timezone before use.
- * An unrecognized timezone causes Intl.DateTimeFormat to behave unexpectedly,
- * potentially shifting the policy window. Defers to the runtime's ICU database —
- * a hard-coded allowlist rots across Node/ICU versions.
- */
+/** Validate a caller-supplied timezone. Defers to runtime ICU -- no hardcoded allowlist. */
 function assertValidTimezone(tz: string | undefined): void {
   if (!tz) return;
   try {
@@ -194,14 +121,9 @@ function assertValidTimezone(tz: string | undefined): void {
 }
 
 /**
- * Built-in rule: block credential issuance at and after `blockFromHour` (0–23, inclusive).
- *
- * Example — block at and after 18:00 Toronto time:
- *   rules: [timeOfDayRule(18, 'America/Toronto')]
- *
- * @param blockFromHour  Hour at which issuance is blocked (18 → blocks 18:00 and later).
- * @param timezone       IANA timezone name. Defaults to the Node process locale.
- * @param _clock         Override the clock for testing only — returns current hour (0–23).
+ * Block credential issuance at and after `blockFromHour` (0-23, inclusive).
+ * @param blockFromHour Hour at which issuance is blocked.
+ * @param timezone IANA timezone name. Defaults to process locale.
  */
 export function timeOfDayRule(
   blockFromHour: number,
@@ -228,11 +150,7 @@ export function timeOfDayRule(
 
 // ─── Errors ────────────────────────────────────────────────────────
 
-/**
- * Thrown when a caller requests scope beyond their session ceiling.
- * The REST server maps this to 403 SCOPE_EXCEEDS_CEILING.
- * Callers should produce an audit record on each throw.
- */
+/** Thrown when requested scope exceeds the session ceiling. Maps to 403 in the REST server. */
 export class ScopeExceedsCeilingError extends Error {
   readonly code = 'SCOPE_EXCEEDS_CEILING' as const;
   readonly ceiling: ScopeCeiling;
@@ -268,10 +186,7 @@ export class ScopeExceedsCeilingError extends Error {
 
 // ─── Resolution ────────────────────────────────────────────────────
 
-/**
- * Extract the `groups` claim. Accepts string[] or single string.
- * Any other shape returns [] — zero authority on ambiguous claims.
- */
+/** Extract `groups` claim as string[]. Non-array/non-string shapes return [] (fail-closed). */
 function extractGroups(claims: Record<string, unknown>): string[] {
   const raw = claims['groups'];
   if (Array.isArray(raw)) {
@@ -284,11 +199,8 @@ function extractGroups(claims: Record<string, unknown>): string[] {
 }
 
 /**
- * Resolve an OIDC identity into a ScopeCeiling using the role map.
- * Unmatched groups are silently dropped. Zero matched groups → empty ceiling (fail-closed).
- *
- * @param oidcIdentity Must carry a `claims` record from a verified token.
- * @param config       Role-to-scope mapping loaded at server startup.
+ * Resolve a ScopeCeiling from OIDC groups via a role map.
+ * Unmatched groups are dropped. Zero matches produce an empty ceiling (fail-closed).
  */
 export function resolveScopeCeiling(
   oidcIdentity: { claims: Record<string, unknown> },
@@ -322,18 +234,15 @@ export function resolveScopeCeiling(
 }
 
 /**
- * Resolve a ScopeCeiling from `scope_columns` / `scope_actions` OIDC token claims.
- * Primary Keycloak-native resolver — no config table needed; the IdP is authoritative.
- * Missing or malformed claims produce an empty ceiling (fail-closed).
+ * Resolve a ScopeCeiling from OIDC token claims. Routes to the correct provider-specific
+ * resolver based on issuer hostname. Missing or malformed claims produce an empty ceiling.
  */
 export function resolveScopeCeilingFromClaims(identity: {
   claims: Record<string, unknown>;
 }): ScopeCeiling {
   const iss = identity.claims['iss'] as string | undefined;
 
-  // Match on exact issuer hostname — substring matching would allow provider confusion attacks.
-  // An attacker-controlled issuer like "https://evil.com/accounts.google.com/" would otherwise
-  // match the Google resolver. Parse as URL and match on exact hostname instead.
+  // Exact hostname match -- substring matching allows evil.com/accounts.google.com/ to impersonate Google.
   if (iss) {
     try {
       const issuerHostname = new URL(iss).hostname;
@@ -354,10 +263,7 @@ export function resolveScopeCeilingFromClaims(identity: {
   return resolveKeycloakCeiling(identity.claims);
 }
 
-/**
- * Keycloak — reads `scope_columns` and `scope_actions` directly from
- * custom claims projected via protocol mappers.
- */
+/** Keycloak -- reads scope_columns/scope_actions from custom protocol mapper claims. */
 function resolveKeycloakCeiling(claims: Record<string, unknown>): ScopeCeiling {
   const rawCols = claims['scope_columns'];
   const rawActs = claims['scope_actions'];
@@ -376,12 +282,7 @@ function resolveKeycloakCeiling(claims: Record<string, unknown>): ScopeCeiling {
   return { columns, actions, source: 'oidc-claims', resolvedFrom };
 }
 
-/**
- * Google — STUB. Google id_tokens don't carry custom attributes natively.
- * Checks for Workspace custom schema attributes (merged from userinfo) first,
- * then falls back to scope_columns/scope_actions if present.
- * For group-based scope, use resolveScopeCeiling() with an hd/group mapping.
- */
+/** Google Workspace -- checks custom schema attributes first, falls back to scope_columns. */
 function resolveGoogleCeiling(claims: Record<string, unknown>): ScopeCeiling {
   // Check for Google Workspace custom schema attributes (merged from userinfo)
   const customSchemas = claims['customSchemas'] as
@@ -411,10 +312,7 @@ function resolveGoogleCeiling(claims: Record<string, unknown>): ScopeCeiling {
   return { columns: [], actions: [], source: 'oidc-google-directory', resolvedFrom: [] };
 }
 
-/**
- * Microsoft Entra ID (Azure AD) — STUB. Checks optional claims (scope_columns/scope_actions)
- * first, then falls back to `roles` claim. For group-based scope, use resolveScopeCeiling().
- */
+/** Microsoft Entra ID -- checks optional scope claims first, falls back to `roles`. */
 function resolveMicrosoftCeiling(claims: Record<string, unknown>): ScopeCeiling {
   const ceiling = resolveKeycloakCeiling(claims);
   if (ceiling.columns.length > 0 || ceiling.actions.length > 0) {
@@ -439,10 +337,7 @@ function resolveMicrosoftCeiling(claims: Record<string, unknown>): ScopeCeiling 
   return { columns: [], actions: [], source: 'oidc-microsoft-roles', resolvedFrom: [] };
 }
 
-/**
- * AbaxxOne — STUB. Checks for `abaxx:scope` object first, then falls back
- * to scope_columns/scope_actions. DID format handled by the provider layer.
- */
+/** AbaxxOne -- checks `abaxx:scope` object first, falls back to scope_columns. */
 function resolveAbaxxOneCeiling(claims: Record<string, unknown>): ScopeCeiling {
   const abaxxScope = claims['abaxx:scope'] as { columns?: unknown; actions?: unknown } | undefined;
   if (abaxxScope) {
@@ -471,10 +366,7 @@ function extractStringArray(raw: unknown): string[] {
   return [];
 }
 
-/**
- * Unrestricted ceiling for test/mock sessions. NOT used by production OIDC paths.
- * The `source: 'mock-unrestricted'` field prevents confusion with a legitimately broad ceiling.
- */
+/** Unrestricted ceiling for test/mock sessions. Not used by production OIDC paths. */
 export function unrestrictedCeiling(): ScopeCeiling {
   return {
     columns: ['*'],
@@ -486,11 +378,7 @@ export function unrestrictedCeiling(): ScopeCeiling {
 
 // ─── Enforcement ───────────────────────────────────────────────────
 
-/**
- * Check whether a requested scope fits inside a ceiling.
- * `['*']` ceiling accepts any request on that axis (test-only escape hatch).
- * Returns a tagged union so callers can produce a rejection audit record with the exact excess.
- */
+/** Check whether a requested scope fits inside a ceiling. Returns the exact excess on failure. */
 export function scopeFitsInCeiling(
   requested: RequestedScope,
   ceiling: ScopeCeiling,
@@ -520,11 +408,7 @@ export function scopeFitsInCeiling(
 }
 
 /**
- * Assert a requested scope fits a ceiling or throw `ScopeExceedsCeilingError`.
- * When `context` is provided, also evaluates any `ceiling.rules` — throwing
- * `PolicyViolationError` if a rule blocks issuance.
- *
- * Callers that don't pass `context` get unchanged behavior (rules are skipped).
+ * Assert scope fits ceiling or throw. When `context` is provided, also evaluates ceiling.rules.
  */
 export function assertScopeFitsInCeiling(
   requested: RequestedScope,

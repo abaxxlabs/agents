@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.TestManagedAgent = void 0;
 const level_1 = require("level");
 const index_js_1 = require("../crypto/index.js");
-const id_1 = require("@dwn-protocol/id");
+const id_1 = require("@abaxxtech/id");
 const index_js_2 = require("../common/index.js");
 const index_js_3 = require("../dids/index.js");
 const kms_local_js_1 = require("./kms-local.js");

@@ -1,42 +1,16 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 import { describe, it, expect, vi } from 'vitest';
-import { ScopeEngine } from '../src/sql/scope-engine.js';
-import { VcVerifier } from '../src/vc-verifier.js';
-import { InMemoryRevocationStore } from '../src/storage/memory/revocation-store.js';
-import { AuditLogger, hashAuditRecord } from '../src/audit-logger.js';
-import { encrypt, generateColumnKey } from '../src/column-encryption.js';
-import { generateDidKey, issueCredential, createSigner } from '../src/auth/index.js';
-import { ScopeViolationError, CapabilityRequiresPaidTierError } from '../src/errors.js';
-import type { RegisteredAgent } from '../src/types.js';
-import type { AgentStore, AuditStore } from '../src/storage/types.js';
+import { ScopeEngine } from '#sql/scope-engine.js';
+import { VcVerifier } from '#identity/index.js';
+import { InMemoryRevocationStore } from '#storage/memory/revocation-store.js';
+import { AuditLogger, hashAuditRecord } from '#audit/index.js';
+import { encrypt, generateColumnKey } from '#encryption/index.js';
+import { generateDidKey, issueCredential, createSigner } from '#auth/index.js';
+import { ScopeViolationError, CapabilityRequiresPaidTierError } from '#errors/index.js';
+import type { RegisteredAgent } from '#types/index.js';
+import type { AgentStore } from '#storage/types.js';
 import type { Pool } from 'pg';
+import { createMockAuditStore } from './mocks/audit-store.js';
 
-/** Mock AuditStore for tests — replaces pool-based audit writes. */
-function createTestAuditStore(options: { failOnAppend?: boolean } = {}): AuditStore {
-  return {
-    append: vi.fn().mockImplementation(async () => {
-      if (options.failOnAppend) throw new Error('disk full');
-    }),
-    loadLastRecord: vi.fn().mockResolvedValue(null),
-    loadLastRecordLocked: vi.fn().mockResolvedValue(null),
-    query: vi.fn().mockResolvedValue([]),
-  };
-}
-
-// ─── Shared Fixtures ────────────────────────────────────────────
 
 function createTestFixtures() {
   const human = generateDidKey();
@@ -94,7 +68,7 @@ function createTestFixtures() {
     ],
   ]);
 
-  const auditStore = createTestAuditStore();
+  const auditStore = createMockAuditStore();
   const auditLogger = new AuditLogger({ auditStore, enabled: true });
 
   const engine = new ScopeEngine({
@@ -111,13 +85,12 @@ function createTestFixtures() {
   return { human, agentA, engine, pool, auditLogger };
 }
 
-// ─── Projection Boundary ────────────────────────────────────────
 
 describe('Projection Boundary', () => {
   it('rejects SELECT * when encrypted columns are out of scope', async () => {
     const { human, agentA, engine } = createTestFixtures();
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agentA.did,
       columns: ['patients.dob'],
       actions: ['read'],
@@ -137,7 +110,7 @@ describe('Projection Boundary', () => {
   it('allows explicit column list when all columns are in scope', async () => {
     const { human, agentA, engine } = createTestFixtures();
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agentA.did,
       columns: [
         'patients.id',
@@ -163,7 +136,7 @@ describe('Projection Boundary', () => {
   it('rejects aliased out-of-scope encrypted columns', async () => {
     const { human, agentA, engine } = createTestFixtures();
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agentA.did,
       columns: ['patients.dob'],
       actions: ['read'],
@@ -183,7 +156,7 @@ describe('Projection Boundary', () => {
   it('rejects out-of-scope encrypted column in WHERE clause (oracle prevention)', async () => {
     const { human, agentA, engine } = createTestFixtures();
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agentA.did,
       columns: ['patients.dob'],
       actions: ['read'],
@@ -203,7 +176,7 @@ describe('Projection Boundary', () => {
   it('rejects out-of-scope encrypted column in ORDER BY', async () => {
     const { human, agentA, engine } = createTestFixtures();
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agentA.did,
       columns: ['patients.dob'],
       actions: ['read'],
@@ -223,7 +196,7 @@ describe('Projection Boundary', () => {
   it('allows in-scope columns in WHERE and ORDER BY', async () => {
     const { human, agentA, engine } = createTestFixtures();
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agentA.did,
       columns: ['patients.id', 'patients.name', 'patients.dob'],
       actions: ['read'],
@@ -243,7 +216,7 @@ describe('Projection Boundary', () => {
   it('allows in-scope encrypted columns in WHERE clause', async () => {
     const { human, agentA, engine } = createTestFixtures();
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agentA.did,
       columns: ['patients.dob', 'patients.diagnosis'],
       actions: ['read'],
@@ -261,7 +234,6 @@ describe('Projection Boundary', () => {
   });
 });
 
-// ─── Projection Mode (default scope mode) ──────────────────────
 
 describe('Projection Mode (scopeMode=projection)', () => {
   function createProjectionFixtures() {
@@ -302,7 +274,7 @@ describe('Projection Mode (scopeMode=projection)', () => {
     ]);
 
     const auditLogger = new AuditLogger({
-      auditStore: createTestAuditStore(),
+      auditStore: createMockAuditStore(),
       enabled: true,
     });
 
@@ -324,7 +296,7 @@ describe('Projection Mode (scopeMode=projection)', () => {
   it('rejects SELECT * unconditionally (schema unknown)', async () => {
     const { human, agentA, engine } = createProjectionFixtures();
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agentA.did,
       columns: ['patients.dob'],
       actions: ['read'],
@@ -344,7 +316,7 @@ describe('Projection Mode (scopeMode=projection)', () => {
   it('rejects unencrypted columns not in scope', async () => {
     const { human, agentA, engine } = createProjectionFixtures();
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agentA.did,
       columns: ['patients.dob'],
       actions: ['read'],
@@ -364,7 +336,7 @@ describe('Projection Mode (scopeMode=projection)', () => {
   it('allows query when all referenced columns are in scope', async () => {
     const { human, agentA, engine } = createProjectionFixtures();
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agentA.did,
       columns: ['patients.dob', 'patients.name', 'patients.id'],
       actions: ['read'],
@@ -384,7 +356,7 @@ describe('Projection Mode (scopeMode=projection)', () => {
   it('allows table-qualified column references when in scope', async () => {
     const { human, agentA, engine } = createProjectionFixtures();
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agentA.did,
       columns: ['patients.dob', 'patients.name', 'patients.id'],
       actions: ['read'],
@@ -404,7 +376,7 @@ describe('Projection Mode (scopeMode=projection)', () => {
   it('rejects table-qualified column not in scope', async () => {
     const { human, agentA, engine } = createProjectionFixtures();
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agentA.did,
       columns: ['patients.dob'],
       actions: ['read'],
@@ -424,7 +396,7 @@ describe('Projection Mode (scopeMode=projection)', () => {
   it('rejects unencrypted out-of-scope column in ORDER BY', async () => {
     const { human, agentA, engine } = createProjectionFixtures();
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agentA.did,
       columns: ['patients.dob'],
       actions: ['read'],
@@ -442,7 +414,6 @@ describe('Projection Mode (scopeMode=projection)', () => {
   });
 });
 
-// ─── ScopeViolationError.toSafeResponse() ───────────────────────
 
 describe('ScopeViolationError.toSafeResponse', () => {
   it('strips column names from the response', () => {
@@ -472,12 +443,11 @@ describe('ScopeViolationError.toSafeResponse', () => {
   });
 });
 
-// ─── logRejection ───────────────────────────────────────────────
 
 describe('AuditLogger.logRejection', () => {
   it('creates a V3 rejection record with status and reason', async () => {
     const logger = new AuditLogger({
-      auditStore: createTestAuditStore(),
+      auditStore: createMockAuditStore(),
       enabled: true,
     });
     const agent = generateDidKey();
@@ -500,7 +470,7 @@ describe('AuditLogger.logRejection', () => {
 
   it('creates unsigned record when no signer provided', async () => {
     const logger = new AuditLogger({
-      auditStore: createTestAuditStore(),
+      auditStore: createMockAuditStore(),
       enabled: true,
     });
 
@@ -513,7 +483,7 @@ describe('AuditLogger.logRejection', () => {
 
   it('chains rejection records into the hash chain', async () => {
     const logger = new AuditLogger({
-      auditStore: createTestAuditStore(),
+      auditStore: createMockAuditStore(),
       enabled: true,
     });
 
@@ -543,7 +513,7 @@ describe('AuditLogger.logRejection', () => {
   });
 
   it('throws on rejection write failure (always fail-closed)', async () => {
-    const failStore = createTestAuditStore({ failOnAppend: true });
+    const failStore = createMockAuditStore({ failOnAppend: true });
 
     const logger = new AuditLogger({ auditStore: failStore, enabled: true });
     await expect(logger.logRejection('test', 'TEST')).rejects.toThrow(
@@ -553,7 +523,7 @@ describe('AuditLogger.logRejection', () => {
 
   it('interleaves with success records in the hash chain', async () => {
     const logger = new AuditLogger({
-      auditStore: createTestAuditStore(),
+      auditStore: createMockAuditStore(),
       enabled: true,
     });
     const agent = generateDidKey();
@@ -581,7 +551,6 @@ describe('AuditLogger.logRejection', () => {
   });
 });
 
-// ─── Fail-Closed DB Error (Decision #12) ────────────────────────
 
 describe('Fail-closed DB error on agent lookup', () => {
   it('throws CredentialInvalidError when agent DB lookup fails', async () => {
@@ -609,7 +578,7 @@ describe('Fail-closed DB error on agent lookup', () => {
       pool: failPool,
       verifier,
       auditLogger: new AuditLogger({
-        auditStore: createTestAuditStore(),
+        auditStore: createMockAuditStore(),
         enabled: true,
       }),
       columnKeys: new Map(),
@@ -621,7 +590,7 @@ describe('Fail-closed DB error on agent lookup', () => {
       } as unknown as AgentStore,
     });
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agentA.did,
       columns: ['patients.name'],
       actions: ['read'],
@@ -639,13 +608,12 @@ describe('Fail-closed DB error on agent lookup', () => {
   });
 });
 
-// ─── parseDurationSimple Edge Cases ─────────────────────────────
 
 describe('parseDurationSimple via issueCredential', () => {
-  it('accepts integer seconds', () => {
+  it('accepts integer seconds', async () => {
     const human = generateDidKey();
     const agent = generateDidKey();
-    const jwt = issueCredential(human.did, human.privateKey, {
+    const jwt = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['col.a'],
       actions: ['read'],
@@ -654,99 +622,98 @@ describe('parseDurationSimple via issueCredential', () => {
     expect(jwt.split('.').length).toBe(3);
   });
 
-  it('rejects zero seconds', () => {
+  it('rejects zero seconds', async () => {
     const human = generateDidKey();
     const agent = generateDidKey();
-    expect(() =>
+    await expect(
       issueCredential(human.did, human.privateKey, {
         agent: agent.did,
         columns: ['col.a'],
         actions: ['read'],
         expiresIn: 0,
       }),
-    ).toThrow('positive integer');
+    ).rejects.toThrow('positive integer');
   });
 
-  it('rejects negative seconds', () => {
+  it('rejects negative seconds', async () => {
     const human = generateDidKey();
     const agent = generateDidKey();
-    expect(() =>
+    await expect(
       issueCredential(human.did, human.privateKey, {
         agent: agent.did,
         columns: ['col.a'],
         actions: ['read'],
         expiresIn: -100,
       }),
-    ).toThrow('positive integer');
+    ).rejects.toThrow('positive integer');
   });
 
-  it('rejects NaN', () => {
+  it('rejects NaN', async () => {
     const human = generateDidKey();
     const agent = generateDidKey();
-    expect(() =>
+    await expect(
       issueCredential(human.did, human.privateKey, {
         agent: agent.did,
         columns: ['col.a'],
         actions: ['read'],
         expiresIn: NaN,
       }),
-    ).toThrow('positive integer');
+    ).rejects.toThrow('positive integer');
   });
 
-  it('rejects Infinity', () => {
+  it('rejects Infinity', async () => {
     const human = generateDidKey();
     const agent = generateDidKey();
-    expect(() =>
+    await expect(
       issueCredential(human.did, human.privateKey, {
         agent: agent.did,
         columns: ['col.a'],
         actions: ['read'],
         expiresIn: Infinity,
       }),
-    ).toThrow('positive integer');
+    ).rejects.toThrow('positive integer');
   });
 
-  it('rejects non-integer floats', () => {
+  it('rejects non-integer floats', async () => {
     const human = generateDidKey();
     const agent = generateDidKey();
-    expect(() =>
+    await expect(
       issueCredential(human.did, human.privateKey, {
         agent: agent.did,
         columns: ['col.a'],
         actions: ['read'],
         expiresIn: 3.5,
       }),
-    ).toThrow('positive integer');
+    ).rejects.toThrow('positive integer');
   });
 
-  it('rejects "0s" string duration', () => {
+  it('rejects "0s" string duration', async () => {
     const human = generateDidKey();
     const agent = generateDidKey();
-    expect(() =>
+    await expect(
       issueCredential(human.did, human.privateKey, {
         agent: agent.did,
         columns: ['col.a'],
         actions: ['read'],
         expiresIn: '0s',
       }),
-    ).toThrow('Duration must be positive');
+    ).rejects.toThrow('Duration must be positive');
   });
 
-  it('rejects "0h" string duration', () => {
+  it('rejects "0h" string duration', async () => {
     const human = generateDidKey();
     const agent = generateDidKey();
-    expect(() =>
+    await expect(
       issueCredential(human.did, human.privateKey, {
         agent: agent.did,
         columns: ['col.a'],
         actions: ['read'],
         expiresIn: '0h',
       }),
-    ).toThrow('Duration must be positive');
+    ).rejects.toThrow('Duration must be positive');
   });
 });
 
-// ─── CapabilityRequiresPaidTierError ─────────────────────────────
 
 describe('CapabilityRequiresPaidTierError', () => {
   it('includes capability, namespace, and signup URL', () => {
@@ -772,7 +739,6 @@ describe('CapabilityRequiresPaidTierError', () => {
   });
 });
 
-// ─── Projection Mode: Default + Edge Cases ──────────────────────
 
 describe('Projection mode defaults and edge cases', () => {
   it('defaults to projection mode when scopeMode is omitted', async () => {
@@ -807,7 +773,7 @@ describe('Projection mode defaults and edge cases', () => {
       ],
     ]);
     const auditLogger = new AuditLogger({
-      auditStore: createTestAuditStore(),
+      auditStore: createMockAuditStore(),
       enabled: true,
     });
 
@@ -823,7 +789,7 @@ describe('Projection mode defaults and edge cases', () => {
       agentStore: { findByDid: vi.fn().mockResolvedValue(null) } as unknown as AgentStore,
     });
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agentA.did,
       columns: ['patients.dob'],
       actions: ['read'],
@@ -878,7 +844,7 @@ describe('Projection mode defaults and edge cases', () => {
       ],
     ]);
     const auditLogger = new AuditLogger({
-      auditStore: createTestAuditStore(),
+      auditStore: createMockAuditStore(),
       enabled: true,
     });
 
@@ -894,7 +860,7 @@ describe('Projection mode defaults and edge cases', () => {
       agentStore: { findByDid: vi.fn().mockResolvedValue(null) } as unknown as AgentStore,
     });
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agentA.did,
       columns: ['patients.dob', 'patients.id'],
       actions: ['read'],
@@ -944,7 +910,7 @@ describe('Projection mode defaults and edge cases', () => {
       ],
     ]);
     const auditLogger = new AuditLogger({
-      auditStore: createTestAuditStore(),
+      auditStore: createMockAuditStore(),
       enabled: true,
     });
 
@@ -960,7 +926,7 @@ describe('Projection mode defaults and edge cases', () => {
       agentStore: { findByDid: vi.fn().mockResolvedValue(null) } as unknown as AgentStore,
     });
 
-    const credential = issueCredential(human.did, human.privateKey, {
+    const credential = await issueCredential(human.did, human.privateKey, {
       agent: agentA.did,
       columns: ['patients.dob'],
       actions: ['read'],

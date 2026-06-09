@@ -5,7 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Metadata = void 0;
 const multiformats_1 = require("multiformats");
-const id_1 = require("@dwn-protocol/id");
+const id_1 = require("@abaxxtech/id");
 const bs58_1 = __importDefault(require("bs58"));
 const ipfs_infura_1 = __importDefault(require("ipfs-infura"));
 const service_options_js_1 = require("../service-options.js");

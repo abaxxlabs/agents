@@ -7,11 +7,11 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-import { PrivateKeySigner, } from '@dwn-protocol/id';
+import { PrivateKeySigner, } from '@abaxxtech/id';
 import { Convert } from '../common/index.js';
 import { Jose } from '../crypto/index.js';
 import * as didUtils from '../dids/utils.js';
-import { Cid, Dwn, Message, EventsGet, DataStream, RecordsRead, MessagesGet, RecordsWrite, RecordsQuery, DwnMethodName, RecordsDelete, ProtocolsQuery, DwnInterfaceName, ProtocolsConfigure, EventLogLevel, DataStoreLevel, MessageStoreLevel, } from '@dwn-protocol/id';
+import { Cid, Dwn, Message, EventsGet, DataStream, RecordsRead, MessagesGet, RecordsWrite, RecordsQuery, DwnMethodName, RecordsDelete, ProtocolsQuery, DwnInterfaceName, ProtocolsConfigure, EventLogLevel, DataStoreLevel, MessageStoreLevel, } from '@abaxxtech/id';
 import { isManagedKeyPair } from './utils.js';
 import { blobToIsomorphicNodeReadable, webReadableToIsomorphicNodeReadable } from './utils.js';
 const dwnMessageCreators = {

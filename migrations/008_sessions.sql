@@ -1,9 +1,9 @@
 -- Migration 008: sessions
 --
--- ABXAGNTS-182 (Session 5, v0.9.8.0) — makes server session state durable across
+-- (Session 5, v0.9.8.0) — makes server session state durable across
 -- process restart and coherent across instances. Before this release, sessions
 -- lived in a process-local Map<token, {session, createdAt}> in
--- packages/server/src/index.ts and disappeared on restart / were invisible to
+--index.ts and disappeared on restart / were invisible to
 -- peer instances behind a load balancer.
 --
 -- What is stored: a re-establishment envelope (see ISessionStore +

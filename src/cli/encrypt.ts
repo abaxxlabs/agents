@@ -23,9 +23,9 @@
  */
 
 import pg from 'pg';
-import { encryptColumnInPlace } from '../sql/column-keys.js';
-import { loadConfig } from '../config.js';
-import { parseMasterKeyHex } from '../bootstrap/index.js';
+import { encryptColumnInPlace } from '#sql/column-keys.js';
+import { loadConfig } from '#config.js';
+import { parseMasterKeyHex } from '#bootstrap/index.js';
 
 const { Pool } = pg;
 

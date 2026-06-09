@@ -1,37 +1,35 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const NPM_CACHE = join(tmpdir(), 'agents-cli-contract-npm-cache');
+let githubToken: string | undefined;
 
 interface SpawnResult {
   stdout: string;
   stderr: string;
 }
 
+function resolveGithubToken(): string | undefined {
+  if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
+  if (githubToken !== undefined) return githubToken || undefined;
+
+  const result = spawnSync('gh', ['auth', 'token'], { encoding: 'utf8' });
+  githubToken = result.status === 0 ? result.stdout.trim() : '';
+  return githubToken || undefined;
+}
+
 function run(command: string, args: string[], cwd = ROOT): SpawnResult {
+  const token = resolveGithubToken();
   const result = spawnSync(command, args, {
     cwd,
     encoding: 'utf8',
     env: {
       ...process.env,
+      ...(token ? { GITHUB_TOKEN: token } : {}),
       NO_COLOR: '1',
       npm_config_cache: NPM_CACHE,
       npm_config_fetch_retries: '1',
@@ -65,14 +63,14 @@ function parsePackJson(
   return JSON.parse(stdout) as Array<{ filename: string; files: Array<{ path: string }> }>;
 }
 
-describe.sequential('package CLI contract', () => {
+describe('package CLI contract', () => {
   let tempRoot: string;
 
   beforeAll(() => {
     tempRoot = mkdtempSync(join(tmpdir(), 'agents-cli-contract-'));
     run('npm', ['run', 'clean']);
     run('npm', ['run', 'build']);
-  }, 120_000);
+  });
 
   afterAll(() => {
     if (tempRoot) rmSync(tempRoot, { recursive: true, force: true });
@@ -108,6 +106,11 @@ describe.sequential('package CLI contract', () => {
     const installDir = join(tempRoot, 'install');
     mkdirSync(packDir, { recursive: true });
     mkdirSync(installDir, { recursive: true });
+
+    const rootNpmrc = resolve(ROOT, '.npmrc');
+    if (existsSync(rootNpmrc)) {
+      copyFileSync(rootNpmrc, join(installDir, '.npmrc'));
+    }
 
     const pack = parsePackJson(
       run('npm', ['pack', '--json', '--pack-destination', packDir]).stdout,

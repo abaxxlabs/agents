@@ -12,11 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/**
- * Runtime readers for OIDC JSON payloads.
- * Narrow `unknown` values from provider-controlled data deliberately.
- * Helpers don't make authorization decisions — they let providers decide which fields are required.
- */
+/** Runtime readers for OIDC JSON payloads. Narrows `unknown` values from provider-controlled data. */
 
 import type { OidcTokenResponse } from './provider.js';
 
@@ -44,10 +40,7 @@ export function readOptionalStringArray(payload: JsonObject, field: string): str
   return value;
 }
 
-/**
- * Narrow token endpoint JSON into OidcTokenResponse. Does not throw for malformed envelopes —
- * each provider decides how to fail (AbaxxOne requires id_token; Generic requires access_token).
- */
+/** Narrow token endpoint JSON into OidcTokenResponse. Does not throw; providers decide what's required. */
 export function parseOidcTokenResponse(payload: unknown): OidcTokenResponse {
   if (!isJsonObject(payload)) {
     return { access_token: '', token_type: '' };
@@ -63,10 +56,7 @@ export function parseOidcTokenResponse(payload: unknown): OidcTokenResponse {
   };
 }
 
-/**
- * Decode JWT payload claims. Signature verification happens upstream.
- * Malformed or non-JWT input returns an empty claim set rather than throwing.
- */
+/** Decode JWT payload claims without verification. Malformed input returns {}. */
 export function parseJwtPayloadClaims(idToken: string): JsonObject {
   try {
     const parts = idToken.split('.');

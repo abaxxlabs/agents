@@ -34,7 +34,7 @@ export declare class DidResolver {
      *
      * Note: The method signature for resolve() in this implementation must match
      * the `DidResolver` implementation in
-     * {@link https://github.com/@dwn-protocol/id | @dwn-protocol/id} so that
+     * {@link https://github.com/@abaxxtech/id | @abaxxtech/id} so that
      * IDDwn apps and the underlying DWN instance can share the same DID
      * resolution cache.
      *

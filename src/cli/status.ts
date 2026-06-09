@@ -24,7 +24,7 @@
  */
 
 import pg from 'pg';
-import { loadConfig } from '../config.js';
+import { loadConfig } from '#config.js';
 
 const { Pool } = pg;
 

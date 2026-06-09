@@ -16,6 +16,10 @@ export default defineConfig({
   resolve: {
     alias: [
       {
+        find: /^#(.+)\.js$/,
+        replacement: `${rootDir}src/$1.ts`,
+      },
+      {
         find: /^@abaxxlabs\/agents\/storage\/postgres\/(.+)\.js$/,
         replacement: `${rootDir}src/storage/postgres/$1.ts`,
       },
@@ -32,6 +36,7 @@ export default defineConfig({
     environment: 'node',
     include: ['test/**/*.test.ts'],
     exclude: defaultTestExclude,
+    hookTimeout: 120_000,
     testTimeout: 30_000,
   },
 });

@@ -7,7 +7,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-import * as Sdk from '@dwn-protocol/id';
+import * as Sdk from '@abaxxtech/id';
 import ms from 'ms';
 import { IDUserAgent } from './user-agent/index.js';
 import { DwnApi } from './dwn-api.js';
@@ -20,7 +20,7 @@ import { Services } from './interfaces/services.js';
 import { Transactions } from './interfaces/transactions.js';
 import { Jose } from './crypto/index.js';
 import { VcApi } from './vc-api.js';
-import { Jws } from '@dwn-protocol/id';
+import { Jws } from '@abaxxtech/id';
 export class IDDwn {
     constructor(options) {
         const { agent, connectedDid } = options;

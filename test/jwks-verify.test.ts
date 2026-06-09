@@ -1,36 +1,7 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * JWKS Verify — Unit Tests
- *
- * Covers the security hardening additions to src/auth/jwks-verify.ts:
- *   1. Algorithm allowlist — rejects disallowed algorithms (none, HS256, etc.)
- *   2. Mandatory exp claim — tokens without expiry are rejected
- *   3. JWKS fetch timeout — AbortSignal.timeout(5000) on fetch calls
- *   4. Cache-bust cooldown — prevents amplification attacks
- *   5. Cache-bust retry on signature failure — handles key rotation
- *
- * Architecture: uses a local HTTP server for JWKS endpoint simulation.
- * The server returns Ed25519 JWKs and can be told to rotate keys mid-test.
- * clearJwksCache() is exported specifically for these tests.
- */
-
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { generateKeyPairSync, sign as ed25519Sign } from 'node:crypto';
-import { verifyIdTokenSignature, clearJwksCache } from '../src/auth/jwks-verify.js';
+import { verifyIdTokenSignature, clearJwksCache } from '#auth/jwks-verify.js';
 import { loopbackSkipReason, shouldRunLoopbackHttpTests } from './support/integration-gates.js';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

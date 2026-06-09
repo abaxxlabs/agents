@@ -22,3 +22,5 @@ export * from './agent-verifier.js';
 export * from './did-dht.js';
 export * from './presentation.js';
 export * from './uuid7.js';
+export { VcVerifier } from './vc-verifier.js';
+export { AgentIdentity, type AgentIdentityConfig, type AgentIdentityInjections } from './agent-identity.js';
