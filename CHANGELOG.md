@@ -4,8 +4,7 @@ All notable changes to this project will be documented in this file.
 
 Starting with 0.11.3, package metadata uses npm-publishable SemVer. Legacy
 four-segment human release labels are kept in release headings when needed.
-The public npm package identity is `@abaxxlabs/agents`; older changelog
-entries may mention pre-public internal package names for historical context.
+The public npm package identity is `@abaxxlabs/agents`; older changelog entries use the internal package name for historical context.
 
 ## [Unreleased]
 
@@ -30,6 +29,7 @@ entries may mention pre-public internal package names for historical context.
   (`dist/cjs/index.js`) in standard CommonJS environments. The downgraded
   versions ship dual ESM/CJS builds with identical API surfaces.
 
+
 ### Changed
 
 - **HTTP credential-issuance integration tests use per-test session capture.**
@@ -38,6 +38,7 @@ entries may mention pre-public internal package names for historical context.
   under serial execution. Each test now registers its own mock session under a
   unique token and reads its own captured options, so the block is correct under
   concurrent and sharded execution as well. Test-only change; no consumer impact.
+
 - **`engines.node` lowered from `>=22.12.0` to `>=20.3.0`.** The 22.12 floor
   existed only because `jose` 6.x was ESM-only and the CJS build path needed
   `require(esm)` (on by default from Node 22.12). With `jose` pinned to 5.10.0
@@ -199,7 +200,7 @@ entries may mention pre-public internal package names for historical context.
 
 ### Security
 
-- **Audit logger fails closed unconditionally**. The `failOpen`
+- **Audit logger fails closed unconditionally** (audit MED-3). The `failOpen`
   option is removed from `AgentScopeConfig.audit` and `AuditLogger`. Any audit
   store append failure now throws `AuditWriteFailedError` and the calling
   operation rejects — no opt-in escape hatch. HIPAA §164.312(b), SOC 2 CC7.2,
@@ -224,7 +225,8 @@ entries may mention pre-public internal package names for historical context.
   `LegacyScopeModeNotAllowedError` are removed. All credentials must include
   every column referenced in SQL (plaintext and encrypted). Demo user-stories
   updated to projection-mode scopes.
-- **`SqliteStorageBackend` requires `sessionMacKey` unconditionally**. The zero-key fallback (`Buffer.alloc(32, 0)`) is removed. Callers must
+- **`SqliteStorageBackend` requires `sessionMacKey` unconditionally** (audit
+  LOW-7). The zero-key fallback (`Buffer.alloc(32, 0)`) is removed. Callers must
   pass an HKDF-derived `sessionMacKey` via the `backendOpts` parameter.
   Use `deriveSessionMacKey(masterKey)` from `@abaxxlabs/agents` to derive the
   key. Construction without a key now throws `TypeError`.
@@ -237,14 +239,14 @@ entries may mention pre-public internal package names for historical context.
 - `AuditLoggerTelemetrySink.auditWriteFailed` event shape lost the `failOpen`
   field.
 
-- **Legacy AbaxxOne OIDC entry points deleted** ( closeout).
+- **Legacy AbaxxOne OIDC entry points deleted** (audit HIGH-1 closeout).
   `src/auth/legacy-oidc.ts` and `src/auth/verified-auth-state.ts` are removed.
   The module-level functions `authenticateWithOidc`, `completeOidcFlow`, and the
   `VerifiedAuthState` brand machinery no longer exist. `AgentIdentity` delegates
   all AbaxxOne OIDC flows through `AbaxxOneOidcProvider`. The public auth barrel
   no longer exports `verifyAuthState`, `CsrfStateRejectedError`,
   `VerifiedAuthState`, or `OidcConfig`. Supersedes
-- **Legacy `scopeMode` construction gate**. `AgentScope.create` / `loadConfig` now throw `LegacyScopeModeNotAllowedError` when `scopeMode` is `encryption-only-LEGACY-DO-NOT-USE` unless `AGENTS_ALLOW_LEGACY_SCOPE_MODE=1` is set. `getServerStatus()` includes `scopeMode` (defaults to `projection` when omitted from config).
+- **Legacy `scopeMode` construction gate** (audit HIGH-5). `AgentScope.create` / `loadConfig` now throw `LegacyScopeModeNotAllowedError` when `scopeMode` is `encryption-only-LEGACY-DO-NOT-USE` unless `AGENTS_ALLOW_LEGACY_SCOPE_MODE=1` is set. `getServerStatus()` includes `scopeMode` (defaults to `projection` when omitted from config).
 
 ### BREAKING
 
@@ -458,7 +460,7 @@ as the actual security boundary (brands are erased at compile time).
   project-specific ticket IDs from test describe blocks and inline comments
   to keep documentation audience-neutral.
 
-## [0.11.1] — Internal pre-public — Hackathon-finding follow-ups
+## [0.11.1] — Hackathon-finding follow-ups
 
 A small follow-up release closing three loose ends from the hackathon-finding
 arc and adversarial review on PR #24. Pure additions and a bug fix; no
@@ -466,13 +468,15 @@ breaking changes.
 
 ### Added
 
-- **`parseDuration` accepts compound, fractional, and millisecond strings.** Previously rejected anything that did not match
+- **`parseDuration` accepts compound, fractional, and millisecond strings
+.** Previously rejected anything that did not match
   `/^(\d+)(s|m|h|d)$/`. Now accepts `'500ms'`, `'1.5s'`, `'1m30s'`,
   `'2h15m'`, `'1.5d'`, etc. Bare numbers, unknown units, trailing garbage,
   and duplicate units (`'1m1m'`) still throw. Purely additive — existing
   callers (`clockSkew`, `resolverCacheTtl`, VP `lifetime`) are unaffected.
 
-- **`CreatePresentationOptions.audience` accepts `string | string[]`.** Single DID for point-to-point presentation, array for
+- **`CreatePresentationOptions.audience` accepts `string | string[]`
+.** Single DID for point-to-point presentation, array for
   multi-verifier scenarios (multi-region, primary + failover). Per RFC 7519
   §4.1.3, `aud` MAY be a string or array of case-sensitive strings — the
   verifier already handled both shapes; this widens the signer to match.
@@ -521,9 +525,9 @@ breaking changes.
   types are erased at compile time; JS callers, `as` casts, and any future
   RPC bridge that constructs the call dynamically would have bypassed the
   gate. Reverted in commit `10fc575`. Redo planned as additive: keep the
-  runtime check AND add the brands. Full plan: `docs/-redo-plan.md`.
+  runtime check AND add the brands. 
 
-## [0.11.0] — Internal pre-public — AgentScope / AgentIdentity split
+## [0.11.0] — AgentScope / AgentIdentity split
 
 ### Breaking changes
 
@@ -579,7 +583,7 @@ breaking changes.
 - `ScopeEngine` takes an `agentStore: AgentStore` param for owner-lookup
   fallback. `pool.query` is used solely for data-plane query execution.
 
-## [0.10.1] — Internal pre-public — VP lifetime tightening
+## [0.10.1] — VP lifetime tightening
 
 A focused patch sized at a QA finding from the hackathon dry-run: the
 `createPresentation()` default expiry of 300s was a five-minute first-mover
@@ -625,7 +629,7 @@ short-lived credentials during the hackathon dry-run. Investigation
 surfaced the larger architectural decision: VP lifetime, not skew, was the
 load-bearing knob — and it was hardcoded.
 
-## [0.10.0] — 2026-04-26 — Session 7 / Library-shrink follow-up
+## [0.10.0] — 2026-04-26 — Library-shrink follow-up
 
 Session 7 — eight sub-tasks promoting the remaining implicit
 library env-reads to explicit consumer-supplied configuration. v0.10.0 closes
@@ -759,7 +763,7 @@ read by the library"). The five Session-6-era `AGENTS_*` env-reads are gone.
 - — OBS: MCP CLI now emits a structured `WARNING` at startup when booting with `NODE_ENV=production` and no explicit `injections.storage` (the default-backend path has cross-instance revocation coherency poll OFF). Mirrors the API server's `SESSION_STORE_MODE=dual` warning pattern. New `docs/support-runbook-v0.9.10.0.md` § "MCP multi-instance revocation coherency" explains the trade-off and migration path for operators running multi-instance MCP.
 - — TESTS: new `test/regression/env-isolation.test.ts` is the unified regression suite asserting the post-Session-7 contract that the library does NOT read any of the five migrated `AGENTS_*` env vars (`AGENTS_DEV_MODE`, `AGENTS_KEYSTORE_PATH`, `AGENTS_ALLOW_LEGACY_SCOPE_MODE`, `AGENTS_TRUSTED_SERVERS`, `AGENTS_CONSUMER_DOMAINS`). 11 tests covering both directions for each variable (env set + no consumer wiring → env content does NOT leak; env set + EXPLICIT consumer wiring with different value → env loses, explicit wins) plus a cross-cutting "all 5 set simultaneously" worst-case scenario. Catches drift if a future maintainer reintroduces any env-read.
 
-## [0.9.10.0] — 2026-04-25 — Session 6 / Library-shrinking arc complete
+## [0.9.10.0] — 2026-04-25 — Library-shrinking arc complete
 
 ### Security posture
 
