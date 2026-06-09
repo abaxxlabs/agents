@@ -150,7 +150,7 @@ program
       console.error('Example: agents mcp --db postgresql://postgres:postgres@localhost:5432/mydb');
       process.exit(1);
     }
-    const { startMcpServer } = await import('../mcp/index.js');
+    const { startMcpServer } = await import('#mcp/index.js');
     await startMcpServer({
       db: options.db,
       mock: options.mock,

@@ -1,5 +1,5 @@
 import type { SerializableDwnMessage } from './types/agent.js';
-import { RecordsReadReply, UnionMessageReply } from '@dwn-protocol/id';
+import { RecordsReadReply, UnionMessageReply } from '@abaxxtech/id';
 /**
  * Interface that can be implemented to communicate with {@link IDAgent | ID Agent}
  * implementations via JSON-RPC.

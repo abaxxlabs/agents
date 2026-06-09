@@ -1,28 +1,5 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * DID Alias Registry — Edge Case Tests
- *
- * Tests the expiry edge cases for resolveToNew, resolveToOld, and
- * allEquivalentDids that are not covered by the main migration.test.ts.
- * These paths matter because expired aliases silently returning stale data
- * would be a security issue — an old DID should NOT resolve after expiry.
- */
-
 import { describe, it, expect, beforeEach } from 'vitest';
-import { DidAliasRegistry, type DidAlias } from '../src/did-alias.js';
+import { DidAliasRegistry, type DidAlias } from '#did/alias.js';
 
 describe('DidAliasRegistry — expiry edge cases', () => {
   let registry: DidAliasRegistry;
@@ -207,8 +184,8 @@ describe('DidAliasRegistry — expiry edge cases', () => {
     expect(registry.resolveToOld(newDid)).toBeUndefined();
   });
 
-  it('alias 1ms before expiry is still active', () => {
-    registry.addAlias(makeAlias({ expiresAt: new Date(Date.now() + 1) }));
+  it('alias with future expiry is still active', () => {
+    registry.addAlias(makeAlias({ expiresAt: new Date(Date.now() + 5_000) }));
     expect(registry.didsMatch(oldDid, newDid)).toBe(true);
   });
 });

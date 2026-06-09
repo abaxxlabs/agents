@@ -13,8 +13,8 @@
 // limitations under the License.
 
 import { readSync } from 'node:fs';
-import { parseMasterKeyHex } from '../bootstrap/index.js';
-import type { MasterKey } from '../crypto/master-key.js';
+import { parseMasterKeyHex } from '#bootstrap/index.js';
+import type { MasterKey } from '#crypto/master-key.js';
 
 const DEPRECATED_FLAG = '--master-key';
 export const MAX_STDIN_MASTER_KEY_BYTES = 1024;

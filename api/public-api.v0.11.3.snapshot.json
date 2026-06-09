@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "packageName": "@abaxxlabs/agents",
-  "packageVersion": "0.11.4",
+  "packageVersion": "0.12.5",
   "publicSubpaths": [
     ".",
     "./sql",
@@ -493,6 +493,10 @@
         "kind": "type+value"
       },
       {
+        "name": "getLogger",
+        "kind": "value"
+      },
+      {
         "name": "hashAuditRecord",
         "kind": "value"
       },
@@ -551,10 +555,6 @@
       {
         "name": "IssueCredentialOptions",
         "kind": "type"
-      },
-      {
-        "name": "issueDelegatedCredential",
-        "kind": "value"
       },
       {
         "name": "IssuerUrl",
@@ -837,6 +837,10 @@
         "kind": "value"
       },
       {
+        "name": "SqliteRuntimeUnavailableError",
+        "kind": "type+value"
+      },
+      {
         "name": "SqliteStorageOptions",
         "kind": "type"
       },
@@ -883,6 +887,10 @@
       {
         "name": "TrustedMigrationCredential",
         "kind": "type"
+      },
+      {
+        "name": "TtlExceededError",
+        "kind": "type+value"
       },
       {
         "name": "UnknownIssuerError",
@@ -1244,6 +1252,10 @@
       }
     ],
     "./sqlite": [
+      {
+        "name": "SqliteRuntimeUnavailableError",
+        "kind": "type+value"
+      },
       {
         "name": "SqliteStorageBackend",
         "kind": "type+value"

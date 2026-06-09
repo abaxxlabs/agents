@@ -43,8 +43,8 @@ import {
 import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import type { Logger } from '../logger.js';
-import { defaultLogger } from '../logger.js';
+import type { Logger } from '#observability/logger.js';
+import { getLogger } from '#observability/logger.js';
 
 // ─── Public interface ────────────────────────────────────────────────────────
 
@@ -74,6 +74,16 @@ export interface KeystoreBackend {
   delete(key: string): Promise<void>;
 }
 
+type SecurityCliResult = {
+  ok: boolean;
+  stdout: string;
+  stderr: string;
+  status: number | null;
+  error?: Error;
+};
+
+type SecurityCliRunner = (args: string[], stdin?: string | Buffer) => SecurityCliResult;
+
 // ─── macOS Keychain Backend ──────────────────────────────────────────────────
 
 /**
@@ -85,14 +95,16 @@ export interface KeystoreBackend {
 export class MacOsKeychainBackend implements KeystoreBackend {
   private service: string;
   private logger: Logger;
+  private readonly securityCli: SecurityCliRunner;
 
-  constructor(service = 'agents', logger: Logger = defaultLogger) {
+  constructor(service = 'agents', logger: Logger = getLogger(), securityCli = runSecurityCli) {
     this.service = service;
     this.logger = logger;
+    this.securityCli = securityCli;
   }
 
   async read(key: string): Promise<string | null> {
-    const { ok, stdout } = runSecurityCli([
+    const { ok, stdout } = this.securityCli([
       'find-generic-password',
       '-a',
       key,
@@ -105,14 +117,14 @@ export class MacOsKeychainBackend implements KeystoreBackend {
   }
 
   async write(key: string, value: string): Promise<void> {
-    let r = runSecurityCli(['add-generic-password', '-a', key, '-s', this.service, '-w'], value);
+    let r = this.securityCli(['add-generic-password', '-a', key, '-s', this.service, '-w'], value);
     if (r.ok) return;
 
     let stderr = scrubSecret(r.stderr + (r.error?.message ?? ''), value);
     let exitCode = r.status;
 
     if (stderr.includes('-25299') || exitCode === 45) {
-      r = runSecurityCli(['add-generic-password', '-U', '-a', key, '-s', this.service, '-w'], value);
+      r = this.securityCli(['add-generic-password', '-U', '-a', key, '-s', this.service, '-w'], value);
       if (r.ok) return;
       stderr = scrubSecret(r.stderr + (r.error?.message ?? ''), value);
       exitCode = r.status;
@@ -133,7 +145,7 @@ export class MacOsKeychainBackend implements KeystoreBackend {
   }
 
   async delete(key: string): Promise<void> {
-    runSecurityCli(['delete-generic-password', '-a', key, '-s', this.service]);
+    this.securityCli(['delete-generic-password', '-a', key, '-s', this.service]);
   }
 }
 
@@ -301,7 +313,7 @@ function scrubSecret(text: string, secret: string): string {
 function runSecurityCli(
   args: string[],
   stdin?: string | Buffer,
-): { ok: boolean; stdout: string; stderr: string; status: number | null; error?: Error } {
+): SecurityCliResult {
   const result = spawnSync(OSX_SECURITY_CLI, args, {
     encoding: 'utf8',
     maxBuffer: 10 * 1024 * 1024,

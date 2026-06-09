@@ -25,8 +25,8 @@
  * Imported by test/capability.test.ts as `testVectors`.
  */
 
-import type { CapabilitySet } from '../../src/capability/types.js';
-import { MAX_CAPABILITY_SET_SIZE } from '../../src/capability/types.js';
+import type { CapabilitySet } from '#capability/types.js';
+import { MAX_CAPABILITY_SET_SIZE } from '#capability/types.js';
 
 // ─── Type Definitions ────────────────────────────────────────────
 

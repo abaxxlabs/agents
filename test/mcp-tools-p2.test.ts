@@ -1,44 +1,17 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * MCP Identity Tool Tests
- *
- * Covers the 4 identity tools:
- *   whoami    — identity bundle shape and field values
- *   sign      — domain separation prefix, 64KB limit, JWT output
- *   discover  — trust topology (anchors listed, DID method)
- *   challenge — HMAC-signed time-based challenge issuance + JTI dedup replay rejection
- *
- * Also covers ChallengeStore directly:
- *   issue/consume cycle, replay rejection, expiry, eviction, HMAC forgery detection
- */
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   ChallengeStore,
   DEFAULT_CHALLENGE_TTL_SECONDS,
   MAX_DEDUP_CACHE_SIZE,
-} from '../src/mcp/challenge-store.js';
-import { createMcpServer } from '../src/mcp/server.js';
-import type { ToolDependencies } from '../src/mcp/tools.js';
-import type { AgentScope } from '../src/sql/index.js';
-import type { AuthenticatedSession } from '../src/types.js';
-import type { AuditLogger } from '../src/audit-logger.js';
-import type { ServerIdentity } from '../src/identity/server-identity.js';
-import { LocalTrustAnchorStore } from '../src/discovery/trust-anchor.js';
-import { generateDidKey, createSigner } from '../src/auth/index.js';
+} from '#mcp/challenge-store.js';
+import { createMcpServer } from '#mcp/server.js';
+import type { ToolDependencies } from '#mcp/tools.js';
+import type { AgentScope } from '#sql/index.js';
+import type { AuthenticatedSession } from '#types/index.js';
+import type { AuditLogger } from '#audit/index.js';
+import type { ServerIdentity } from '#identity/server-identity.js';
+import { LocalTrustAnchorStore } from '#discovery/trust-anchor.js';
+import { generateDidKey, createSigner } from '#auth/index.js';
 
 // ─── Test Helpers ───────────────────────────────────────────────────────────
 
@@ -306,14 +279,22 @@ describe('MCP Identity Tools', () => {
     it('creates server with identity tools when serverIdentity is provided', () => {
       const { deps } = createPhase2Fixtures();
       const server = createMcpServer(deps);
-      expect(server).toBeDefined();
+      const tools = (server as unknown as { _registeredTools: Record<string, unknown> })._registeredTools;
+      expect(tools).toHaveProperty('whoami');
+      expect(tools).toHaveProperty('sign');
+      expect(tools).toHaveProperty('discover');
+      expect(tools).toHaveProperty('challenge');
     });
 
     it('creates server without identity tools when serverIdentity is absent', () => {
       const { deps } = createPhase2Fixtures();
       delete (deps as { serverIdentity?: unknown }).serverIdentity;
       const server = createMcpServer(deps);
-      expect(server).toBeDefined();
+      const tools = (server as unknown as { _registeredTools: Record<string, unknown> })._registeredTools;
+      expect(tools).not.toHaveProperty('whoami');
+      expect(tools).not.toHaveProperty('sign');
+      expect(tools).not.toHaveProperty('discover');
+      expect(tools).not.toHaveProperty('challenge');
     });
   });
 
@@ -341,9 +322,9 @@ describe('MCP Identity Tools', () => {
   });
 
   describe('sign tool contract', () => {
-    it('server signer produces valid JWTs', () => {
+    it('server signer produces valid JWTs', async () => {
       const { serverIdentity } = createPhase2Fixtures();
-      const jwt = serverIdentity.signer.signJwt({
+      const jwt = await serverIdentity.signer.signJwt({
         iss: serverIdentity.did,
         iat: Math.floor(Date.now() / 1000),
         payload: 'agents-sign-v1:test-payload',
@@ -352,11 +333,11 @@ describe('MCP Identity Tools', () => {
       expect(jwt.split('.')).toHaveLength(3); // header.payload.signature
     });
 
-    it('domain separation prefix is applied', () => {
+    it('domain separation prefix is applied', async () => {
       const { serverIdentity } = createPhase2Fixtures();
       const payload = 'hello world';
       const prefixed = `agents-sign-v1:${payload}`;
-      const jwt = serverIdentity.signer.signJwt({
+      const jwt = await serverIdentity.signer.signJwt({
         iss: serverIdentity.did,
         payload: prefixed,
       });

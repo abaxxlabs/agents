@@ -322,7 +322,7 @@ uint8-util/util.js:
 @noble/secp256k1/index.js:
   (*! noble-secp256k1 - MIT License (c) 2019 Paul Miller (paulmillr.com) *)
 
-@dwn-protocol/id/dist/bundles/dwn.js:
+@abaxxtech/id/dist/bundles/dwn.js:
   (*! Bundled license information:
   
   ieee754/index.js:

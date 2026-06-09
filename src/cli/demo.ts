@@ -30,9 +30,9 @@ if (!process.env.NODE_ENV) process.env.NODE_ENV = 'development';
 
 import pg from 'pg';
 import { randomBytes } from 'node:crypto';
-import { AgentScope } from '../sql/index.js';
-import { encrypt, generateColumnKey, wrapColumnKey } from '../column-encryption.js';
-import { parseMasterKeyHex } from '../bootstrap/index.js';
+import { AgentScope } from '#sql/index.js';
+import { encrypt, generateColumnKey, wrapColumnKey } from '#encryption/index.js';
+import { parseMasterKeyHex } from '#bootstrap/index.js';
 
 const { Pool } = pg;
 

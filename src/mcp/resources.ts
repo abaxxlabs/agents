@@ -15,11 +15,11 @@
 /** MCP resource handlers — 4 read-only inspection resources. */
 
 import { type McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { AgentScope } from '../sql/index.js';
-import type { AuditLogger } from '../audit-logger.js';
-import { normalizeDomainError, toMcpErrorBody } from '../transport/index.js';
-import type { Logger } from '../logger.js';
-import { getLogger } from '../logger.js';
+import type { AgentScope } from '#sql/index.js';
+import type { AuditLogger } from '#audit/index.js';
+import { normalizeDomainError, toMcpErrorBody } from '#transport/index.js';
+import type { Logger } from '#observability/logger.js';
+import { getLogger } from '#observability/logger.js';
 
 export interface ResourceDependencies {
   scope: AgentScope;

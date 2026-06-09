@@ -20,18 +20,18 @@
  */
 
 import type pg from 'pg';
-import type { MasterKey } from '../crypto/master-key.js';
-import type { StorageBackend } from '../storage/types.js';
-import type { Logger } from '../logger.js';
+import type { MasterKey } from '#crypto/master-key.js';
+import type { StorageBackend } from '#storage/types.js';
+import type { Logger } from '#observability/logger.js';
 import type {
-  IdSdkInstance,
   AuthOptions,
   AuthenticatedSession,
   CreateAgentOptions,
   RegisteredAgent,
-  AuditRecord,
-  VerificationResult,
-} from '../types.js';
+} from '#types/auth.js';
+import type { IdSdkInstance } from '#types/id-sdk.js';
+import type { AuditRecord } from '#types/audit.js';
+import type { VerificationResult } from '#types/verification.js';
 
 // ─── Configuration ───────────────────────────────────────────────
 

@@ -1,46 +1,9 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * Keystore — Unit Tests
- *
- * Covers:
- *   - JsonFileBackend: read/write/delete, atomic write, 0600 permissions, merge semantics
- *   - MacOsKeychainBackend: skipped unless explicitly opted in (argv security: keystore-macos-argv-security.test.ts)
- *   - createKeystore() factory: platform selection, env overrides
- *
- * Test strategy:
- *   - JsonFileBackend is platform-independent and fully testable in CI.
- *   - MacOsKeychainBackend requires a real macOS keychain — only run on darwin
- *     outside CI when AGENTS_RUN_KEYCHAIN_TESTS=true is set.
- *   - All temp files are written to a test-specific tmpdir and cleaned up via afterEach.
- *
- * Security coverage:
- *   - 0600 permissions on the keystore file
- *   - Atomic write: temp file exists transiently then is renamed
- *   - Merge semantics: write() doesn't clobber other keys
- *   - Delete: removes key without clobber
- *   - Missing key: read() returns null (no throw)
- *   - Corrupt JSON: read() returns null gracefully
- */
-
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { statSync, writeFileSync, chmodSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir, homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
-import { JsonFileBackend, MacOsKeychainBackend, createKeystore } from '../src/identity/keystore.js';
+import { JsonFileBackend, MacOsKeychainBackend, createKeystore } from '#identity/keystore.js';
 import { keychainSkipReason, shouldRunMacOsKeychainTests } from './support/integration-gates.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

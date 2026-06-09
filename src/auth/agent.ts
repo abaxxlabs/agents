@@ -13,7 +13,7 @@
 // limitations under the License.
 
 export { generateDidKey, createSigner, toExternalSigner } from './did-key.js';
-export type { IdSdkInstance } from '../id-sdk-types.js';
+export type { IdSdkInstance } from '#types/id-sdk.js';
 export * from './agent-crud.js';
 export * from './credential-issuance.js';
 export * from './session-factory.js';

@@ -15,14 +15,14 @@
 /**
  * Pool-dependent column encryption key management.
  *
- * Pure-crypto primitives (encrypt, decrypt, wrap, unwrap) live in column-encryption.ts.
+ * Pure-crypto primitives (encrypt, decrypt, wrap, unwrap) live in src/encryption/column.ts.
  * Every function here accepts `pool: Pool` — they never own a pool.
  */
 
 import type { Pool } from 'pg';
 import { v4 as uuidv4 } from 'uuid';
-import type { MasterKey } from '../crypto/master-key.js';
-import type { ColumnKeyRecord } from '../types.js';
+import type { MasterKey } from '#crypto/master-key.js';
+import type { ColumnKeyRecord } from '#types/index.js';
 import {
   encrypt,
   decrypt,
@@ -30,10 +30,10 @@ import {
   wrapColumnKey,
   unwrapColumnKey,
   isUndefinedTableError,
-} from '../column-encryption.js';
-import { MasterKeyMismatchError, KeyRotationFailedError } from '../errors.js';
-import type { Logger } from '../logger.js';
-import { defaultLogger } from '../logger.js';
+} from '#encryption/index.js';
+import { MasterKeyMismatchError, KeyRotationFailedError } from '#errors/index.js';
+import type { Logger } from '#observability/logger.js';
+import { getLogger } from '#observability/logger.js';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -56,7 +56,7 @@ export type LoadColumnKeysResult = Map<string, Buffer> | { schemaMissing: true }
 export async function loadColumnKeys(
   pool: Pool,
   masterKey: MasterKey,
-  logger: Logger = defaultLogger,
+  logger: Logger = getLogger(),
 ): Promise<LoadColumnKeysResult> {
   let rows: ColumnKeyRecord[];
   try {

@@ -32,13 +32,16 @@ import type {
   RevocationStore,
   SessionStore,
 } from '../types.js';
-import { SqliteRuntimeUnavailableError } from '../../errors.js';
+import { SqliteRuntimeUnavailableError } from '#errors/index.js';
 import { SqliteAgentStore } from './agent-store.js';
 import { SqliteAuditStore } from './audit-store.js';
 import { SqliteContextStore } from './context-store.js';
 import { SqliteRevocationStore } from './revocation-store.js';
 import { SqliteSessionStore } from './session-store.js';
 import { SQLITE_SCHEMA_STATEMENTS, SQLITE_MIGRATIONS } from './migrations.js';
+
+// Re-exported on this subpath so consumers can catch it from the same import surface as SqliteStorageBackend.
+export { SqliteRuntimeUnavailableError } from '#errors/index.js';
 
 /**
  * Minimal shared surface for bun:sqlite and better-sqlite3.

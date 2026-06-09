@@ -1,19 +1,3 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-// Tests for scope ceiling resolution, enforcement, policy rules, and error types.
-
 import { describe, it, expect } from 'vitest';
 import {
   resolveScopeCeiling,
@@ -28,10 +12,10 @@ import {
   type RoleScopeConfig,
   type ScopeCeiling,
   type IssuanceContext,
-} from '../src/auth/ceiling.js';
-import { createMockSession } from '../src/auth/index.js';
-import { VcVerifier } from '../src/vc-verifier.js';
-import { InMemoryRevocationStore } from '../src/storage/memory/revocation-store.js';
+} from '#auth/ceiling.js';
+import { createMockSession } from '#auth/index.js';
+import { VcVerifier } from '#identity/index.js';
+import { InMemoryRevocationStore } from '#storage/memory/revocation-store.js';
 
 // ─── Fixtures ──────────────────────────────────────────────────────
 

@@ -8,7 +8,7 @@ import { Services } from './interfaces/services.js';
 import { Transactions } from './interfaces/transactions.js';
 import { Jose } from './crypto/index.js';
 import { VcApi } from './vc-api.js';
-import { Jws } from '@dwn-protocol/id';
+import { Jws } from '@abaxxtech/id';
 /**
  * Override defaults.
  */

@@ -1,7 +1,7 @@
-import { GenericMessage, PrivateKeySigner, RecordsWriteMessage, Signer, UnionMessageReply } from '@dwn-protocol/id';
+import { GenericMessage, PrivateKeySigner, RecordsWriteMessage, Signer, UnionMessageReply } from '@abaxxtech/id';
 import { DidResolver } from '../dids/index.js';
 import { Readable } from 'readable-stream';
-import { Dwn, EventsGet, RecordsRead, MessagesGet, RecordsWrite, RecordsQuery, RecordsDelete, ProtocolsQuery, ProtocolsConfigure } from '@dwn-protocol/id';
+import { Dwn, EventsGet, RecordsRead, MessagesGet, RecordsWrite, RecordsQuery, RecordsDelete, ProtocolsQuery, ProtocolsConfigure } from '@abaxxtech/id';
 import type { DwnResponse, ProcessDwnRequest, SendDwnRequest, IDManagedAgent } from './types/agent.js';
 export type GeneralJws = {
     payload: string;

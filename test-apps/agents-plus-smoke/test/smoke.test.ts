@@ -7,12 +7,32 @@
  * failure mode for overscope access.
  */
 import { describe, expect, it } from 'vitest';
-import { ENCRYPTED_COLUMNS } from '../src/schema.js';
+import {
+  DEFAULT_DATABASE_URL,
+  ENCRYPTED_COLUMNS,
+  createSetupPool,
+} from '../src/schema.js';
 import { runSmoke } from '../src/smoke.js';
 
-describe('agents-plus-smoke', () => {
+const databaseUrl = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
+let postgresReachable = false;
+try {
+  const pool = createSetupPool(databaseUrl);
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('probe timeout')), 5_000),
+  );
+  await Promise.race([pool.query('SELECT 1'), timeout]);
+  await pool.end();
+  postgresReachable = true;
+} catch {
+  postgresReachable = false;
+}
+
+const describeFn = postgresReachable ? describe : describe.skip;
+
+describeFn('agents-plus-smoke', () => {
   it('runs scoped SQL access and blocks overscope queries', async () => {
-    const result = await runSmoke({ verbose: false });
+    const result = await runSmoke({ databaseUrl, verbose: false });
 
     expect(result.overscopeBlocked).toBe(true);
     expect(result.fullAccessRows[0]).toMatchObject({

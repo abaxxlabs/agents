@@ -1,40 +1,20 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * Agents++ — MCP Server Tests
- *
- * 30 tests covering all 8 tools, 4 resources, integration flows,
- * TLS enforcement, and security constraints.
- */
-
 import { describe, it, expect, vi, type Mock } from 'vitest';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Pool } from 'pg';
-import { createMcpServer } from '../src/mcp/server.js';
-import { startMcpServer } from '../src/mcp/index.js';
-import { VcVerifier } from '../src/vc-verifier.js';
-import { InMemoryRevocationStore } from '../src/storage/memory/revocation-store.js';
-import { AuditLogger, hashAuditRecord } from '../src/audit-logger.js';
-import { AgentScope } from '../src/sql/index.js';
-import { generateDidKey, issueCredential, createSigner } from '../src/auth/index.js';
-import { encrypt, generateColumnKey } from '../src/column-encryption.js';
-import type { RegisteredAgent, AuditRecord, AuthenticatedSession } from '../src/types.js';
-import type { AuditStore } from '../src/storage/types.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { createMcpServer } from '#mcp/server.js';
+import { startMcpServer } from '#mcp/index.js';
+import { VcVerifier } from '#identity/index.js';
+import { InMemoryRevocationStore } from '#storage/memory/revocation-store.js';
+import { AuditLogger, hashAuditRecord } from '#audit/index.js';
+import { AgentScope } from '#sql/index.js';
+import { generateDidKey, issueCredential, createSigner } from '#auth/index.js';
+import { encrypt, generateColumnKey } from '#encryption/index.js';
+import type { RegisteredAgent, AuditRecord, AuthenticatedSession } from '#types/index.js';
+import type { AuditStore } from '#storage/types.js';
+import { createMockAuditStore } from './mocks/audit-store.js';
 
-// ─── Test Fixtures ───────────────────────────────────────────────
 
 function createMcpTestFixtures() {
   const human = generateDidKey();
@@ -136,15 +116,8 @@ function createMcpTestFixtures() {
     ],
   ]);
 
-  const mockAuditStore: AuditStore = {
-    append: vi.fn().mockResolvedValue(undefined),
-    loadLastRecord: vi.fn().mockResolvedValue(null),
-    loadLastRecordLocked: vi.fn().mockResolvedValue(null),
-    query: vi.fn().mockResolvedValue([]),
-    count: vi.fn().mockResolvedValue(0),
-  };
   const auditLogger = new AuditLogger({
-    auditStore: mockAuditStore,
+    auditStore: createMockAuditStore(),
     enabled: true,
   });
 
@@ -193,14 +166,16 @@ function createMcpTestFixtures() {
   };
 }
 
-// ─── Tool Tests ──────────────────────────────────────────────────
 
 describe('MCP Server', () => {
   describe('createMcpServer', () => {
     it('creates a server with tools and resources registered', () => {
       const { scope, session, auditLogger } = createMcpTestFixtures();
       const server = createMcpServer({ scope, session, auditLogger });
-      expect(server).toBeDefined();
+      expect(server).toBeInstanceOf(McpServer);
+      const tools = (server as unknown as { _registeredTools: Record<string, unknown> })._registeredTools;
+      expect(Object.keys(tools).length).toBeGreaterThan(0);
+      expect(tools).toHaveProperty('query');
     });
   });
 
@@ -209,7 +184,7 @@ describe('MCP Server', () => {
       const fixtures = createMcpTestFixtures();
       const { scope, session, auditLogger, human, agentA } = fixtures;
 
-      const credential = issueCredential(human.did, human.privateKey, {
+      const credential = await issueCredential(human.did, human.privateKey, {
         agent: agentA.did,
         columns: ['patients.name', 'patients.dob'],
         actions: ['read'],
@@ -250,7 +225,7 @@ describe('MCP Server', () => {
       const fixtures = createMcpTestFixtures();
       const { scope } = fixtures;
 
-      const { CredentialExpiredError } = await import('../src/errors.js');
+      const { CredentialExpiredError } = await import('../src/errors/index.js');
       scope.query.mockRejectedValueOnce(
         new CredentialExpiredError('test-agent', new Date(Date.now() - 1000)),
       );
@@ -277,7 +252,7 @@ describe('MCP Server', () => {
 
     it('rejects queries with no credential (malformed)', async () => {
       const { scope } = createMcpTestFixtures();
-      const { CredentialMalformedError } = await import('../src/errors.js');
+      const { CredentialMalformedError } = await import('../src/errors/index.js');
 
       scope.query.mockRejectedValueOnce(new CredentialMalformedError('missing vc claim'));
 
@@ -295,7 +270,7 @@ describe('MCP Server', () => {
 
     it('rejects replay (duplicate jti)', async () => {
       const { scope } = createMcpTestFixtures();
-      const { CredentialInvalidError } = await import('../src/errors.js');
+      const { CredentialInvalidError } = await import('../src/errors/index.js');
 
       scope.query.mockRejectedValueOnce(
         new CredentialInvalidError('test-agent', 'Credential already used (replay detected)'),
@@ -502,7 +477,6 @@ describe('MCP Server', () => {
     });
   });
 
-  // ─── Resource Tests ──────────────────────────────────────────────
 
   describe('Resource: agent metadata', () => {
     it('returns agent info for known DID', async () => {
@@ -544,7 +518,6 @@ describe('MCP Server', () => {
     });
   });
 
-  // ─── SQL Table Extraction Tests ────────────────────────────────
 
   describe('SQL table extraction', () => {
     it('extracts table from simple SELECT', async () => {
@@ -591,7 +564,6 @@ describe('MCP Server', () => {
     });
   });
 
-  // ─── TLS Enforcement Tests ─────────────────────────────────────
 
   describe('HTTP bearer auth boot', () => {
     const tlsDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'mcp-tls');
@@ -731,7 +703,6 @@ describe('MCP Server', () => {
     });
   });
 
-  // ─── Production storage gate ────────────────────────────────────
 
   describe('Production storage gate', () => {
     it('refuses to start in production with default storage and no --single-instance', async () => {
@@ -885,7 +856,6 @@ describe('MCP Server', () => {
     });
   });
 
-  // ─── Integration Tests ─────────────────────────────────────────
 
   describe('Integration: full flow', () => {
     it('create agent → issue credential → query → verify flow works end-to-end', async () => {
@@ -904,7 +874,7 @@ describe('MCP Server', () => {
       expect(agent.did).toBe(agentA.did);
 
       // 2. Issue credential
-      const credential = issueCredential(human.did, human.privateKey, {
+      const credential = await issueCredential(human.did, human.privateKey, {
         agent: agentA.did,
         columns: ['patients.name', 'patients.dob'],
         actions: ['read'],
@@ -983,7 +953,6 @@ describe('MCP Server', () => {
     });
   });
 
-  // ─── Row Limit Tests ───────────────────────────────────────────
 
   describe('Default limits', () => {
     it('query enforces max 1000 row limit', () => {
@@ -1001,30 +970,28 @@ describe('MCP Server', () => {
     });
   });
 
-  // ─── Error Mapping Tests ───────────────────────────────────────
 
   describe('Error mapping', () => {
     it('maps CredentialExpiredError correctly', async () => {
-      const { CredentialExpiredError } = await import('../src/errors.js');
+      const { CredentialExpiredError } = await import('../src/errors/index.js');
       const err = new CredentialExpiredError('test-agent', new Date());
       expect(err.code).toBe('CREDENTIAL_EXPIRED');
     });
 
     it('maps CredentialRevokedError correctly', async () => {
-      const { CredentialRevokedError } = await import('../src/errors.js');
+      const { CredentialRevokedError } = await import('../src/errors/index.js');
       const err = new CredentialRevokedError('test-agent');
       expect(err.code).toBe('CREDENTIAL_REVOKED');
     });
 
     it('maps DbConnectionFailedError correctly', async () => {
-      const { DbConnectionFailedError } = await import('../src/errors.js');
+      const { DbConnectionFailedError } = await import('../src/errors/index.js');
       const err = new DbConnectionFailedError('connection refused');
       expect(err.code).toBe('DB_CONNECTION_FAILED');
     });
   });
 });
 
-// ─── Helper: Build hash-chained audit records ────────────────────
 
 function buildChainedRecords(count: number): AuditRecord[] {
   const records: AuditRecord[] = [];
@@ -1096,7 +1063,6 @@ function verifyChain(
   return brokenLinks;
 }
 
-// ─── Helper: Get table extractor (needs libpg-query loaded) ──────
 
 async function getTableExtractor() {
   const { parseSync, loadModule } = await import('libpg-query');

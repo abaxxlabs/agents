@@ -7,7 +7,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-// import { DateSort, DataStream } from '@dwn-protocol/id';
+// import { DateSort, DataStream } from '@abaxxtech/id';
 // import { DwnApi } from '../dwn-api.js';
 import { LevelStore } from '../common/index.js';
 import { EdDsaAlgorithm } from '../crypto/index.js';

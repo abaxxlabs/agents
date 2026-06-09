@@ -1,32 +1,14 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * Cross-backend SessionStore contract tests — parameterized over memory and SQLite adapters.
- */
-
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { InMemorySessionStore } from '../../src/storage/memory/session-store.js';
-import { SqliteStorageBackend } from '../../src/storage/sqlite/index.js';
-import { deriveSessionMacKey } from '../../src/storage/envelope-mac.js';
-import { asMasterKey } from '../../src/crypto/master-key.js';
+import { InMemorySessionStore } from '#storage/memory/session-store.js';
+import { SqliteStorageBackend } from '#storage/sqlite/index.js';
+import { deriveSessionMacKey } from '#storage/envelope-mac.js';
+import { asMasterKey } from '#crypto/master-key.js';
 import {
   EnvelopeTooLargeError,
   ProviderNotAllowedError,
   type SessionStore,
   type SessionEnvelope,
-} from '../../src/storage/types.js';
+} from '#storage/types.js';
 
 const _masterBuf = Buffer.alloc(32);
 Buffer.from('contract-test-master', 'utf8').copy(_masterBuf);
@@ -91,7 +73,7 @@ for (const { name, factory } of factories) {
       await cleanup();
     });
 
-    it('put + get round-trip (D7, NF-1)', async () => {
+    it('put + get round-trip', async () => {
       await store.put('t-1', env({ humanDid: 'did:a' }), { ttlSeconds: 60 });
       const e = await store.get('t-1');
       expect(e).not.toBeNull();
@@ -99,7 +81,7 @@ for (const { name, factory } of factories) {
       expect(e!.expiresAt).toBeGreaterThan(Date.now());
     });
 
-    it('put() rejects providerKind="mock" (D12)', async () => {
+    it('put() rejects providerKind="mock"', async () => {
       await expect(
         store.put(
           't-m',
@@ -109,7 +91,7 @@ for (const { name, factory } of factories) {
       ).rejects.toThrow(ProviderNotAllowedError);
     });
 
-    it('put() rejects > 32KB canonical envelope (D21)', async () => {
+    it('put() rejects > 32KB canonical envelope', async () => {
       const huge = Array.from({ length: 1000 }, (_, _i) => 'g' + 'x'.repeat(50));
       await expect(
         store.put('t-big', env({ oidcGroupClaims: huge }), { ttlSeconds: 60 }),
@@ -120,7 +102,7 @@ for (const { name, factory } of factories) {
       expect(await store.get('nope')).toBeNull();
     });
 
-    it('get() is pure-read — no sliding-window TTL (NF-6)', async () => {
+    it('get() is pure-read — no sliding-window TTL', async () => {
       await store.put('t-pure', env(), { ttlSeconds: 60 });
       const first = await store.get('t-pure');
       await new Promise((r) => setTimeout(r, 20));
@@ -132,7 +114,7 @@ for (const { name, factory } of factories) {
       await store.delete('never-there'); // must not throw
     });
 
-    it('deleteByHumanDid returns accurate count (NF-9)', async () => {
+    it('deleteByHumanDid returns accurate count', async () => {
       await store.put('a1', env({ humanDid: 'did:a' }), { ttlSeconds: 60 });
       await store.put('a2', env({ humanDid: 'did:a' }), { ttlSeconds: 60 });
       await store.put('b1', env({ humanDid: 'did:b' }), { ttlSeconds: 60 });
@@ -141,7 +123,7 @@ for (const { name, factory } of factories) {
       expect(await store.get('b1')).not.toBeNull();
     });
 
-    it('pruneExpired returns accurate count (NF-5)', async () => {
+    it('pruneExpired returns accurate count', async () => {
       await store.put('p1', env(), { ttlSeconds: 0.01 });
       await store.put('p2', env(), { ttlSeconds: 60 });
       await new Promise((r) => setTimeout(r, 30));

@@ -1,42 +1,17 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { LocalTrustAnchorStore } from '../src/discovery/trust-anchor.js';
-import { issueCredentialFromParent, createSessionFromDid } from '../src/auth/agent.js';
-import { VcVerifier } from '../src/vc-verifier.js';
-import { InMemoryRevocationStore } from '../src/storage/memory/revocation-store.js';
-import { AgentVerifier, ParentScopeExceededError } from '../src/identity/agent-verifier.js';
-import { CapabilityEngine } from '../src/capability/engine.js';
-import { AuditLogger } from '../src/audit-logger.js';
-import { generateDidKey, createSigner } from '../src/auth/index.js';
-import { ParentCredentialRequestFailedError } from '../src/errors.js';
-import type { AuditEntry } from '../src/types.js';
-import type { CapabilitySet } from '../src/capability/types.js';
-import type { AuditStore } from '../src/storage/types.js';
-
-/** Mock AuditStore for audit logger tests. */
-function createTestAuditStore(): AuditStore {
-  return {
-    append: vi.fn().mockResolvedValue(undefined),
-    loadLastRecord: vi.fn().mockResolvedValue(null),
-    loadLastRecordLocked: vi.fn().mockResolvedValue(null),
-    query: vi.fn().mockResolvedValue([]),
-  };
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+import { LocalTrustAnchorStore } from '#discovery/trust-anchor.js';
+import { issueCredentialFromParent, createSessionFromDid } from '#auth/agent.js';
+import { VcVerifier } from '#identity/index.js';
+import { InMemoryRevocationStore } from '#storage/memory/revocation-store.js';
+import { AgentVerifier, ParentScopeExceededError } from '#identity/agent-verifier.js';
+import { CapabilityEngine } from '#capability/engine.js';
+import { AuditLogger } from '#audit/index.js';
+import { generateDidKey, createSigner } from '#auth/index.js';
+import { ParentCredentialRequestFailedError } from '#errors/index.js';
+import type { AuditEntry } from '#types/index.js';
+import type { CapabilitySet } from '#capability/types.js';
+import { createMockAuditStore } from './mocks/audit-store.js';
+import { createMockVcVerifier } from './mocks/vc-verifier.js';
 
 const OWN_DID = 'did:key:z6MkownServerTest123';
 const PARENT_DID = 'did:dht:parentOrgInstance456';
@@ -342,7 +317,7 @@ describe('createSessionFromDid — revokeCredential', () => {
       humanKeys.privateKey,
     );
 
-    const jti = 'some-jti-abxagnts-180-d6';
+    const jti = 'revoke-local-only-jti-d6';
     const result = await session.revokeCredential(jti);
 
     // Local write succeeded, no SDK notification attempted.
@@ -370,7 +345,7 @@ describe('createSessionFromDid — revokeCredential', () => {
       humanKeys.privateKey,
     );
 
-    const jti = 'some-jti-abxagnts-180-d6-sdk-fail';
+    const jti = 'revoke-sdk-fail-jti-d6';
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       const result = await session.revokeCredential(jti);
@@ -445,10 +420,10 @@ describe('AgentVerifier — Step 2.5 parentScopeCeiling', () => {
     const trustStore = new LocalTrustAnchorStore({ ownServerDid: OWN_DID });
     await trustStore.addTrustedServer(ISSUER_DID, 'api');
 
-    const mockVcVerifier = {
-      verify: async () => ({
+    return new AgentVerifier({
+      vcVerifier: createMockVcVerifier({
         valid: true,
-        status: 'VALID' as const,
+        status: 'VALID',
         credential: {
           issuer: ISSUER_DID,
           subject: AGENT_DID,
@@ -456,10 +431,6 @@ describe('AgentVerifier — Step 2.5 parentScopeCeiling', () => {
           expiresAt: new Date(Date.now() + 3600_000),
         },
       }),
-    } as unknown as VcVerifier;
-
-    return new AgentVerifier({
-      vcVerifier: mockVcVerifier,
       trustAnchorStore: trustStore,
       capabilityEngine: new CapabilityEngine(),
     });
@@ -524,7 +495,7 @@ describe('Audit Logger — V3 orgId records', () => {
 
   it('version is 3 when orgId is present', async () => {
     const logger = new AuditLogger({
-      auditStore: createTestAuditStore(),
+      auditStore: createMockAuditStore(),
       enabled: true,
     });
 
@@ -546,7 +517,7 @@ describe('Audit Logger — V3 orgId records', () => {
 
   it('version is 3 even when orgId is absent', async () => {
     const logger = new AuditLogger({
-      auditStore: createTestAuditStore(),
+      auditStore: createMockAuditStore(),
       enabled: true,
     });
 
@@ -566,7 +537,7 @@ describe('Audit Logger — V3 orgId records', () => {
   });
 
   it('orgId is persisted via auditStore.append', async () => {
-    const store = createTestAuditStore();
+    const store = createMockAuditStore();
     const logger = new AuditLogger({ auditStore: store, enabled: true });
 
     const entry: AuditEntry = {
@@ -589,7 +560,7 @@ describe('Audit Logger — V3 orgId records', () => {
 
   it('empty string orgId is preserved on record (signAuditRecord !== undefined check)', async () => {
     const logger = new AuditLogger({
-      auditStore: createTestAuditStore(),
+      auditStore: createMockAuditStore(),
       enabled: true,
     });
 

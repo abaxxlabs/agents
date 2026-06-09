@@ -1,42 +1,15 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * MigrationExecutor — Unit Tests
- *
- * Tests the atomic DID migration pipeline: idempotency checks, DID validation,
- * database transaction flow, in-memory state updates, and error handling.
- * Uses mock pg Pool following the same pattern as audit-logger.test.ts.
- *
- * Why these tests matter: the migration executor handles the most security-
- * sensitive operation in the identity system — changing who owns an agent.
- * A bug here could let an attacker claim another user's agents, corrupt the
- * audit chain, or silently lose context entries. Every error path must reject
- * clearly and leave state unchanged.
- */
-
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import type { Pool } from 'pg';
-import { MigrationExecutor } from '../src/migration.js';
-import { DidAliasRegistry } from '../src/did-alias.js';
-import { AuditLogger } from '../src/audit-logger.js';
+import { createMockClient, createMockPool } from './mocks/pool.js';
+import { MigrationExecutor } from '#identity/migration.js';
+import { DidAliasRegistry } from '#did/alias.js';
+import { AuditLogger } from '#audit/index.js';
 import {
   MigrationTrustAnchor,
   UntrustedMigrationIssuerError,
   type TrustedMigrationCredential,
-} from '../src/discovery/migration-trust-anchor.js';
-import type { RegisteredAgent, MigrationCredentialClaims } from '../src/types.js';
+} from '#discovery/migration-trust-anchor.js';
+import type { RegisteredAgent, MigrationCredentialClaims } from '#types/index.js';
 
 /**
  * Test migration issuer DID used by the happy-path tests below.
@@ -60,84 +33,46 @@ function createTrustedAnchor(): MigrationTrustAnchor {
   return anchor;
 }
 
-// ─── Mock Pool Factory ────────────────────────────────────────────
 
-/**
- * Creates a mock pg Pool with configurable query responses.
- * The queryResponses map lets each test define exactly what SQL queries
- * return, simulating different database states.
- */
-function createMockPool(
+function createMigrationFixtures(
   options: {
-    /** Simulate credential already in DB (idempotency race condition). */
     aliasExists?: boolean;
-    /** Number of agents registered under the old DID. */
     agentCount?: number;
-    /** Simulate a DB error during transaction. */
     failOnStep?: 'begin' | 'insert-alias' | 'update-agents' | 'update-context' | 'commit';
   } = {},
 ) {
   const { aliasExists = false, agentCount = 2, failOnStep } = options;
-
   const clientQueries: string[] = [];
-  const mockClient = {
-    query: vi.fn().mockImplementation(async (sql: string, _params?: unknown[]) => {
-      clientQueries.push(sql);
 
-      if (failOnStep === 'begin' && sql.includes('BEGIN')) {
-        throw new Error('simulated DB error on BEGIN');
-      }
-      if (failOnStep === 'insert-alias' && sql.includes('INSERT INTO agent_did_aliases')) {
-        throw new Error('simulated DB error on alias INSERT');
-      }
-      if (failOnStep === 'update-agents' && sql.includes('UPDATE agents')) {
-        throw new Error('simulated DB error on agent UPDATE');
-      }
-      if (failOnStep === 'update-context' && sql.includes('UPDATE agent_context')) {
-        throw new Error('simulated DB error on context UPDATE');
-      }
-      if (failOnStep === 'commit' && sql.includes('COMMIT')) {
-        throw new Error('simulated DB error on COMMIT');
-      }
+  const client = createMockClient((sql) => {
+    clientQueries.push(sql);
 
-      // Idempotency check inside transaction
-      if (sql.includes('SELECT 1 FROM agent_did_aliases')) {
-        return { rows: aliasExists ? [{ '1': 1 }] : [] };
-      }
+    if (failOnStep === 'begin' && sql.includes('BEGIN'))
+      throw new Error('simulated DB error on BEGIN');
+    if (failOnStep === 'insert-alias' && sql.includes('INSERT INTO agent_did_aliases'))
+      throw new Error('simulated DB error on alias INSERT');
+    if (failOnStep === 'update-agents' && sql.includes('UPDATE agents'))
+      throw new Error('simulated DB error on agent UPDATE');
+    if (failOnStep === 'update-context' && sql.includes('UPDATE agent_context'))
+      throw new Error('simulated DB error on context UPDATE');
+    if (failOnStep === 'commit' && sql.includes('COMMIT'))
+      throw new Error('simulated DB error on COMMIT');
 
-      // Owner check
-      if (sql.includes('SELECT COUNT')) {
-        return { rows: [{ cnt: String(agentCount) }] };
-      }
+    if (sql.includes('SELECT 1 FROM agent_did_aliases'))
+      return { rows: aliasExists ? [{ '1': 1 }] : [] };
+    if (sql.includes('SELECT COUNT'))
+      return { rows: [{ cnt: String(agentCount) }] };
+    if (sql.includes('INSERT INTO agent_did_aliases'))
+      return { rowCount: 1 };
+    if (sql.includes('UPDATE agents'))
+      return { rowCount: agentCount };
+    if (sql.includes('UPDATE agent_context'))
+      return { rowCount: 5 };
 
-      // INSERT alias
-      if (sql.includes('INSERT INTO agent_did_aliases')) {
-        return { rowCount: 1 };
-      }
+    return { rows: [], rowCount: 0 };
+  });
 
-      // UPDATE agents
-      if (sql.includes('UPDATE agents')) {
-        return { rowCount: agentCount };
-      }
-
-      // UPDATE context
-      if (sql.includes('UPDATE agent_context')) {
-        return { rowCount: 5 };
-      }
-
-      return { rows: [], rowCount: 0 };
-    }),
-    release: vi.fn(),
-  };
-
-  return {
-    pool: {
-      connect: vi.fn().mockResolvedValue(mockClient),
-      query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }),
-    } as unknown as Pool,
-    client: mockClient,
-    clientQueries,
-  };
+  return { pool: createMockPool({ client }), client, clientQueries };
 }
 
 function createMockAuditLogger() {
@@ -193,7 +128,6 @@ function makeTestJwt(opts: { iss?: string; nonce?: string } = {}): string {
   return `${b64u(header)}.${b64u(payload)}.fake-signature-not-verified-in-tests`;
 }
 
-// ─── Tests ────────────────────────────────────────────────────────
 
 describe('MigrationExecutor', () => {
   let registry: DidAliasRegistry;
@@ -217,10 +151,9 @@ describe('MigrationExecutor', () => {
     } as RegisteredAgent);
   });
 
-  // ─── Idempotency (in-memory) ────────────────────────────────────
 
   it('returns alreadyMigrated when credential hash is in the alias registry', async () => {
-    const { pool } = createMockPool();
+    const { pool } = createMigrationFixtures();
     const auditLogger = createMockAuditLogger();
     const executor = new MigrationExecutor({
       pool,
@@ -252,10 +185,9 @@ describe('MigrationExecutor', () => {
     expect(pool.connect).not.toHaveBeenCalled();
   });
 
-  // ─── DID validation ─────────────────────────────────────────────
 
   it('rejects previousDid that is not did:key', async () => {
-    const { pool } = createMockPool();
+    const { pool } = createMigrationFixtures();
     const auditLogger = createMockAuditLogger();
     const executor = new MigrationExecutor({
       pool,
@@ -271,7 +203,7 @@ describe('MigrationExecutor', () => {
   });
 
   it('rejects newDid that is not did:dht', async () => {
-    const { pool } = createMockPool();
+    const { pool } = createMigrationFixtures();
     const auditLogger = createMockAuditLogger();
     const executor = new MigrationExecutor({
       pool,
@@ -286,10 +218,9 @@ describe('MigrationExecutor', () => {
     ).rejects.toThrow('must be a did:dht');
   });
 
-  // ─── DB idempotency (race condition) ────────────────────────────
 
   it('returns alreadyMigrated when credential is found in DB during transaction', async () => {
-    const { pool } = createMockPool({ aliasExists: true });
+    const { pool } = createMigrationFixtures({ aliasExists: true });
     const auditLogger = createMockAuditLogger();
     const executor = new MigrationExecutor({
       pool,
@@ -305,10 +236,9 @@ describe('MigrationExecutor', () => {
     expect(result.alreadyMigrated).toBe(true);
   });
 
-  // ─── No agents for previousDid ──────────────────────────────────
 
   it('throws when previousDid has no agents registered', async () => {
-    const { pool } = createMockPool({ agentCount: 0 });
+    const { pool } = createMigrationFixtures({ agentCount: 0 });
     const auditLogger = createMockAuditLogger();
     const executor = new MigrationExecutor({
       pool,
@@ -323,23 +253,16 @@ describe('MigrationExecutor', () => {
     );
   });
 
-  // ─── BigInt-safe COUNT parsing ─────────────────────────────────
 
   it('throws PrecisionLossError when COUNT exceeds MAX_SAFE_INTEGER', async () => {
     const unsafeCount = (BigInt(Number.MAX_SAFE_INTEGER) + 1n).toString();
-    const mockClient = {
-      query: vi.fn().mockImplementation(async (sql: string) => {
-        if (sql.includes('BEGIN')) return {};
-        if (sql.includes('SELECT 1 FROM agent_did_aliases')) return { rows: [] };
-        if (sql.includes('SELECT COUNT')) return { rows: [{ cnt: unsafeCount }] };
-        return { rows: [], rowCount: 0 };
-      }),
-      release: vi.fn(),
-    };
-    const pool = {
-      connect: vi.fn().mockResolvedValue(mockClient),
-      query: vi.fn(),
-    } as unknown as Pool;
+    const client = createMockClient((sql) => {
+      if (sql.includes('BEGIN')) return {};
+      if (sql.includes('SELECT 1 FROM agent_did_aliases')) return { rows: [] };
+      if (sql.includes('SELECT COUNT')) return { rows: [{ cnt: unsafeCount }] };
+      return { rows: [], rowCount: 0 };
+    });
+    const pool = createMockPool({ client });
 
     const auditLogger = createMockAuditLogger();
     const executor = new MigrationExecutor({
@@ -355,10 +278,9 @@ describe('MigrationExecutor', () => {
     );
   });
 
-  // ─── Successful migration ──────────────────────────────────────
 
   it('executes full migration: DB updates, alias, and in-memory map', async () => {
-    const { pool, clientQueries } = createMockPool({ agentCount: 2 });
+    const { pool, clientQueries } = createMigrationFixtures({ agentCount: 2 });
     const auditLogger = createMockAuditLogger();
     const executor = new MigrationExecutor({
       pool,
@@ -401,10 +323,9 @@ describe('MigrationExecutor', () => {
     );
   });
 
-  // ─── Custom grace period ────────────────────────────────────────
 
   it('uses custom grace period when configured', async () => {
-    const { pool } = createMockPool();
+    const { pool } = createMigrationFixtures();
     const auditLogger = createMockAuditLogger();
     const executor = new MigrationExecutor({
       pool,
@@ -424,10 +345,9 @@ describe('MigrationExecutor', () => {
     expect(result.gracePeriodExpiresAt.getTime()).toBeLessThan(expectedMax);
   });
 
-  // ─── DB failure → rollback ──────────────────────────────────────
 
   it('rolls back and throws on INSERT alias failure', async () => {
-    const { pool, client } = createMockPool({ failOnStep: 'insert-alias' });
+    const { pool, client } = createMigrationFixtures({ failOnStep: 'insert-alias' });
     const auditLogger = createMockAuditLogger();
     const executor = new MigrationExecutor({
       pool,
@@ -452,7 +372,7 @@ describe('MigrationExecutor', () => {
   });
 
   it('rolls back and throws on agent UPDATE failure', async () => {
-    const { pool } = createMockPool({ failOnStep: 'update-agents' });
+    const { pool } = createMigrationFixtures({ failOnStep: 'update-agents' });
     const auditLogger = createMockAuditLogger();
     const executor = new MigrationExecutor({
       pool,
@@ -473,10 +393,9 @@ describe('MigrationExecutor', () => {
     }
   });
 
-  // ─── Audit failure is non-fatal ─────────────────────────────────
 
   it('succeeds even when audit logging fails', async () => {
-    const { pool } = createMockPool();
+    const { pool } = createMigrationFixtures();
     const auditLogger = createMockAuditLogger();
     // Make audit logger throw — migration should still succeed
     (auditLogger.logRejection as unknown as Mock).mockImplementation(() =>
@@ -497,10 +416,9 @@ describe('MigrationExecutor', () => {
     expect(result.aliasCreated).toBe(true);
   });
 
-  // ─── Client release ─────────────────────────────────────────────
 
   it('always releases the database client, even on error', async () => {
-    const { pool, client } = createMockPool({ failOnStep: 'update-context' });
+    const { pool, client } = createMigrationFixtures({ failOnStep: 'update-context' });
     const auditLogger = createMockAuditLogger();
     const executor = new MigrationExecutor({
       pool,
@@ -516,10 +434,9 @@ describe('MigrationExecutor', () => {
     expect(client.release).toHaveBeenCalled();
   });
 
-  // ─── COMMIT failure → rollback, state untouched ────────────────
 
   it('rolls back and leaves state unchanged on COMMIT failure', async () => {
-    const { pool, client } = createMockPool({ failOnStep: 'commit' });
+    const { pool, client } = createMigrationFixtures({ failOnStep: 'commit' });
     const auditLogger = createMockAuditLogger();
     const executor = new MigrationExecutor({
       pool,
@@ -542,10 +459,9 @@ describe('MigrationExecutor', () => {
     }
   });
 
-  // ─── Context UPDATE failure → in-memory state untouched ────────
 
   it('leaves in-memory state unchanged on context UPDATE failure', async () => {
-    const { pool } = createMockPool({ failOnStep: 'update-context' });
+    const { pool } = createMigrationFixtures({ failOnStep: 'update-context' });
     const auditLogger = createMockAuditLogger();
     const executor = new MigrationExecutor({
       pool,
@@ -567,10 +483,9 @@ describe('MigrationExecutor', () => {
     }
   });
 
-  // ─── Concurrent migration (same credential) ───────────────────
 
   it('second concurrent execute for same credential returns alreadyMigrated', async () => {
-    const { pool } = createMockPool();
+    const { pool } = createMigrationFixtures();
     const auditLogger = createMockAuditLogger();
     const executor = new MigrationExecutor({
       pool,
@@ -592,10 +507,9 @@ describe('MigrationExecutor', () => {
     expect(result2.agentsMigrated).toBe(0);
   });
 
-  // ─── Concurrent migration (different credentials, same oldDid) ─
 
   it('second migration for same oldDid with different credential processes in DB', async () => {
-    const { pool } = createMockPool();
+    const { pool } = createMigrationFixtures();
     const auditLogger = createMockAuditLogger();
     const executor = new MigrationExecutor({
       pool,
@@ -625,10 +539,9 @@ describe('MigrationExecutor', () => {
     expect(registry.didsMatch(oldDid, 'did:dht:AnotherNew')).toBe(true);
   });
 
-  // ─── Empty claims fields ───────────────────────────────────────
 
   it('rejects claims with empty string previousDid', async () => {
-    const { pool } = createMockPool();
+    const { pool } = createMigrationFixtures();
     const auditLogger = createMockAuditLogger();
     const executor = new MigrationExecutor({
       pool,
@@ -644,7 +557,7 @@ describe('MigrationExecutor', () => {
   });
 
   it('rejects claims with empty string oidcSubject', async () => {
-    const { pool } = createMockPool();
+    const { pool } = createMigrationFixtures();
     const auditLogger = createMockAuditLogger();
     const executor = new MigrationExecutor({
       pool,
@@ -659,7 +572,6 @@ describe('MigrationExecutor', () => {
     ).rejects.toThrow('must not be empty');
   });
 
-  // ─── Migration trust anchor enforcement (open-core defensibility) ──
   //
   // These tests cover the audit-surfaced gap: MigrationExecutor must
   // independently reject credentials whose verified issuer DID (decoded
@@ -670,7 +582,7 @@ describe('MigrationExecutor', () => {
   // check to the credential being processed.
 
   it('rejects migration when JWT iss is not in the migration trust anchor', async () => {
-    const { pool } = createMockPool();
+    const { pool } = createMigrationFixtures();
     const auditLogger = createMockAuditLogger();
     // Default MigrationTrustAnchor — empty (no baked issuers, no parent additions).
     const executor = new MigrationExecutor({
@@ -699,7 +611,7 @@ describe('MigrationExecutor', () => {
   });
 
   it('rejects malformed JWT (not 3 parts, invalid base64, missing iss)', async () => {
-    const { pool } = createMockPool();
+    const { pool } = createMigrationFixtures();
     const auditLogger = createMockAuditLogger();
     const executor = new MigrationExecutor({
       pool,
@@ -743,7 +655,7 @@ describe('MigrationExecutor', () => {
   });
 
   it('accepts migration when JWT iss is added via parent-credential-chain', async () => {
-    const { pool } = createMockPool();
+    const { pool } = createMigrationFixtures();
     const auditLogger = createMockAuditLogger();
 
     // Construct an empty trust anchor (no baked issuers) and add a runtime
@@ -769,7 +681,7 @@ describe('MigrationExecutor', () => {
   });
 
   it('accepts JWT iss with a DID-URL fragment by normalizing it (matches bare-DID trust entry)', async () => {
-    const { pool } = createMockPool();
+    const { pool } = createMigrationFixtures();
     const auditLogger = createMockAuditLogger();
     const anchor = new MigrationTrustAnchor();
     anchor.addFromParentCredentialChain('did:dht:abaxxone-runtime');
@@ -797,7 +709,7 @@ describe('MigrationExecutor', () => {
     // response that would let them probe whether their forged JWT happens
     // to hash-collide with a known credential. The
     // trust check is the very first gate.
-    const { pool } = createMockPool();
+    const { pool } = createMigrationFixtures();
     const auditLogger = createMockAuditLogger();
     const executor = new MigrationExecutor({
       pool,
@@ -841,7 +753,7 @@ describe('MigrationExecutor', () => {
     // get UntrustedMigrationIssuerError — not the "claims must not be empty"
     // error that would let them differentiate "well-shaped claims" from
     // "untrusted issuer" responses. The trust gate is the very first gate.
-    const { pool } = createMockPool();
+    const { pool } = createMigrationFixtures();
     const auditLogger = createMockAuditLogger();
     const executor = new MigrationExecutor({
       pool,
@@ -857,7 +769,6 @@ describe('MigrationExecutor', () => {
     ).rejects.toThrow(UntrustedMigrationIssuerError);
   });
 
-  // ─── Brand-cast bypass regression ───────────────────────────────
   //
   // Demonstrates defense-in-depth: even when a caller bypasses the
   // TrustedMigrationCredential brand via `as` cast, the runtime gate
@@ -865,7 +776,7 @@ describe('MigrationExecutor', () => {
   // time, so the runtime check is the actual security boundary.
 
   it('runtime gate fires even when brand is bypassed via as-cast', async () => {
-    const { pool } = createMockPool();
+    const { pool } = createMigrationFixtures();
     const auditLogger = createMockAuditLogger();
     const executor = new MigrationExecutor({
       pool,

@@ -23,7 +23,7 @@
  * Extraction priority: hd (Google Workspace) → tid (Azure AD) → org claim → email domain fallback.
  */
 
-import type { OidcIdentity } from '../auth/provider.js';
+import type { OidcIdentity } from '#auth/provider.js';
 
 // ─── Consumer Domain Registry ────────────────────────────────────────────────
 

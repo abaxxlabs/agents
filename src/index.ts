@@ -35,18 +35,18 @@
 // ─── Primary class ──────────────────────────────────────────────────
 
 // AgentIdentity — SQL-free identity layer.
-export { AgentIdentity } from './agent-identity.js';
-export type { AgentIdentityConfig, AgentIdentityInjections } from './agent-identity.js';
+export { AgentIdentity } from '#identity/agent-identity.js';
+export type { AgentIdentityConfig, AgentIdentityInjections } from '#identity/agent-identity.js';
 
 // ─── Master key ─────────────────────────────────────────────────────
 
-export { asMasterKey } from './crypto/master-key.js';
-export type { MasterKey } from './crypto/master-key.js';
+export { asMasterKey } from '#crypto/master-key.js';
+export type { MasterKey } from '#crypto/master-key.js';
 
 // ─── Logger ────────────────────────────────────────────────────────
 
-export type { Logger } from './logger.js';
-export { defaultLogger } from './logger.js';
+export type { Logger } from './observability/logger.js';
+export { defaultLogger, getLogger } from './observability/logger.js';
 
 // ─── Redaction helpers ──────────────────────────────────────────────
 
@@ -54,18 +54,18 @@ export {
   REDACTED_MASTER_KEY,
   REDACTED_SIGNER,
   withRedactedSerialization,
-} from './crypto/redact.js';
+} from '#crypto/redact.js';
 
 // ─── Migration credential branded types ──────────────────────────
 
 export {
   asTrustedMigrationCredential,
   asVerifiedParentCredential,
-} from './discovery/migration-trust-anchor.js';
+} from '#discovery/migration-trust-anchor.js';
 export type {
   TrustedMigrationCredential,
   VerifiedParentCredential,
-} from './discovery/migration-trust-anchor.js';
+} from '#discovery/migration-trust-anchor.js';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -80,17 +80,17 @@ export type {
   IdSdkInstance,
   IssueCredentialOptions,
   DelegateCredentialOptions,
+  CredentialScope,
   AuditRecord,
   AuditEntry,
   VerificationResult,
   DecodedCredential,
-  CredentialScope,
-} from './types.js';
+} from '#types/index.js';
 
 // ─── Domain types (branded strings) ────────────────────────────────
 
-export type { Did, ColumnName, TableName, Jti, IssuerUrl } from './domain-types.js';
-export { asDid, asColumnName, asTableName, asJti, asIssuerUrl } from './domain-types.js';
+export type { Did, ColumnName, TableName, Jti, IssuerUrl } from '#types/index.js';
+export { asDid, asColumnName, asTableName, asJti, asIssuerUrl } from '#types/index.js';
 
 // ─── Errors ─────────────────────────────────────────────────────────
 
@@ -103,11 +103,13 @@ export {
   DidResolutionFailedError,
   AuthUnavailableError,
   DbConnectionFailedError,
+  SqliteRuntimeUnavailableError,
   AuditWriteFailedError,
   AgentScopeError,
   QueryRejectedError,
   ScopeViolationError,
   CredentialReplayedError,
+  TtlExceededError,
   CapabilityRequiresPaidTierError,
   ParentCredentialRequestFailedError,
   DiscoveryEndpointBlockedError,
@@ -116,9 +118,8 @@ export {
   MasterKeyMismatchError,
   MasterKeyMissingError,
   PrecisionLossError,
-} from './errors.js';
+} from '#errors/index.js';
 
-// ─── Pure-crypto column encryption (no Pool dependency) ─────────────
 
 export {
   encrypt,
@@ -127,15 +128,16 @@ export {
   wrapColumnKey,
   unwrapColumnKey,
   decryptRow,
-} from './column-encryption.js';
+} from '#encryption/index.js';
 
 // ─── Credential verification ────────────────────────────────────────
 
-export { VcVerifier, createJwt, verifyJwtSignature, decodeJwt } from './vc-verifier.js';
+export { VcVerifier } from '#identity/vc-verifier.js';
+export { createJwt, verifyJwtSignature, decodeJwt } from './crypto/jwt.js';
 
 // ─── Audit ──────────────────────────────────────────────────────────
 
-export { AuditLogger, hashAuditRecord } from './audit-logger.js';
+export { AuditLogger, hashAuditRecord } from '#audit/index.js';
 
 // ─── Transport-neutral services ─────────────────────────────────────
 
@@ -145,7 +147,7 @@ export {
   createAuditService,
   createCredentialService,
   createQueryService,
-} from './services/index.js';
+} from '#services/index.js';
 export type {
   AgentDirectory,
   AgentDirectoryService,
@@ -161,7 +163,7 @@ export type {
   QueryService,
   ScopedQueryInput,
   ScopedQueryResult,
-} from './services/index.js';
+} from '#services/index.js';
 
 // ─── Transport boundaries ──────────────────────────────────────────
 
@@ -191,7 +193,7 @@ export {
   type RateLimiter,
   type RequestSchema,
   type SafeValidationIssue,
-} from './transport/index.js';
+} from '#transport/index.js';
 
 // ─── Auth utilities ─────────────────────────────────────────────────
 
@@ -199,17 +201,16 @@ export {
 export {
   generateDidKey,
   issueCredential,
-  issueDelegatedCredential,
   issueCredentialFromParent,
   createMockSession,
   createOidcSession,
   createSigner,
   toExternalSigner,
-} from './auth/index.js';
+} from '#auth/index.js';
 
 // Generic OIDC — provider-agnostic OAuth.
-export { GenericOidcProvider } from './auth/generic.js';
-export { verifyIdTokenSignature } from './auth/jwks-verify.js';
+export { GenericOidcProvider } from '#auth/generic.js';
+export { verifyIdTokenSignature } from '#auth/jwks-verify.js';
 
 // Scope Ceiling — session-level authorization bound.
 export {
@@ -226,7 +227,7 @@ export {
   type RequestedScope,
   type IssuanceRule,
   type IssuanceContext,
-} from './auth/ceiling.js';
+} from '#auth/ceiling.js';
 
 // ─── Capability ─────────────────────────────────────────────────────
 
@@ -240,7 +241,7 @@ export {
   CapabilityParseError,
   CapabilitySetTooLargeError,
   MAX_CAPABILITY_SET_SIZE,
-} from './capability/index.js';
+} from '#capability/index.js';
 
 // ─── Discovery ──────────────────────────────────────────────────────
 
@@ -250,15 +251,15 @@ export {
   type TrustAnchorStore,
   type TrustAnchor,
   type TrustAnchorSource,
-} from './discovery/trust-anchor.js';
+} from '#discovery/trust-anchor.js';
 
 // ─── Identity surface ───────────────────────────────────────────────
 
 // AgentVerifier, OrgBoundary, Keystore, ServerIdentity, Binding.
-export * from './identity/index.js';
+export * from '#identity/index.js';
 
 // Consumer domain composition (identity-level utility).
-export { composeConsumerDomains } from './identity/org-boundary.js';
+export { composeConsumerDomains } from '#identity/org-boundary.js';
 
 // ─── MCP ────────────────────────────────────────────────────────────
 
@@ -268,7 +269,7 @@ export {
   OVERLAP_WINDOW_SECONDS,
   type McpBearerAuth,
   type McpBearerAuthOptions,
-} from './mcp/auth.js';
+} from '#mcp/auth.js';
 
 // ChallengeStore — HMAC-signed time-based challenges with JTI dedup.
 export {
@@ -279,7 +280,7 @@ export {
   type ChallengeIssueOptions,
   type ChallengeIssueResult,
   type ChallengeConsumeResult,
-} from './mcp/challenge-store.js';
+} from '#mcp/challenge-store.js';
 
 // MCP server — available via @abaxxlabs/agents/mcp subpath.
 // Not re-exported here: the server depends on AgentScope (SQL).
@@ -324,4 +325,4 @@ export {
   type ContextEntry,
   type ContextListOptions,
   type AuditQueryFilter,
-} from './storage/index.js';
+} from '#storage/index.js';

@@ -1,32 +1,3 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/**
- * MockOidcServer — Unit + Integration Tests
- *
- * Covers:
- *   - Server lifecycle (start/stop, port assignment)
- *   - Discovery endpoint (both openid-configuration and openid_configuration)
- *   - JWKS endpoint
- *   - Full authorization_code + PKCE S256 flow
- *   - Programmatic login (POST /auth/login + X-Session-ID)
- *   - Userinfo (sub, email, did, extraClaims)
- *   - Error cases: invalid code, wrong PKCE, invalid token, wrong password
- *   - Integration with GenericOidcProvider
- *   - Integration with AbaxxOneOidcProvider
- */
-
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
@@ -73,9 +44,9 @@ interface LoginResponse {
   session_id: string;
 }
 import { MockOidcServer } from './mock-oidc-provider/index.js';
-import { GenericOidcProvider } from '../src/auth/generic.js';
-import { AbaxxOneOidcProvider } from '../src/auth/abaxx-one.js';
-import { ParentCredentialRequestFailedError } from '../src/errors.js';
+import { GenericOidcProvider } from '#auth/generic.js';
+import { AbaxxOneOidcProvider } from '#auth/abaxx-one.js';
+import { ParentCredentialRequestFailedError } from '#errors/index.js';
 import { loopbackSkipReason, shouldRunLoopbackHttpTests } from './support/integration-gates.js';
 
 // ─── Shared server setup ──────────────────────────────────────────────────────
