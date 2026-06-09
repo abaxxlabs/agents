@@ -1,7 +1,11 @@
+<!-- TODO: hero banner — full-width visual, dark background, Agents++ wordmark + tagline -->
+
+<h1 align="center">Agents++</h1>
+<p align="center"><strong>Identity, authorization, and proof for AI agents.</strong></p>
 <p align="center">
-  <h1 align="center">Agents++</h1>
-  <p align="center"><strong>Agents are an attack surface. Hold yours accountable.</strong></p>
-  <p align="center">Open trust infrastructure for autonomous AI agents.</p>
+  Your agent should be able to answer three questions at every interaction:<br/>
+  <em>Who is it? Who authorized it? What can it see?</em><br/>
+  Agents++ makes the answers cryptographic.
 </p>
 
 <p align="center">
@@ -10,82 +14,79 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License" /></a>
 </p>
 
+<p align="center">
+  <a href="#the-problem">Why</a> &bull;
+  <a href="#what-this-looks-like">Experience</a> &bull;
+  <a href="#install">Install</a> &bull;
+  <a href="#quick-start">Quick start</a> &bull;
+  <a href="#features">Features</a> &bull;
+  <a href="#mcp--rest">MCP + REST</a> &bull;
+  <a href="#security-model">Security</a> &bull;
+  <a href="#free-tier-vs-abaxxone">Free vs AbaxxOne</a>
+</p>
+
 ---
 
-Every AI agent is a potential threat actor. A stolen API key is indistinguishable from a legitimate one, a compromised agent can act with the full authority of whoever provisioned it, and there is no audit trail connecting actions to a responsible party.
+## The problem
 
-**Three incidents in seven months tell the same story:**
+Any credential an agent can use, a compromised agent can exfiltrate. API keys don't know who they belong to. OAuth tokens carry no delegation provenance. When an agent is breached, there's no way to tell which human authorized it, what it was supposed to access, or whether it stayed in bounds. You find out from the incident report.
 
-| Incident | What happened |
-|---|---|
-| **Drift AI** (Aug 2025) | Stolen OAuth tokens impersonated a trusted agent across 700+ enterprise environments. Bearer tokens carry no delegation provenance. |
-| **LiteLLM** (Mar 2026) | Backdoored packages harvested API keys across 95M monthly downloads. Stolen keys worked from attacker servers because they aren't bound to identity. |
-| **Meta confused deputy** (Mar 2026) | An internal agent with valid perimeter credentials autonomously exposed proprietary code and user data. No delegation chain, no scoped authorization. |
+These aren't edge cases. They're what happens when you build agentic systems without an identity and authorization layer. Agent runtimes solve execution -- they tell the model what tools to call. Nobody answers the harder question: *is this agent who it claims to be, acting on whose authority, with what specific permissions?* And nobody can prove it to someone outside the org.
 
-The gap is structural: current infrastructure authenticates *applications* but cannot verify *which agent, authorized by whom, for what scope*. Agents++ closes it.
+Agents++ is the missing layer. It gives every agent a cryptographic identity (a DID), binds that identity to the human who authorized it through a verifiable credential, enforces scope at the query layer, and writes a tamper-evident audit trail. The true bottleneck holding back institutional adoption isn't better tool-calling -- it's identity verification, authorization provenance, and the cryptographic binding of human intent to machine execution.
+
+## What this looks like
+
+Your trading agent needs to query the order book. Without Agents++, you hand it a database connection and hope your permission checks hold:
+
+```
+Agent: "SELECT instrument, price, quantity, counterparty FROM orders"
+App:   checks some boolean → allows it
+DB:    returns everything
+You:   trust the agent didn't go off-script
+```
+
+No proof the agent was authorized. No proof it stayed in scope. No audit trail a third party could verify.
+
+With Agents++, a human authenticates and issues a credential that says exactly what the agent can see. The agent presents that credential when it queries. The ScopeEngine verifies the chain and enforces the boundary:
+
+```
+Human:       authenticates via OIDC, creates agent, issues credential
+             → "this agent can see orders.instrument and orders.quantity, expires in 4h"
+
+Agent:       presents credential to ScopeEngine
+ScopeEngine: ✓ credential is valid (Ed25519 signature chain)
+             ✓ issuer DID matches authenticated human
+             ✓ requested columns are within scope
+             ✓ SQL doesn't touch unauthorized tables
+             → executes query, decrypts only authorized columns
+             → signs and appends audit record
+
+Result:      instrument | quantity
+             AAPL       | 500
+             TSLA       | 200
+
+             (price and counterparty: encrypted at rest, never decrypted,
+              query would have been rejected before reaching the database)
+```
+
+The credential is the authorization. The ScopeEngine is the enforcer. The audit trail is the proof.
 
 ## How it works
 
-```mermaid
-flowchart LR
-    H["Human\n(OIDC auth)"]
-    H -->|"issues credential\ncolumns: price, qty"| A
-    H -->|"issues credential\ncolumns: instrument"| B
-    A["Agent A"] -->|query| SE
-    B["Agent B"] -->|query| SE
-    SE["ScopeEngine\n─────────────\n✓ verify credential\n✓ enforce projection\n✓ decrypt columns\n✓ sign audit record"]
-    SE --> DB[("PostgreSQL\nAES-256-GCM\nper column")]
-    SE --> AL["Audit trail\nEd25519-signed\nhash-chained"]
-```
+1. A **human authenticates** (OIDC in production, mock in dev).
+2. They **create an agent** -- the agent gets its own Ed25519 keypair and DID.
+3. They **issue a credential** that says exactly what the agent can see: which columns, which actions, for how long.
+4. The agent **presents that credential** when it queries.
+5. The **ScopeEngine** verifies the credential chain, parses the SQL, rejects anything out of scope, decrypts only authorized columns, and signs an audit record.
+6. Every action is **Ed25519-signed and hash-chained** into a tamper-evident audit trail.
 
-Same table. Same SQL. Agent A gets `price` and `quantity` in cleartext. Agent B gets `instrument` only. Querying an out-of-scope encrypted column throws `ScopeViolationError` -- it isn't filtered, it's rejected before execution.
-
-## Before / after
-
-**Before** -- trust your agent not to exceed its permissions:
-
-```typescript
-// Application checks before the query — a prompt-injected agent can route around these
-if (!agent.hasPermission('price')) throw new Error('denied');
-const result = await db.query('SELECT instrument, price FROM orders');
-```
-
-**After** -- the query layer makes it structurally impossible:
-
-```typescript
-const result = await scope.query({
-  agent: agent.did,
-  credential,           // VC: { columns: ['orders.instrument'], actions: ['read'] }
-  table: 'orders',
-  sql: 'SELECT instrument, price FROM orders',
-  // 'price' is encrypted and out of scope → ScopeViolationError before execution
-});
-```
-
-## Features
-
-**Cryptographic agent identity.** Each agent owns an Ed25519 keypair and a DID. Every action is signed. Every credential chains back to the human who authorized it. Stolen credentials fail owner-binding checks -- possession alone is insufficient.
-
-**Column-level scope enforcement.** The ScopeEngine parses SQL through PostgreSQL's native parser, extracts physical table references (CTE-aware), and rejects any query that touches columns outside the credential's scope -- before the query reaches the database.
-
-**Defense-in-depth encryption.** Sensitive columns are AES-256-GCM encrypted at rest with per-column keys wrapped by a BYOK master key. Even with direct database access, encrypted data is unreadable without authorization. Key rotation and master-key rewrap are atomic, transactional operations.
-
-**Agent-to-agent delegation.** Supervisors delegate subsets of their scope to workers. Columns must be a subset, actions must be a subset, TTL cannot exceed the source. Chains compose under the same rules -- every link narrows, never widens.
-
-**Tamper-evident audit trail.** Every record is Ed25519-signed and SHA-256 hash-chained. PostgreSQL triggers block UPDATE and DELETE at the database level. Chain integrity is verifiable offline by anyone with the signing public keys.
-
-**MCP and REST surfaces.** Ship as a library, an MCP server (stdio + HTTPS), or a REST API. Same enforcement everywhere. AI agents (Claude, GPT, etc.) connect through MCP; web apps and cross-language clients use REST. Master key and DB credentials never cross the wire.
+Delegation works the same way down. A supervisor agent can delegate a strict subset of its scope to a worker -- fewer columns, fewer actions, shorter TTL. The chain only narrows, never widens.
 
 ## Install
 
 ```bash
-npm install @abaxxlabs/agents
-```
-
-Peer dependencies for SQL enforcement:
-
-```bash
-npm install pg libpg-query
+npm install @abaxxlabs/agents pg libpg-query
 ```
 
 ## Quick start
@@ -94,22 +95,21 @@ npm install pg libpg-query
 import { AgentScope } from '@abaxxlabs/agents/sql';
 import { resolveMasterKeyFromEnv } from '@abaxxlabs/agents/bootstrap';
 
+// 1. Set up the scope engine
 const scope = await AgentScope.create(
   {
     database: { connectionString: process.env.DATABASE_URL },
-    encryption: { columns: ['orders.quantity', 'orders.price', 'orders.counterparty'] },
+    encryption: { columns: ['orders.quantity', 'orders.price'] },
     audit: { enabled: true },
   },
   { masterKey: resolveMasterKeyFromEnv() },
 );
 
-// Authenticate (mock in dev, OIDC in production)
+// 2. Authenticate and create an agent
 const session = await scope.authenticate({ mockHumanDid: 'alice' });
-
-// Create an agent with a DID
 const agent = await scope.createAgent({ name: 'trading-agent', ownerDid: session.humanDid });
 
-// Issue a scoped credential — alice decides what the agent can see
+// 3. Issue a scoped credential
 const credential = await session.issueCredential({
   agent: agent.did,
   columns: ['orders.instrument', 'orders.quantity'],
@@ -117,48 +117,47 @@ const credential = await session.issueCredential({
   expiresIn: '4h',
 });
 
-// Query — only authorized columns are decrypted
+// 4. Query — only authorized columns are decrypted
 const result = await scope.query({
   agent: agent.did,
   credential,
   table: 'orders',
   sql: 'SELECT instrument, quantity FROM orders',
 });
-// Requesting 'price' or 'counterparty' → ScopeViolationError
+// Requesting 'price' → ScopeViolationError before the query reaches the database
 ```
 
-## How Agents++ compares
+## Features
 
-| Capability | Typical approach | Agents++ |
-|---|---|---|
-| Agent identity | API keys, no provenance | Verifiable credential chain (DID + VC) |
-| Scope enforcement | Row-Level Security or app-level filtering | Column-level, credential-based, works with connection pools |
-| Cross-org trust | Not addressed | Federated bilateral trust via AbaxxOne |
-| Audit trail | Application logs | Cryptographically signed, hash-chained, externally verifiable |
-| Delegation | Manual RBAC per agent | Credential delegation with automatic subset enforcement |
-| Key management | Shared secrets, env vars | BYOK master key, per-column encryption, branded types prevent leaks |
+- **Cryptographic agent identity** -- Ed25519 keypair + DID for every agent. Every action is signed. Stolen credentials fail owner-binding checks.
+- **Column-level scope enforcement** -- SQL is parsed through PostgreSQL's native parser. Out-of-scope queries are rejected before execution, not filtered after.
+- **Defense-in-depth encryption** -- AES-256-GCM per column, BYOK master key. Atomic key rotation and master-key rewrap without touching row data.
+- **Agent-to-agent delegation** -- Supervisors delegate subsets of their scope to workers. Columns narrow, TTL shrinks, actions reduce. Every link in the chain is verifiable.
+- **Tamper-evident audit** -- Ed25519-signed, SHA-256 hash-chained records. PostgreSQL triggers block UPDATE/DELETE. Verifiable offline by anyone with the public keys.
+- **MCP + REST surfaces** -- Same enforcement as a library, an MCP server, or a REST API. Master key and DB credentials never cross the wire.
+- **Delegation chain revocation** -- Revoke a parent credential and every downstream worker credential fails verification immediately.
+- **OIDC authentication** -- Google, Microsoft, Keycloak, and AbaxxOne out of the box. Mock auth for development.
 
 ## Subpath exports
 
-| Import | What it provides |
+| Import | What you get |
 |---|---|
-| `@abaxxlabs/agents` | AgentIdentity, auth, credentials, crypto, storage interfaces |
+| `@abaxxlabs/agents` | Agent identity, auth, credentials, crypto, storage interfaces |
 | `@abaxxlabs/agents/sql` | AgentScope, ScopeEngine, column-key management |
 | `@abaxxlabs/agents/mcp` | MCP server factory and `agents mcp` CLI |
 | `@abaxxlabs/agents/storage` | Storage backend composition |
 | `@abaxxlabs/agents/sqlite` | SQLite backend (bun:sqlite / better-sqlite3) |
 | `@abaxxlabs/agents/bootstrap` | `resolveMasterKeyFromEnv()` helper |
-| `@abaxxlabs/agents/id-sdk-mcp` | Platform identity adapter (AbaxxOne) |
 
-## MCP server
+## MCP + REST
 
-AI agents connect directly via the [Model Context Protocol](https://modelcontextprotocol.io):
+AI agents connect via the [Model Context Protocol](https://modelcontextprotocol.io). The agent calls tools over stdio or HTTPS; the master key and database credentials stay in the MCP server process.
 
 ```bash
-# stdio mode — Claude Desktop, Claude Code
+# stdio — Claude Desktop, Claude Code
 agents mcp --db postgresql://localhost/mydb --mock "alice"
 
-# HTTP mode — remote agents, master key stays in this process
+# HTTP — remote agents, TLS required
 agents mcp --db postgresql://localhost/mydb --transport http --port 8443 \
   --tls-cert cert.pem --tls-key key.pem
 ```
@@ -176,79 +175,39 @@ agents mcp --db postgresql://localhost/mydb --transport http --port 8443 \
 }
 ```
 
-Use HTTP transport for production -- the agent calls over the network and never has direct access to the database or master key.
+**REST** for web apps and cross-language clients:
 
-## Delegation
-
-Supervisors can delegate a strict subset of their scope to workers:
-
-```typescript
-const workerCred = scope.delegateCredential(supervisor.did, supervisorCred, {
-  targetAgent: worker.did,
-  columns: ['orders.instrument'],   // must be a subset of supervisor's scope
-  actions: ['read'],
-  expiresIn: '1h',                  // capped at supervisor's remaining TTL
-});
+```bash
+agents serve --db postgresql://localhost/mydb --port 3100
 ```
+
+Enforcement is identical across all three modes. The deployment shape determines where the trust boundary sits, not how enforcement works.
 
 ## Security model
 
 - **Ed25519 only** -- no algorithm agility, no downgrade surface
-- **BYOK master key** -- Agents++ never reads `process.env`; you pass the key explicitly. `MasterKey` is a branded type that blocks the buffer from leaking into untyped sinks at compile time
-- **Wrong-key boots fail loud** -- `AgentScope.create` throws `MasterKeyMismatchError` immediately if existing column keys can't be decrypted
-- **Column encryption** -- AES-256-GCM per column; `rotateColumnKey()` re-encrypts all rows atomically; `rewrapColumnKey()` migrates to a new master key without touching row data
-- **Append-only audit trail** -- PostgreSQL triggers block UPDATE/DELETE; every record is Ed25519-signed and hash-chained
+- **BYOK master key** -- you pass the key explicitly; `MasterKey` is a branded type that blocks leaks at compile time
+- **Wrong-key boots fail loud** -- `AgentScope.create` throws immediately if existing column keys can't be decrypted
+- **AES-256-GCM per column** -- `rotateColumnKey()` re-encrypts atomically; `rewrapColumnKey()` migrates master keys without touching rows
+- **Append-only audit** -- PostgreSQL triggers block UPDATE/DELETE at the database level
 - **VP audience binding** -- credentials can be bound to a specific server DID, preventing replay across instances
 - **PKCE S256** on all OIDC flows; SSRF guards on discovered endpoints
 - **Mock auth gated** -- `mockHumanDid` only works in `NODE_ENV=development` or `test`
 
-See [`docs/DECISIONS.md`](docs/DECISIONS.md) for architecture decision records.
-
-## Deployment modes
-
-Agents++ ships as one npm package with multiple subpath exports. The deployment topology is your choice:
-
-| Mode | Use when | Trust boundary |
-|---|---|---|
-| **Library** | Your backend wants scoped DB access for its own agents | Your application process |
-| **MCP server** | AI agents (Claude Desktop, custom clients) need DB access across a process boundary | Standalone MCP process -- master key never crosses the wire |
-| **REST server** | Web apps, cross-language clients, anything that can't speak MCP | Standalone REST process -- HTTPS + session auth |
-
-Enforcement is identical across all three modes. The deployment shape determines *where* the trust boundary sits, not *how* enforcement works.
-
-```bash
-# MCP (Claude Desktop, Claude Code)
-agents mcp --db postgresql://localhost/mydb --mock "Trader-1"
-
-# REST
-agents serve --db postgresql://localhost/mydb --port 3100
-```
-
 ## Free tier vs AbaxxOne
 
-The open-source library is genuinely useful on its own -- identity, scoping, encryption, and audit within a single trust boundary. AbaxxOne unlocks cross-organizational trust.
+The open-source library is fully functional on its own -- identity, scoping, encryption, and audit within a single trust boundary. [AbaxxOne](https://abaxx.tech) unlocks cross-organizational trust.
 
-| | Free tier | AbaxxOne |
+| | Free (this library) | AbaxxOne |
 |---|---|---|
-| **Agent identity** | `did:key` (deterministic, recoverable from OIDC) | `did:dht` (HSM-backed, institutional) |
+| **Agent identity** | `did:key` (deterministic, recoverable) | `did:dht` (HSM-backed, institutional) |
 | **Credential issuer** | Human's self-issued DID | Organization's DID |
 | **Trust boundary** | Single server | Cross-org, federated |
 | **Revocation** | Local (durable, cross-instance) | StatusList2021 (global, verifiable) |
 | **Agent discovery** | Local registry | AbaxxOne directory |
 | **Audit storage** | PostgreSQL | PostgreSQL + DWN (sovereign, portable) |
 
-The transition is additive. Existing code, credentials, and query patterns don't change -- you connect AbaxxOne services and unlock the network.
-
-## Documentation
-
-| Topic | Link |
-|---|---|
-| Full technical specification | [Documentation v0.11.4](docs/) |
-| v0.11 migration guide | [docs/migration-v0.11.md](docs/migration-v0.11.md) |
-| BYOK master key migration | [docs/migration-byok.md](docs/migration-byok.md) |
-| Architecture decisions | [docs/DECISIONS.md](docs/DECISIONS.md) |
-| Security policy | [SECURITY.md](SECURITY.md) |
-| Changelog | [CHANGELOG.md](CHANGELOG.md) |
+The transition is additive. Existing code, credentials, and query patterns stay the same -- you connect AbaxxOne services and unlock the network.
 
 ## Development
 
@@ -256,7 +215,7 @@ Requires Node.js 20.3+ and PostgreSQL 16 for the full test suite (Postgres-gated
 
 ```bash
 npm install
-npm test          # vitest, ~15s
+npm test          # vitest
 npm run build     # TypeScript → dist/
 npm run typecheck
 ```
@@ -272,23 +231,23 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres \
 DATABASE_URL=... npm test
 ```
 
-## AI-Assisted Development
+## Documentation
 
-This repo uses [gstack](https://github.com/garrytan/gstack) for AI-assisted development workflows. gstack is **required** for all Claude Code and Codex sessions.
-
-**One-time setup (each developer):**
-
-```bash
-git clone --depth 1 https://github.com/garrytan/gstack.git ~/.claude/skills/gstack
-cd ~/.claude/skills/gstack && ./setup --team
-```
-
-After install, skills like `/qa`, `/ship`, `/review`, `/investigate`, and `/browse` are available in Claude Code sessions. A pre-tool hook in `.claude/settings.json` enforces the requirement -- sessions without gstack installed will be blocked from using skills.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+| Topic | Link |
+|---|---|
+| Architecture decisions | [docs/DECISIONS.md](docs/DECISIONS.md) |
+| v0.11 migration guide | [docs/migration-v0.11.md](docs/migration-v0.11.md) |
+| BYOK master key migration | [docs/migration-byok.md](docs/migration-byok.md) |
+| Security policy | [SECURITY.md](SECURITY.md) |
+| Changelog | [CHANGELOG.md](CHANGELOG.md) |
+| Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
 ## License
 
 [Apache-2.0](LICENSE)
+
+---
+
+<p align="center">
+  Built by <a href="https://abaxx.tech">Abaxx Technologies</a>. Open-sourced through <a href="https://github.com/abaxxlabs">Abaxx Labs</a>.
+</p>
