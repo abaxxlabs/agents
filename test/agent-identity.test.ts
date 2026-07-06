@@ -194,7 +194,7 @@ describe('AgentIdentity', () => {
       { storage, masterKey: asMasterKey(keyBuf) },
     );
     identity.close();
-    const internalKey: Buffer = (identity as any).masterKey;
+    const internalKey: Buffer = (identity as unknown as { masterKey: Buffer }).masterKey;
     expect(internalKey.every((b: number) => b === 0x00)).toBe(true);
     expect(keyBuf.every((b) => b === 0x55)).toBe(true);
   });

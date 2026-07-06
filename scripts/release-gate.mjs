@@ -39,6 +39,18 @@ export const RELEASE_GATE_COMMAND_STEPS = [
     command: 'bun',
     args: ['install', '--frozen-lockfile'],
   },
+  {
+    label: 'Install server dependencies',
+    command: 'npm',
+    args: ['ci', '--no-audit', '--no-fund'],
+    cwd: 'packages/server',
+  },
+  {
+    label: 'Type-check server',
+    command: 'npx',
+    args: ['tsc', '-p', 'tsconfig.typecheck.json', '--noEmit'],
+    cwd: 'packages/server',
+  },
   { label: 'Type-check source', command: 'npm', args: ['run', 'typecheck'] },
   { label: 'Check public API snapshot', command: 'npm', args: ['run', 'check:public-api'] },
   {
@@ -348,7 +360,11 @@ export async function runReleaseGate() {
   await runStep('Verify Bun lockfile contract', assertBunLockfile);
   await runStep('Validate npm cache ownership', checkNpmCache);
   for (const step of RELEASE_GATE_COMMAND_STEPS) {
-    await runStep(step.label, () => runCommand(step.command, step.args));
+    if (step.cwd && !existsSync(path.resolve(process.cwd(), step.cwd))) {
+      console.log(`Skipping "${step.label}": ${step.cwd} not present.`);
+      continue;
+    }
+    await runStep(step.label, () => runCommand(step.command, step.args, { cwd: step.cwd }));
   }
   const tarball = await runStep('Smoke install packed tarball', smokeInstallTarball);
   await runStep('Smoke import MCP without manual peers', () => smokeInstallMcpWithoutManualPeers(tarball));
