@@ -12,7 +12,6 @@ import { AgentScope } from '#sql/index.js';
 import { generateDidKey, issueCredential, createSigner } from '#auth/index.js';
 import { encrypt, generateColumnKey } from '#encryption/index.js';
 import type { RegisteredAgent, AuditRecord, AuthenticatedSession } from '#types/index.js';
-import type { AuditStore } from '#storage/types.js';
 import { createMockAuditStore } from './mocks/audit-store.js';
 
 

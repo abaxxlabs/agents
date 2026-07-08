@@ -1,5 +1,4 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { Pool } from 'pg';
 import { createMockPool } from './mocks/pool.js';
 import {
   encrypt,

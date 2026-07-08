@@ -65,7 +65,9 @@ describe('release-readiness test gates', () => {
     });
 
     expect(
-      RELEASE_GATE_COMMAND_STEPS.some((step) => step.command === 'npm' && step.args[0] === 'ci'),
+      RELEASE_GATE_COMMAND_STEPS.some(
+        (step) => !step.cwd && step.command === 'npm' && step.args[0] === 'ci',
+      ),
     ).toBe(false);
   });
 

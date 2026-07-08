@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
-import type { Pool } from 'pg';
 import { createMockClient, createMockPool } from './mocks/pool.js';
 import { MigrationExecutor } from '#identity/migration.js';
 import { DidAliasRegistry } from '#did/alias.js';

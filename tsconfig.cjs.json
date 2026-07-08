@@ -6,7 +6,29 @@
     "outDir": "./dist/cjs",
     "declaration": false,
     "declarationMap": false,
-    "sourceMap": true
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "#audit/*.js": ["src/audit/*.ts"],
+      "#auth/*.js": ["src/auth/*.ts"],
+      "#bootstrap/*.js": ["src/bootstrap/*.ts"],
+      "#capability/*.js": ["src/capability/*.ts"],
+      "#cli/*.js": ["src/cli/*.ts"],
+      "#crypto/*.js": ["src/crypto/*.ts"],
+      "#discovery/*.js": ["src/discovery/*.ts"],
+      "#encryption/*.js": ["src/encryption/*.ts"],
+      "#errors/*.js": ["src/errors/*.ts"],
+      "#identity/*.js": ["src/identity/*.ts"],
+      "#mcp/*.js": ["src/mcp/*.ts"],
+      "#services/*.js": ["src/services/*.ts"],
+      "#sql/*.js": ["src/sql/*.ts"],
+      "#storage/*.js": ["src/storage/*.ts"],
+      "#transport/*.js": ["src/transport/*.ts"],
+      "#types/*.js": ["src/types/*.ts"],
+      "#config.js": ["src/config.ts"],
+      "#did/*.js": ["src/did/*.ts"],
+      "#observability/*.js": ["src/observability/*.ts"]
+    }
   },
   "exclude": [
     "node_modules",
