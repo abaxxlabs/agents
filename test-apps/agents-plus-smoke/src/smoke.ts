@@ -12,11 +12,7 @@
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { AgentScope } from '@abaxxlabs/agents/sql';
-import {
-  asMasterKey,
-  ScopeViolationError,
-  type MasterKey,
-} from '@abaxxlabs/agents';
+import { asMasterKey, ScopeViolationError, type MasterKey } from '@abaxxlabs/agents';
 import {
   DEFAULT_DATABASE_URL,
   ENCRYPTED_COLUMNS,
@@ -74,7 +70,7 @@ export async function runSmoke(options: SmokeRunOptions = {}): Promise<SmokeRunR
     {
       database: { connectionString: databaseUrl, poolSize: 3 },
       encryption: { columns: ENCRYPTED_COLUMNS },
-      audit: { enabled: true, failOpen: false },
+      audit: { enabled: true },
       devMode: true,
       scopeMode: 'projection',
     },
@@ -107,11 +103,7 @@ export async function runSmoke(options: SmokeRunOptions = {}): Promise<SmokeRunR
 
     const limitedCredential = await session.issueCredential({
       agent: limitedAgent.did,
-      columns: [
-        `${TEST_TABLE}.desk`,
-        `${TEST_TABLE}.symbol`,
-        `${TEST_TABLE}.notional`,
-      ],
+      columns: [`${TEST_TABLE}.desk`, `${TEST_TABLE}.symbol`, `${TEST_TABLE}.notional`],
       actions: ['read'],
       expiresIn: '15m',
     });

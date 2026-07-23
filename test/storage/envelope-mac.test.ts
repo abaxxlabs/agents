@@ -13,6 +13,11 @@ import { EnvelopeTooLargeError } from '#storage/types.js';
 import type { SessionEnvelope } from '#storage/types.js';
 import { asMasterKey } from '#crypto/master-key.js';
 import { hkdfSync } from 'node:crypto';
+import * as canonicalizeModule from 'canonicalize';
+
+const canonicalize = (
+  canonicalizeModule as unknown as { default: (input: unknown) => string | undefined }
+).default;
 
 /** Build a 32-byte branded MasterKey from a short label by zero-padding. */
 function padMaster(label: string): ReturnType<typeof asMasterKey> {
@@ -139,7 +144,6 @@ describe('envelope-mac — canonical encoding (RFC 8785)', () => {
     // For this test, assert the default dep is RFC-8785-compliant:
     //   (import * as canonicalizeModule from 'canonicalize'; canonicalizeModule.default(input))
 
-    const canonicalize = require('canonicalize');
     const out = canonicalize(input);
     expect(out).toBe(expected);
   });

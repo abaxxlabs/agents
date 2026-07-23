@@ -1,4 +1,7 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
+
+const rootDir = fileURLToPath(new URL('.', import.meta.url));
 
 export const e2eTestInclude = [
   'test/e2e/**/*.test.ts',
@@ -14,6 +17,14 @@ export const e2eTestInclude = [
 ];
 
 export default defineConfig({
+  resolve: {
+    alias: [
+      {
+        find: /^#(.+)\.js$/,
+        replacement: `${rootDir}src/$1.ts`,
+      },
+    ],
+  },
   test: {
     globals: true,
     environment: 'node',

@@ -48,10 +48,7 @@ describe('delegation-policy', () => {
 
     it('accepts empty requested scope', () => {
       expect(() =>
-        validateScope(
-          { columns: ['ticker'], actions: ['read'] },
-          { columns: [], actions: [] },
-        ),
+        validateScope({ columns: ['ticker'], actions: ['read'] }, { columns: [], actions: [] }),
       ).not.toThrow();
     });
   });
@@ -84,22 +81,16 @@ describe('delegation-policy', () => {
     });
 
     it('throws at exact max depth boundary', () => {
-      expect(() => validateChain(3, 3)).toThrow(
-        'chain depth 3 exceeds maximum 3',
-      );
+      expect(() => validateChain(3, 3)).toThrow('chain depth 3 exceeds maximum 3');
     });
 
     it('throws when chain depth exceeds max', () => {
-      expect(() => validateChain(5, 3)).toThrow(
-        'chain depth 5 exceeds maximum 3',
-      );
+      expect(() => validateChain(5, 3)).toThrow('chain depth 5 exceeds maximum 3');
     });
 
     it('blocks third hop with default maxDepth of 2', () => {
       expect(() => validateChain(1, 2)).not.toThrow();
-      expect(() => validateChain(2, 2)).toThrow(
-        'chain depth 2 exceeds maximum 2',
-      );
+      expect(() => validateChain(2, 2)).toThrow('chain depth 2 exceeds maximum 2');
     });
   });
 
@@ -128,13 +119,21 @@ describe('delegation-policy', () => {
     });
 
     it('picks the most restrictive ancestor', () => {
-      expect(
-        resolveInheritedMaxDepth({ maxDepth: 5 }, [{ maxDepth: 3 }, { maxDepth: 4 }]),
-      ).toBe(3);
+      expect(resolveInheritedMaxDepth({ maxDepth: 5 }, [{ maxDepth: 3 }, { maxDepth: 4 }])).toBe(3);
     });
 
     it('treats a missing ancestor ceiling as the library default', () => {
       expect(resolveInheritedMaxDepth({ maxDepth: 5 }, [{}])).toBe(DEFAULT_MAX_DELEGATION_DEPTH);
+    });
+
+    it('treats a mixed chain with explicit and missing ancestor ceilings as capped by the default', () => {
+      expect(resolveInheritedMaxDepth({ maxDepth: 5 }, [{ maxDepth: 3 }, {}])).toBe(
+        DEFAULT_MAX_DELEGATION_DEPTH,
+      );
+    });
+
+    it('treats a missing source ceiling as the library default even when an ancestor embeds one', () => {
+      expect(resolveInheritedMaxDepth({}, [{ maxDepth: 5 }])).toBe(DEFAULT_MAX_DELEGATION_DEPTH);
     });
 
     it('falls back to the library default when neither source nor chain embed one', () => {

@@ -1,7 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { AuditLogger } from '#audit/index.js';
 import { DidAliasRegistry, type DidAlias } from '#did/alias.js';
-import type { AuditRecord } from '#types/index.js';
 import { createMockAuditStore } from './mocks/audit-store.js';
 import { createMockAuditRecord } from './mocks/audit-record.js';
 

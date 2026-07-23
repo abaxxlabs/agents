@@ -1,20 +1,24 @@
 /**
  * ESLint flat config — @abaxxlabs/agents
  *
- * Two BYOK trust-boundary rules enforce that the library core (`src/`) and the
- * server (`packages/server/src/`) cannot reach `AGENTS_MASTER_KEY` directly.
- * The master key must be sourced via `resolveMasterKeyFromEnv()` from
- * `@abaxxlabs/agents/bootstrap` (the sanctioned env-bridge) and threaded
+ * Adopts the @typescript-eslint recommended ruleset on top of two BYOK
+ * trust-boundary rules. The BYOK rules enforce that the library core (`src/`)
+ * and the server (`packages/server/src/`) cannot reach `AGENTS_MASTER_KEY`
+ * directly — the master key must be sourced via `resolveMasterKeyFromEnv()`
+ * from `@abaxxlabs/agents/bootstrap` (the sanctioned env-bridge) and threaded
  * through as a Buffer parameter.
  */
 
-// @ts-check
-
+import type { ESLint, Linter } from 'eslint';
 import tsParser from '@typescript-eslint/parser';
 import tsPlugin from '@typescript-eslint/eslint-plugin';
 
-/** @type {import('eslint').Linter.Config[]} */
-const config = [
+// The classic-format plugin's `configs` property doesn't structurally match
+// ESLint's flat-config `Plugin` type. The cast is type-only; jiti strips it.
+const tsPluginFlat = tsPlugin as unknown as ESLint.Plugin;
+const tsRecommendedRules = tsPlugin.configs.recommended.rules;
+
+const config: Linter.Config[] = [
   // ─── 1. Global ignores ────────────────────────────────────────────────────
   {
     ignores: [
@@ -41,11 +45,12 @@ const config = [
       },
     },
     plugins: {
-      '@typescript-eslint': tsPlugin,
+      '@typescript-eslint': tsPluginFlat,
     },
     rules: {
-      '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      ...tsRecommendedRules,
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
 
@@ -114,11 +119,12 @@ const config = [
       },
     },
     plugins: {
-      '@typescript-eslint': tsPlugin,
+      '@typescript-eslint': tsPluginFlat,
     },
     rules: {
-      '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      ...tsRecommendedRules,
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
 
