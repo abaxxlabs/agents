@@ -13,14 +13,8 @@
 // limitations under the License.
 
 /**
- * SqliteStorageBackend — SQLite implementation of StorageBackend.
- *
- * For local development and single-process deployments. Supports both runtimes:
- *   - Bun: uses the built-in `bun:sqlite` (no install needed).
- *   - Node.js: falls back to `better-sqlite3` (optional peer dep).
- *
- * Importable only via the `@abaxxlabs/agents/sqlite` subpath export — the main
- * entry never loads this file, keeping the native dep optional.
+ * SQLite backend for local or single-process use. It loads bun:sqlite or the
+ * optional better-sqlite3 dependency only through the SQLite subpath export.
  */
 
 import type {
@@ -39,8 +33,9 @@ import { SqliteContextStore } from './context-store.js';
 import { SqliteRevocationStore } from './revocation-store.js';
 import { SqliteSessionStore } from './session-store.js';
 import { SQLITE_SCHEMA_STATEMENTS, SQLITE_MIGRATIONS } from './migrations.js';
+import type { Logger } from '#observability/logger.js';
+import { getLogger } from '#observability/logger.js';
 
-// Re-exported on this subpath so consumers can catch it from the same import surface as SqliteStorageBackend.
 export { SqliteRuntimeUnavailableError } from '#errors/index.js';
 
 /**
@@ -73,18 +68,20 @@ interface SqliteDatabase {
 }
 
 /**
- * Resolve the Database constructor for the current runtime.
- * Tries bun:sqlite first (Bun built-in); falls back to better-sqlite3 (Node.js).
- *
- * @throws {SqliteRuntimeUnavailableError} if neither runtime provides a SQLite implementation.
+ * Loads the current runtime's SQLite constructor.
+ * @throws {SqliteRuntimeUnavailableError} When neither implementation is available.
  */
-async function loadSqliteDatabaseCtor(): Promise<new (path: string) => SqliteDatabase> {
+async function loadSqliteDatabaseCtor(
+  logger: Logger,
+): Promise<new (path: string) => SqliteDatabase> {
   try {
-    // @ts-expect-error — bun:sqlite only resolves under Bun; absent from Node's type graph.
+    // @ts-expect-error bun:sqlite is intentionally absent from Node's type graph.
     const mod = await import('bun:sqlite');
     return mod.Database;
-  } catch {
-    // Not running in Bun. Fall through to better-sqlite3.
+  } catch (err) {
+    logger.error('[storage] Failed to load bun:sqlite; falling back to better-sqlite3', {
+      error: err,
+    });
   }
 
   try {
@@ -99,6 +96,8 @@ async function loadSqliteDatabaseCtor(): Promise<new (path: string) => SqliteDat
 export interface SqliteStorageBackendOptions {
   /** HKDF-derived key for session envelope MAC verification. */
   sessionMacKey: Buffer;
+  /** Optional diagnostic logger. */
+  logger?: Logger;
 }
 
 export class SqliteStorageBackend implements StorageBackend {
@@ -121,12 +120,11 @@ export class SqliteStorageBackend implements StorageBackend {
   }
 
   /**
-   * Create a new SqliteStorageBackend. Use ':memory:' for in-memory databases.
-   *
-   * @param options - Storage options including the database path.
-   * @param backendOpts - Backend options including the session MAC key.
-   * @throws {TypeError} if sessionMacKey is missing.
-   * @throws {Error} if no SQLite runtime is available.
+   * Creates a SQLite backend without initializing its schema.
+   * @param options Storage options including the database path.
+   * @param backendOpts Backend options including the session MAC key.
+   * @throws {TypeError} When sessionMacKey is missing.
+   * @throws {SqliteRuntimeUnavailableError} When no SQLite runtime is available.
    */
   static async create(
     options: SqliteStorageOptions,
@@ -139,12 +137,10 @@ export class SqliteStorageBackend implements StorageBackend {
       );
     }
 
-    const DatabaseCtor = await loadSqliteDatabaseCtor();
+    const DatabaseCtor = await loadSqliteDatabaseCtor(getLogger(backendOpts.logger));
     const db = new DatabaseCtor(options.path) as SqliteDatabase;
     return new SqliteStorageBackend(db, backendOpts.sessionMacKey);
   }
-
-  // ─── Sub-stores ─────────────────────────────────────────────────────────────
 
   get agents(): AgentStore {
     return this._agents;
@@ -162,17 +158,11 @@ export class SqliteStorageBackend implements StorageBackend {
     return this._sessions;
   }
 
-  // ─── Lifecycle ──────────────────────────────────────────────────────────────
-
-  /**
-   * Create tables, indexes, and triggers. Idempotent (IF NOT EXISTS).
-   * Warms the revocation cache so subsequent isRevoked() calls hit memory.
-   */
+  /** Creates the schema, applies additive migrations, and warms revocations. */
   async initialize(): Promise<void> {
     for (const sql of SQLITE_SCHEMA_STATEMENTS) {
       this.db.exec(sql);
     }
-    // SQLite throws "duplicate column" on re-run — catch and ignore (idempotent).
     for (const sql of SQLITE_MIGRATIONS) {
       try {
         this.db.exec(sql);
@@ -182,16 +172,10 @@ export class SqliteStorageBackend implements StorageBackend {
       }
     }
 
-    try {
-      await this._revocation.loadAll();
-    } catch {
-      // Non-fatal — table may not exist on first initialize before schema runs.
-    }
+    await this._revocation.loadAll();
   }
 
-  /**
-   * Close the SQLite database. After this, sub-store operations will throw.
-   */
+  /** Closes the SQLite database. */
   async close(): Promise<void> {
     this.db.close();
   }

@@ -15,7 +15,6 @@
 /** Shared OIDC discovery utilities for SSRF validation and cache-control parsing. */
 
 import { AuthUnavailableError, DiscoveryEndpointBlockedError } from '#errors/index.js';
-import type { Logger } from '#observability/logger.js';
 
 export const DEFAULT_DISCOVERY_TTL_MS = 60 * 60 * 1000; // 1 hour
 
@@ -33,7 +32,6 @@ export function validateDiscoveredEndpoint(
   issuerOrigin: string,
   providerLabel = 'OIDC',
   allowedCrossOriginHosts?: readonly string[],
-  logger?: Logger,
 ): void {
   let url: URL;
   try {

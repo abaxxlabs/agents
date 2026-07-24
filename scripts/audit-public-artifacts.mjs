@@ -21,80 +21,14 @@ import path from 'node:path';
 const ROOT_DIR = process.cwd();
 const PUBLIC_REPO_LIST_ENV = 'ABAXXLABS_PUBLIC_REPO_CANDIDATE_LIST';
 const PUBLIC_REPO_ROOT_ENV = 'ABAXXLABS_PUBLIC_REPO_ROOT';
+const PUBLIC_REPO_POLICY = JSON.parse(
+  readFileSync(new URL('./public-repo-policy.json', import.meta.url), 'utf8'),
+);
 
 const PACKAGE_ALLOWED_PATHS = ['package.json', 'README.md', 'LICENSE', 'dist/**', 'vendor/id-sdk-mcp/**'];
 
-const PUBLIC_REPO_ALLOWED_PATHS = [
-  '.github/pull_request_template.md',
-  '.github/workflows/ci.yml',
-  '.github/workflows/jsdoc-types.yml',
-  '.gitignore',
-  '.prettierrc',
-  'CHANGELOG.md',
-  'CODE_OF_CONDUCT.md',
-  'CONTRIBUTING.md',
-  'demo/showcase/Dockerfile',
-  'demo/showcase/package-lock.json',
-  'demo/showcase/package.json',
-  'demo/showcase/scripts/**',
-  'demo/showcase/src/**',
-  'demo/showcase/tsconfig.json',
-  'demo/showcase/vite.config.ts',
-  'LICENSE',
-  'README.md',
-  'SECURITY.md',
-  'VERSION',
-  'api/public-api.*.snapshot.json',
-  'bun.lock',
-  'docs/DECISIONS.md',
-  'docs/migration-*.md',
-  'docs/rollback-*.md',
-  'eslint.config.js',
-  'migrations/**',
-  'package.json',
-  'packages/create-agents/package-lock.json',
-  'packages/create-agents/package.json',
-  'packages/create-agents/src/**',
-  'packages/create-agents/template/**',
-  'packages/create-agents/tsconfig.json',
-  'packages/server/package-lock.json',
-  'packages/server/package.json',
-  'packages/server/src/**',
-  'packages/server/tsconfig.json',
-  'scripts/assert-package-artifacts.mjs',
-  'scripts/audit-public-artifacts.mjs',
-  'scripts/check-npm-cache.mjs',
-  'scripts/check-public-api.mjs',
-  'scripts/extract-jsdoc-examples.ts',
-  'scripts/release-gate.mjs',
-  'scripts/smoke-installed-package.mjs',
-  'src/**',
-  'tsconfig.cjs.json',
-  'tsconfig.json',
-  'vitest.config.ts',
-];
-
-const PUBLIC_REPO_FORBIDDEN_PATHS = [
-  '.claude/**',
-  '.mcp.json',
-  '.npmrc',
-  'CLAUDE.md',
-  'TODOS.md',
-  'coverage/**',
-  'data/**',
-  'demo/hackathon/_review*.md',
-  'demo/hackathon/findings/**',
-  'dist/**',
-  'docs/abxagnts-*.md',
-  'docs/plan-*.md',
-  'docs/support-runbook-*.md',
-  'node_modules/**',
-  'package/**',
-  'packages/*/dist/**',
-  '*.log',
-  '*.tgz',
-  '*.zip',
-];
+export const PUBLIC_REPO_ALLOWED_PATHS = PUBLIC_REPO_POLICY.publicAllowedPaths;
+const PUBLIC_REPO_FORBIDDEN_PATHS = PUBLIC_REPO_POLICY.publicForbiddenPaths;
 
 const LOCAL_CREDENTIAL_PATHS = [
   '**/.env',
@@ -247,9 +181,9 @@ const BLOCKED_RELEASE_TERM_ALLOWLIST = [
     reason: 'The release audit source must declare the exact blocked terms it enforces.',
   },
   {
-    path: 'scripts/audit-public-artifacts.mjs',
-    linePattern: String.raw`^\s*'(?:demo/hackathon|docs/abxagnts-)`,
-    reason: 'The release audit source must declare forbidden internal-only public-repo path globs.',
+    path: 'scripts/public-repo-policy.json',
+    linePattern: String.raw`^\s*"(?:demo/hackathon|docs/abxagnts-)`,
+    reason: 'The public repository policy must declare forbidden internal-only path globs.',
   },
   {
     path: 'LICENSE',
@@ -746,7 +680,6 @@ function runCli(argv) {
     console.log(usage());
     return 0;
   }
-
   const results = [];
   if (args.command === 'all' || args.command === 'package') {
     const packageFiles = npmPackDryRunFiles();

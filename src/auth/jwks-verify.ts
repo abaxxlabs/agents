@@ -19,14 +19,19 @@
  * rate-limited to one per 30 seconds to prevent cache-bust amplification.
  */
 
-import {
-  createPublicKey,
-  createVerify,
-  verify as cryptoVerify,
-  constants,
-  type JsonWebKey,
-} from 'node:crypto';
+import { createPublicKey, createVerify, verify as cryptoVerify, constants } from 'node:crypto';
 import { AuthUnavailableError } from '#errors/index.js';
+
+interface JsonWebKey {
+  kty: string;
+  crv?: string;
+  x?: string;
+  y?: string;
+  n?: string;
+  e?: string;
+  k?: string;
+  [key: string]: unknown;
+}
 
 // Allowlist prevents "none" bypass and symmetric-key confusion (e.g. alg:HS256 with JWKS public key as HMAC secret).
 const ALLOWED_ALGS = new Set([

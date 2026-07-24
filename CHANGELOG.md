@@ -1,10 +1,115 @@
+## [0.14.7](https://github.com/abaxxtech/agents/compare/v0.14.6...v0.14.7) (2026-07-24)
+
+
+### Bug Fixes
+
+* align public mirror sync with release guardrails ([eeeb57e](https://github.com/abaxxtech/agents/commit/eeeb57e683437f6108972d9005a7c0773858d383))
+
+## [0.14.6](https://github.com/abaxxtech/agents/compare/v0.14.5...v0.14.6) (2026-07-23)
+
+
+### Bug Fixes
+
+*: Enhance error handling and logging in SQLite and PostgreSQL storage backends ([03cccd9](https://github.com/abaxxtech/agents/commit/03cccd9d3cd77e5ebd1c649d277b21f965cd581a))
+*: Refactor storage folder for improved clarity and performance ([f9d569f](https://github.com/abaxxtech/agents/commit/f9d569fc1cf3d52a2020e226ae1a5efdb7c89ad2))
+
+## [0.14.5](https://github.com/abaxxtech/agents/compare/v0.14.4...v0.14.5) (2026-07-08)
+
+
+### Bug Fixes
+
+* sync showcase lockfile and preserve linked package resolution ([6ff5d9d](https://github.com/abaxxtech/agents/commit/6ff5d9d00cd5c40703584ad828bc23863fdf4110))
+* sync showcase lockfile and preserve linked package resolution ([0159725](https://github.com/abaxxtech/agents/commit/0159725d4fe720bf1a8324cbe1cede4ec98379e6))
+* sync showcase lockfile and preserve linked package resolution ([6625f2b](https://github.com/abaxxtech/agents/commit/6625f2bd55501dcba0145b461dd341a36215c2cb))
+
+## [0.14.4](https://github.com/abaxxtech/agents/compare/v0.14.3...v0.14.4) (2026-07-06)
+
+
+### Bug Fixes
+
+* include lint/build configs in public mirror ([#246](https://github.com/abaxxtech/agents/issues/246)) ([42d43d8](https://github.com/abaxxtech/agents/commit/42d43d85e5f0112f92310c85001c093afc3d4f01))
+
+## [0.14.3](https://github.com/abaxxtech/agents/compare/v0.14.2...v0.14.3) (2026-07-06)
+
+
+### Bug Fixes
+
+* fix public ci sync ([3a73c3f](https://github.com/abaxxtech/agents/commit/3a73c3f832b2b835bf32d0d9d1a6458afe13aee5))
+
+## [0.14.2](https://github.com/abaxxtech/agents/compare/v0.14.1...v0.14.2) (2026-07-06)
+
+
+### Bug Fixes
+
+* remove stale failOpen smoke config ([7e445fe](https://github.com/abaxxtech/agents/commit/7e445fec0d9180705bcfb0c791ea0a684db3fc3a))
+
+## [0.14.1](https://github.com/abaxxtech/agents/compare/v0.14.0...v0.14.1) (2026-07-06)
+
+
+### Bug Fixes
+
+* repair user-stories imports after src/identity rebuild ([b2545f4](https://github.com/abaxxtech/agents/commit/b2545f4645f36b1fee940233690cd5ad99c7d057))
+
+# [0.14.0](https://github.com/abaxxtech/agents/compare/v0.13.3...v0.14.0) (2026-06-29)
+
+
+### Features
+
+* add lazy MCP Tool Schema Loading assessment and measurement script ([c8a4276](https://github.com/abaxxtech/agents/commit/c8a42764633ddfeef355b40439ab3f09672a6e2b))
+
+## [0.13.3](https://github.com/abaxxtech/agents/compare/v0.13.2...v0.13.3) (2026-06-26)
+
+
+### Bug Fixes
+
+* install server deps separately for typecheck in precommit and release gate ([#238](https://github.com/abaxxtech/agents/issues/238)) ([0d41b9f](https://github.com/abaxxtech/agents/commit/0d41b9f001ba70f395b860efb76f54f223ded012))
+
+## [0.13.2](https://github.com/abaxxtech/agents/compare/v0.13.1...v0.13.2) (2026-06-12)
+
+
+### Bug Fixes
+
+* allow newline between audit token and severity in sync regex ([dd2988c](https://github.com/abaxxtech/agents/commit/dd2988cfb8e52459058879f3e673d00d9a9d68c8))
+* updating regex to not remove newlines ([bc5df3e](https://github.com/abaxxtech/agents/commit/bc5df3e86938a9c55eda2de46d40c73d6caaef0d))
+
+## [0.13.1](https://github.com/abaxxtech/agents/compare/v0.13.0...v0.13.1) (2026-06-12)
+
+
+### Bug Fixes
+
+* exclude package version from public API snapshots ([8188c0f](https://github.com/abaxxtech/agents/commit/8188c0ff523d2d3721e94129f79b06f9d74b9751))
+
+# [0.13.0](https://github.com/abaxxtech/agents/compare/v0.12.7...v0.13.0) (2026-06-12)
+
+
+### Features
+
+* add live OpenAI agent mode to showcase Beat 3 (overscope + prompt injection) ([#223](https://github.com/abaxxtech/agents/issues/223)) ([6ce479a](https://github.com/abaxxtech/agents/commit/6ce479a3bf98152c046c79be40c5007d56d9d65d))
+
+## [0.12.7](https://github.com/abaxxtech/agents/compare/v0.12.6...v0.12.7) (2026-06-12)
+
+
+### Bug Fixes
+
+* correct credential-issuance link extension (.js → .ts) ([f8c672b](https://github.com/abaxxtech/agents/commit/f8c672b3bbf7125eea654bffa1a192516066bb06))
+
+## [0.12.6](https://github.com/abaxxtech/agents/compare/v0.12.5...v0.12.6) (2026-06-11)
+
+
+### Bug Fixes
+
+* authorize internal release workflow with releaser app ([80b5e19](https://github.com/abaxxtech/agents/commit/80b5e194b02aa499a9b910e8540c1cb1bd681f90))
+* verify semantic-release tag generation ([f32769f](https://github.com/abaxxtech/agents/commit/f32769f3714999c1d8c6d09f2482c2d76b950817))
+* verify semantic-release tag generation ([0a0ebbe](https://github.com/abaxxtech/agents/commit/0a0ebbeff9e3b530e77b4c2eb7d2806b4533ba49))
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
 
 Starting with 0.11.3, package metadata uses npm-publishable SemVer. Legacy
 four-segment human release labels are kept in release headings when needed.
-The public npm package identity is `@abaxxlabs/agents`; older changelog entries use the internal package name for historical context.
+The public npm package identity is `@abaxxlabs/agents`; older changelog
+entries may mention pre-public internal package names for historical context.
 
 ## [Unreleased]
 
@@ -200,7 +305,7 @@ The public npm package identity is `@abaxxlabs/agents`; older changelog entries 
 
 ### Security
 
-- **Audit logger fails closed unconditionally** (audit MED-3). The `failOpen`
+- **Audit logger fails closed unconditionally**. The `failOpen`
   option is removed from `AgentScopeConfig.audit` and `AuditLogger`. Any audit
   store append failure now throws `AuditWriteFailedError` and the calling
   operation rejects — no opt-in escape hatch. HIPAA §164.312(b), SOC 2 CC7.2,
@@ -225,8 +330,7 @@ The public npm package identity is `@abaxxlabs/agents`; older changelog entries 
   `LegacyScopeModeNotAllowedError` are removed. All credentials must include
   every column referenced in SQL (plaintext and encrypted). Demo user-stories
   updated to projection-mode scopes.
-- **`SqliteStorageBackend` requires `sessionMacKey` unconditionally** (audit
-  LOW-7). The zero-key fallback (`Buffer.alloc(32, 0)`) is removed. Callers must
+- **`SqliteStorageBackend` requires `sessionMacKey` unconditionally**. The zero-key fallback (`Buffer.alloc(32, 0)`) is removed. Callers must
   pass an HKDF-derived `sessionMacKey` via the `backendOpts` parameter.
   Use `deriveSessionMacKey(masterKey)` from `@abaxxlabs/agents` to derive the
   key. Construction without a key now throws `TypeError`.
@@ -239,14 +343,14 @@ The public npm package identity is `@abaxxlabs/agents`; older changelog entries 
 - `AuditLoggerTelemetrySink.auditWriteFailed` event shape lost the `failOpen`
   field.
 
-- **Legacy AbaxxOne OIDC entry points deleted** (audit HIGH-1 closeout).
+- **Legacy AbaxxOne OIDC entry points deleted** ( closeout).
   `src/auth/legacy-oidc.ts` and `src/auth/verified-auth-state.ts` are removed.
   The module-level functions `authenticateWithOidc`, `completeOidcFlow`, and the
   `VerifiedAuthState` brand machinery no longer exist. `AgentIdentity` delegates
   all AbaxxOne OIDC flows through `AbaxxOneOidcProvider`. The public auth barrel
   no longer exports `verifyAuthState`, `CsrfStateRejectedError`,
   `VerifiedAuthState`, or `OidcConfig`. Supersedes
-- **Legacy `scopeMode` construction gate** (audit HIGH-5). `AgentScope.create` / `loadConfig` now throw `LegacyScopeModeNotAllowedError` when `scopeMode` is `encryption-only-LEGACY-DO-NOT-USE` unless `AGENTS_ALLOW_LEGACY_SCOPE_MODE=1` is set. `getServerStatus()` includes `scopeMode` (defaults to `projection` when omitted from config).
+- **Legacy `scopeMode` construction gate**. `AgentScope.create` / `loadConfig` now throw `LegacyScopeModeNotAllowedError` when `scopeMode` is `encryption-only-LEGACY-DO-NOT-USE` unless `AGENTS_ALLOW_LEGACY_SCOPE_MODE=1` is set. `getServerStatus()` includes `scopeMode` (defaults to `projection` when omitted from config).
 
 ### BREAKING
 
@@ -460,7 +564,7 @@ as the actual security boundary (brands are erased at compile time).
   project-specific ticket IDs from test describe blocks and inline comments
   to keep documentation audience-neutral.
 
-## [0.11.1] — Hackathon-finding follow-ups
+## [0.11.1] — Internal pre-public — Hackathon-finding follow-ups
 
 A small follow-up release closing three loose ends from the hackathon-finding
 arc and adversarial review on PR #24. Pure additions and a bug fix; no
@@ -525,9 +629,9 @@ breaking changes.
   types are erased at compile time; JS callers, `as` casts, and any future
   RPC bridge that constructs the call dynamically would have bypassed the
   gate. Reverted in commit `10fc575`. Redo planned as additive: keep the
-  runtime check AND add the brands. 
+  runtime check AND add the brands. Full plan: `docs/-redo-plan.md`.
 
-## [0.11.0] — AgentScope / AgentIdentity split
+## [0.11.0] — Internal pre-public — AgentScope / AgentIdentity split
 
 ### Breaking changes
 
@@ -583,7 +687,7 @@ breaking changes.
 - `ScopeEngine` takes an `agentStore: AgentStore` param for owner-lookup
   fallback. `pool.query` is used solely for data-plane query execution.
 
-## [0.10.1] — VP lifetime tightening
+## [0.10.1] — Internal pre-public — VP lifetime tightening
 
 A focused patch sized at a QA finding from the hackathon dry-run: the
 `createPresentation()` default expiry of 300s was a five-minute first-mover
@@ -629,7 +733,7 @@ short-lived credentials during the hackathon dry-run. Investigation
 surfaced the larger architectural decision: VP lifetime, not skew, was the
 load-bearing knob — and it was hardcoded.
 
-## [0.10.0] — 2026-04-26 — Library-shrink follow-up
+## [0.10.0] — 2026-04-26 — Session 7 / Library-shrink follow-up
 
 Session 7 — eight sub-tasks promoting the remaining implicit
 library env-reads to explicit consumer-supplied configuration. v0.10.0 closes
@@ -763,7 +867,7 @@ read by the library"). The five Session-6-era `AGENTS_*` env-reads are gone.
 - — OBS: MCP CLI now emits a structured `WARNING` at startup when booting with `NODE_ENV=production` and no explicit `injections.storage` (the default-backend path has cross-instance revocation coherency poll OFF). Mirrors the API server's `SESSION_STORE_MODE=dual` warning pattern. New `docs/support-runbook-v0.9.10.0.md` § "MCP multi-instance revocation coherency" explains the trade-off and migration path for operators running multi-instance MCP.
 - — TESTS: new `test/regression/env-isolation.test.ts` is the unified regression suite asserting the post-Session-7 contract that the library does NOT read any of the five migrated `AGENTS_*` env vars (`AGENTS_DEV_MODE`, `AGENTS_KEYSTORE_PATH`, `AGENTS_ALLOW_LEGACY_SCOPE_MODE`, `AGENTS_TRUSTED_SERVERS`, `AGENTS_CONSUMER_DOMAINS`). 11 tests covering both directions for each variable (env set + no consumer wiring → env content does NOT leak; env set + EXPLICIT consumer wiring with different value → env loses, explicit wins) plus a cross-cutting "all 5 set simultaneously" worst-case scenario. Catches drift if a future maintainer reintroduces any env-read.
 
-## [0.9.10.0] — 2026-04-25 — Library-shrinking arc complete
+## [0.9.10.0] — 2026-04-25 — Session 6 / Library-shrinking arc complete
 
 ### Security posture
 

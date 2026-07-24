@@ -13,31 +13,18 @@
 // limitations under the License.
 
 /**
- * Factory for IdentityContext — the proof-of-verification token for identity-gated
- * storage operations. Only constructable from an AgentVerifier.verify() result.
- * Untrusted MCP callers never receive IdentityContext; they present bearer tokens
- * that the server verifies before constructing one on their behalf.
+ * Factories for identity-gated storage inputs. IdentityContext is structurally
+ * forgeable, so callers must construct it only inside trusted verification paths.
  */
 
 import type { AgentVerifyResult } from '#identity/index.js';
 import type { IdentityContext } from './types.js';
 
 /**
- * Create an IdentityContext from a successful AgentVerifier.verify() result.
- *
- * This is the only sanctioned way to construct an IdentityContext. The resulting
- * object is frozen (Object.freeze) to prevent post-construction mutation.
- *
- * @param result — the AgentVerifyResult from a successful verify() call.
- * @returns a frozen IdentityContext ready for use with ContextStore operations.
- *
- * @throws {TypeError} if result.subjectDid is empty (programming error — should
- *   never happen if AgentVerifier is working correctly, but defense in depth).
- *
- * @example
- *   const verifyResult = await agentVerifier.verify({ bindingJwt, agentDid });
- *   const identity = createIdentityContext(verifyResult);
- *   const entry = await backend.context.get('context-graph', 'decision:abc', identity);
+ * Creates an immutable context from a successful verification result.
+ * @param result The successful AgentVerifier result.
+ * @returns A frozen identity context.
+ * @throws {TypeError} When subjectDid is empty.
  */
 export function createIdentityContext(result: AgentVerifyResult): IdentityContext {
   if (!result.subjectDid) {
@@ -56,23 +43,9 @@ export function createIdentityContext(result: AgentVerifyResult): IdentityContex
 }
 
 /**
- * Create a server IdentityContext for admin/internal operations.
- *
- * When the server itself needs to perform context store operations (backup,
- * export, context injection into child sessions), it constructs an IdentityContext
- * where callerDid === issuerDid. This triggers the "server identity bypass" in
- * ContextStore implementations, granting read/write access to all entries.
- *
- * Security decision: this function requires the server's own DID — it cannot
- * be called without access to the server's identity, which is only available
- * in the trusted zone (cockpit process). Untrusted child processes never have
- * the server DID; they present bearer tokens that resolve to their own agent DID.
- *
- * @param serverDid — the server's own DID (from ServerIdentity.did).
- *
- * @example
- *   const serverIdentity = createServerIdentityContext(serverIdentity.did);
- *   const allEntries = await backend.context.list('context-graph', serverIdentity);
+ * Creates an administrative context where callerDid equals issuerDid.
+ * Knowledge of a server DID is not authentication; call only from trusted code.
+ * @param serverDid The server's own DID.
  */
 export function createServerIdentityContext(serverDid: string): IdentityContext {
   if (!serverDid) {
@@ -81,7 +54,7 @@ export function createServerIdentityContext(serverDid: string): IdentityContext 
 
   return Object.freeze({
     callerDid: serverDid,
-    issuerDid: serverDid, // callerDid === issuerDid triggers server bypass
+    issuerDid: serverDid,
     orgDomain: null,
     verifiedAt: Date.now(),
   });

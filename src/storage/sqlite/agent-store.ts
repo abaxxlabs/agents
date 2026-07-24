@@ -12,12 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/**
- * SQLite implementation of AgentStore.
- *
- * Timestamps are ISO 8601 TEXT. better-sqlite3 is synchronous; async interface
- * matches the AgentStore contract (promises resolve immediately).
- */
+/** SQLite AgentStore using ISO 8601 text timestamps. */
 
 import type { Database } from 'better-sqlite3';
 import type { AgentStore, AgentRecord, AgentListFilter } from '../types.js';
@@ -114,12 +109,6 @@ export class SqliteAgentStore implements AgentStore {
     }));
   }
 
-  /**
-   * Load all registered agents, unbounded (no LIMIT).
-   *
-   * Used by restoreAgents() at boot to reload agents into memory. Same column
-   * mapping as list() but without pagination caps.
-   */
   async listAll(): Promise<AgentRecord[]> {
     const rows = this.db
       .prepare(
@@ -138,12 +127,6 @@ export class SqliteAgentStore implements AgentStore {
     }));
   }
 
-  /**
-   * Count registered agents, optionally filtered by ownerDid.
-   *
-   * SQLite COUNT() returns a number directly — no ::int cast needed (unlike
-   * Postgres where COUNT returns bigint/string).
-   */
   async count(filter?: { ownerDid?: string }): Promise<number> {
     if (filter?.ownerDid) {
       const row = this.db

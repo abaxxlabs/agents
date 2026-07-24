@@ -19,66 +19,29 @@ import type { RevocationStore } from './revocation-store.js';
 import type { SessionStore } from './session-store.js';
 
 /**
- * StorageBackend — the top-level storage interface for agents.
- *
- * Composed of domain-specific sub-stores. Implementations create all sub-stores
- * from a shared underlying connection (pg.Pool or better-sqlite3 Database).
- *
- * Lifecycle:
- *   const backend = createStorageBackend({ type: 'sqlite', path: ':memory:' });
- *   await backend.initialize();  // create tables, run migrations
- *   // ... use backend.agents, backend.audit, backend.context
- *   await backend.close();       // release connections
- *
- * The initialize() -> use -> close() lifecycle is mandatory. Using sub-stores
- * before initialize() results in missing tables. Using after close() results
- * in connection errors.
+ * Top-level persistence interface composed of domain-specific stores sharing
+ * one backend connection. Call initialize() before use and close() at shutdown.
  */
 export interface StorageBackend {
-  /** Agent registry — CRUD for agents. */
+  /** Agent registry. */
   readonly agents: AgentStore;
-  /** Append-only audit trail — agent_audit. */
+  /** Append-only audit trail. */
   readonly audit: AuditStore;
-  /** Identity-gated document store — agent_context. */
+  /** Identity-gated document store. */
   readonly context: ContextStore;
-  /**
-   * Durable JTI revocation store — revoked_credentials.
-   * Default: InMemoryRevocationStore (zero-config, process-local).
-   * Production: PostgresRevocationStore (durable, cross-instance coherent).
-   * Local/single-process: SqliteRevocationStore (file-backed).
-   */
+  /** JTI revocation store. */
   readonly revocation: RevocationStore;
-  /**
-   * Durable session envelope store — sessions.
-   * Default: InMemorySessionStore (zero-config, process-local).
-   * Production: PostgresSessionStore (durable, multi-instance coherent + 10s cache).
-   * Local/single-process: SqliteSessionStore (file-backed, WAL mode).
-   */
+  /** Session re-establishment envelope store. */
   readonly sessions: SessionStore;
 
-  /**
-   * Initialize the storage backend: create tables, run migrations.
-   * Idempotent — safe to call on every startup. Uses CREATE TABLE IF NOT EXISTS
-   * and migration tracking to avoid re-running applied migrations.
-   */
+  /** Initializes backend-specific schema and lifecycle resources. */
   initialize(): Promise<void>;
 
-  /**
-   * Graceful shutdown. Closes database connections, flushes buffers.
-   * After close(), sub-store operations will throw.
-   */
+  /** Releases backend resources. */
   close(): Promise<void>;
 }
 
-// ─── Factory Options ────────────────────────────────────────────────────────
-
-/**
- * Configuration for createStorageBackend().
- *
- * Discriminated union on `type`:
- *   - 'postgres': wraps pg.Pool with the connection string. Existing behavior.
- *   - 'sqlite': wraps better-sqlite3 with a file path. ':memory:' for tests.
- */
+/** Configuration for createStorageBackend(). */
 export type StorageBackendOptions = PostgresStorageOptions | SqliteStorageOptions;
 
 export interface PostgresStorageOptions {
@@ -94,9 +57,7 @@ export interface PostgresStorageOptions {
 export interface SqliteStorageOptions {
   type: 'sqlite';
   /**
-   * Path to the SQLite database file.
-   * Use ':memory:' for in-memory databases (tests, ephemeral sessions).
-   * Use a file path for persistent storage.
+   * SQLite database path, or ':memory:' for an ephemeral database.
    */
   path: string;
   /** HKDF-derived key for session envelope MAC verification. Derive via deriveSessionMacKey(). */
