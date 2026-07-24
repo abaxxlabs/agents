@@ -758,9 +758,9 @@ describe('VC Verifier', () => {
       try {
         new VcVerifier({ clockSkew: '999h', revocationStore: new InMemoryRevocationStore() });
         expect.unreachable('should have thrown');
-      } catch (e: any) {
-        expect(e.message).not.toContain('999h');
-        expect(e.message).toContain('exceeds maximum of 30 seconds');
+      } catch (e) {
+        expect((e as Error).message).not.toContain('999h');
+        expect((e as Error).message).toContain('exceeds maximum of 30 seconds');
       }
     });
 
@@ -782,23 +782,23 @@ describe('VC Verifier', () => {
       const shortKey = new Uint8Array([0xed, 0x01, ...new Array(16).fill(0x42)]);
       const encoded = 'z' + base58Encode(shortKey);
       const did = `did:key:${encoded}`;
-      expect(() => resolveDidKeyFallback(did as any)).toThrow(DidResolutionFailedError);
-      expect(() => resolveDidKeyFallback(did as any)).toThrow(/Expected 34 bytes/);
+      expect(() => resolveDidKeyFallback(did)).toThrow(DidResolutionFailedError);
+      expect(() => resolveDidKeyFallback(did)).toThrow(/Expected 34 bytes/);
     });
 
     it('rejects a DID with correct prefix but extra bytes appended', () => {
       const longKey = new Uint8Array([0xed, 0x01, ...new Array(64).fill(0x42)]);
       const encoded = 'z' + base58Encode(longKey);
       const did = `did:key:${encoded}`;
-      expect(() => resolveDidKeyFallback(did as any)).toThrow(DidResolutionFailedError);
-      expect(() => resolveDidKeyFallback(did as any)).toThrow(/Expected 34 bytes/);
+      expect(() => resolveDidKeyFallback(did)).toThrow(DidResolutionFailedError);
+      expect(() => resolveDidKeyFallback(did)).toThrow(/Expected 34 bytes/);
     });
 
     it('accepts a correctly-sized Ed25519 DID key', () => {
       const validKey = new Uint8Array([0xed, 0x01, ...new Array(32).fill(0x42)]);
       const encoded = 'z' + base58Encode(validKey);
       const did = `did:key:${encoded}`;
-      const result = resolveDidKeyFallback(did as any);
+      const result = resolveDidKeyFallback(did);
       expect(result.length).toBe(32);
     });
   });

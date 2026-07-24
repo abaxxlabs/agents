@@ -13,9 +13,7 @@
 // limitations under the License.
 
 /**
- * Postgres implementation of StorageBackend. Composes all five sub-stores over
- * a shared pg.Pool. Pool is exposed via the `pool` getter so ScopeEngine can
- * share it without creating a second connection to the same database.
+ * PostgreSQL backend composing all stores over the pool shared with ScopeEngine.
  */
 
 import pg from 'pg';
@@ -63,9 +61,7 @@ export class PostgresStorageBackend implements StorageBackend {
   private readonly _revocation: PostgresRevocationStore;
   private readonly _sessions: PostgresSessionStore;
   private readonly _logger: Logger;
-  /** Whether this backend owns the pool lifecycle (close() calls pool.end()). */
   private _ownsPool = true;
-  /** Guard against double-close. */
   private _closed = false;
 
   constructor(options: PostgresStorageOptions, extraOptions?: PostgresStorageBackendExtraOptions) {
@@ -86,7 +82,11 @@ export class PostgresStorageBackend implements StorageBackend {
     this._agents = new PostgresAgentStore(this._pool);
     this._audit = new PostgresAuditStore(this._pool);
     this._context = new PostgresContextStore(this._pool);
-    this._revocation = new PostgresRevocationStore(this._pool, extraOptions?.revocationOptions, this._logger);
+    this._revocation = new PostgresRevocationStore(
+      this._pool,
+      extraOptions?.revocationOptions,
+      this._logger,
+    );
     this._sessions = new PostgresSessionStore(
       this._pool,
       macKey,
@@ -95,16 +95,10 @@ export class PostgresStorageBackend implements StorageBackend {
   }
 
   /**
-   * Construct a PostgresStorageBackend from an existing pg.Pool.
-   *
-   * Used by AgentScope for backward compatibility — when the Pool is already
-   * created from database.connectionString, we wrap it rather than creating
-   * a second pool. The caller retains ownership of the Pool's lifecycle.
-   *
-   * @param pool — existing pg.Pool (caller owns lifecycle).
-   * @param ownsPool — if false, close() will NOT end the pool. Default: false.
-   * @param extraOptions — optional sub-store config (revocation coherency,
-   *   session MAC key, session cache).
+   * Wraps an existing pool without taking ownership by default.
+   * @param pool Existing PostgreSQL pool.
+   * @param ownsPool Whether close() also closes the pool.
+   * @param extraOptions Store-specific configuration.
    */
   static fromPool(
     pool: pg.Pool,
@@ -120,7 +114,6 @@ export class PostgresStorageBackend implements StorageBackend {
     const backend = Object.create(PostgresStorageBackend.prototype) as PostgresStorageBackend;
     const macKey = extraOptions.sessionMacKey;
     const logger = getLogger(extraOptions.logger);
-    // Bypass readonly to populate the prototype-created instance from an externally-owned pool.
     const mut = backend as unknown as {
       _pool: pg.Pool;
       _agents: PostgresAgentStore;
@@ -144,8 +137,6 @@ export class PostgresStorageBackend implements StorageBackend {
     return backend;
   }
 
-  // ─── Sub-stores ─────────────────────────────────────────────────────────────
-
   get agents(): AgentStore {
     return this._agents;
   }
@@ -163,37 +154,27 @@ export class PostgresStorageBackend implements StorageBackend {
   }
 
   /**
-   * Expose the underlying pg.Pool for ScopeEngine and column encryption.
-   *
-   * These modules query the user's data tables (not agents metadata), so they
-   * operate outside the StorageBackend abstraction. Sharing the pool avoids
-   * creating duplicate connections to the same database.
+   * Exposes the pool for ScopeEngine and column encryption data queries.
    */
   get pool(): pg.Pool {
     return this._pool;
   }
 
-  // ─── Lifecycle ──────────────────────────────────────────────────────────────
-
-  /** Test connection and run migrations. Idempotent (CREATE TABLE IF NOT EXISTS). */
+  /** Tests connectivity, applies available migrations, and starts revocation coherency. */
   async initialize(): Promise<void> {
-    // Test connection
     await this._pool.query('SELECT 1');
 
-    // Run migration files in order.
-    // Missing migrations directory is handled by _findMigrationsDir() returning null.
     const migrationsDir = this._findMigrationsDir();
     if (migrationsDir) {
       const files = readdirSync(migrationsDir)
         .filter((f) => f.endsWith('.sql'))
-        .sort(); // Lexicographic — 001_, 002_, etc.
+        .sort(); // Migration filenames use zero-padded lexical ordering.
 
       for (const file of files) {
         try {
           const sql = readFileSync(join(migrationsDir, file), 'utf8');
           await this._pool.query(sql);
         } catch (err) {
-          // A failing migration means the schema is half-built — log and refuse to start.
           this._logger.error(`[storage] Migration failed: ${file}`, { file, error: err });
           throw err;
         }
@@ -203,56 +184,40 @@ export class PostgresStorageBackend implements StorageBackend {
     try {
       await this._revocation.loadAll();
     } catch (err) {
-      // Non-fatal: cold cache is acceptable. isRevoked() falls through to DB.
       this._logger.warn('[storage] Revocation cache warm-up failed (cold cache)', { error: err });
     }
     this._revocation.startCoherency();
   }
 
-  /**
-   * Close the connection pool. After this, sub-store operations will throw.
-   * Idempotent — safe to call multiple times (second call is a no-op).
-   */
+  /** Idempotently stops polling and closes an owned pool. */
   async close(): Promise<void> {
     if (this._closed) return;
     this._closed = true;
-    // Stop the revocation poll loop before closing the pool.
     this._revocation.stopCoherency();
-    // If constructed via fromPool() with ownsPool=false, skip pool.end()
     if (!this._ownsPool) return;
     await this._pool.end();
   }
 
-  // ─── Internal ───────────────────────────────────────────────────────────────
-
   /**
-   * Find the migrations/ directory relative to this file.
-   * Tries __dirname (CJS), then indirect eval for import.meta.url (ESM),
-   * then process.cwd(). Returns null if not found (published npm consumers
-   * don't ship migrations/).
+   * Locates migrations across CJS, ESM, and source layouts.
+   * @returns Null when no candidate directory exists.
    */
   private _findMigrationsDir(): string | null {
     let moduleDir: string | null = null;
-    // CJS path: __dirname is defined natively. Try this first so the CJS
-    // dist never runs the ESM-only code below (which the CJS tsconfig
-    // would reject at compile time without the @ts-ignore directive).
-    try {
-      if (typeof __dirname !== 'undefined') {
-        moduleDir = __dirname;
-      }
-    } catch {
-      // __dirname undefined in pure ESM — fall through
+    if (typeof __dirname !== 'undefined') {
+      moduleDir = __dirname;
     }
     if (!moduleDir) {
       try {
-        // Indirect eval defers import.meta parse to runtime so CJS doesn't reject it at compile time.
         const metaUrl: string | undefined =
           (0, eval)('typeof import.meta !== "undefined" && import.meta.url') || undefined;
         if (metaUrl) {
           moduleDir = dirname(fileURLToPath(metaUrl));
         }
-      } catch {
-        // fall through to process.cwd() candidate
+      } catch (err) {
+        this._logger.error('[storage] Failed to resolve migrations from import.meta', {
+          error: err,
+        });
       }
     }
 

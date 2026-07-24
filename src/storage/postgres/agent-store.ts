@@ -12,12 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/**
- * Postgres implementation of AgentStore.
- *
- * Server-internal — no IdentityContext required; trust boundary is at the MCP layer.
- * Schema: agents (did TEXT PK, name TEXT, owner_did TEXT, created_at TIMESTAMPTZ)
- */
+/** PostgreSQL implementation of AgentStore. */
 
 import type { Pool } from 'pg';
 import type { AgentStore, AgentRecord, AgentListFilter } from '../types.js';
@@ -29,15 +24,6 @@ export class PostgresAgentStore implements AgentStore {
     this.pool = pool;
   }
 
-  /**
-   * Register a new agent. Throws on duplicate DID (Postgres PRIMARY KEY violation).
-   *
-   * SQL: INSERT INTO agents (did, name, owner_did) VALUES ($1, $2, $3)
-   *      RETURNING created_at
-   *
-   * The RETURNING clause avoids a second round-trip to fetch the server-generated
-   * created_at timestamp. Postgres default: NOW() in TIMESTAMPTZ.
-   */
   async create(agent: Omit<AgentRecord, 'createdAt'>): Promise<AgentRecord> {
     const result = await this.pool.query(
       `INSERT INTO agents (did, name, owner_did, encrypted_private_key, public_key)
@@ -56,9 +42,6 @@ export class PostgresAgentStore implements AgentStore {
     };
   }
 
-  /**
-   * Find an agent by DID. Returns null if not found.
-   */
   async findByDid(did: string): Promise<AgentRecord | null> {
     const result = await this.pool.query(
       'SELECT did, name, owner_did, encrypted_private_key, public_key, created_at FROM agents WHERE did = $1',
@@ -78,10 +61,6 @@ export class PostgresAgentStore implements AgentStore {
     };
   }
 
-  /**
-   * List agents with optional filters.
-   * Limit capped at 100 to prevent unbounded result sets.
-   */
   async list(filter?: AgentListFilter): Promise<AgentRecord[]> {
     const limit = Math.min(filter?.limit ?? 100, 100);
     let query =
@@ -108,14 +87,6 @@ export class PostgresAgentStore implements AgentStore {
     }));
   }
 
-  /**
-   * Load all registered agents, unbounded (no LIMIT).
-   *
-   * Used by restoreAgents() at boot to reload agents into memory. Same column
-   * mapping as list() but without pagination caps.
-   *
-   * SQL: SELECT ... FROM agents ORDER BY created_at DESC
-   */
   async listAll(): Promise<AgentRecord[]> {
     const result = await this.pool.query(
       'SELECT did, name, owner_did, encrypted_private_key, public_key, created_at FROM agents ORDER BY created_at DESC',
@@ -131,10 +102,7 @@ export class PostgresAgentStore implements AgentStore {
     }));
   }
 
-  /**
-   * Count registered agents, optionally filtered by ownerDid.
-   * `::int` cast: Postgres COUNT returns bigint, which pg maps to string.
-   */
+  /** The int cast prevents pg from returning COUNT as a string. */
   async count(filter?: { ownerDid?: string }): Promise<number> {
     if (filter?.ownerDid) {
       const result = await this.pool.query(

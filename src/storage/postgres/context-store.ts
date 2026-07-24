@@ -13,18 +13,7 @@
 // limitations under the License.
 
 /**
- * PostgresContextStore — Postgres implementation of ContextStore.
- *
- * Identity-gated document store that untrusted agents write to via MCP tools.
- *
- * Identity gating is enforced via WHERE clauses, not application-level post-filtering.
- * A bug in calling code that passes the wrong IdentityContext will not leak data — the
- * database enforces the boundary. "Not found" and "access denied" are indistinguishable
- * to the caller — this is intentional: it prevents existence-enumeration attacks.
- *
- * Server identity bypass: when callerDid === issuerDid, the WHERE clause is omitted, granting
- * read/write access to all entries for admin operations. Safe because the server holds the
- * private key material and could write arbitrary records regardless.
+ * PostgreSQL context storage enforcing ownership in query predicates.
  */
 
 import type { Pool } from 'pg';
@@ -37,19 +26,10 @@ export class PostgresContextStore implements ContextStore {
     this.pool = pool;
   }
 
-  /**
-   * Write a context entry. Upsert semantics (INSERT ... ON CONFLICT UPDATE).
-   *
-   * Identity gating: entry.ownerDid must match identity.callerDid,
-   * or identity must be server identity (callerDid === issuerDid).
-   * On update, the existing entry's ownerDid is preserved — you cannot
-   * reassign ownership via put().
-   */
   async put(
     entry: Omit<ContextEntry, 'createdAt' | 'updatedAt'>,
     identity: IdentityContext,
   ): Promise<ContextEntry> {
-    // Identity gating: only the owner (or server) may write.
     const isServer = identity.callerDid === identity.issuerDid;
     if (!isServer && entry.ownerDid !== identity.callerDid) {
       throw new Error(
@@ -69,8 +49,6 @@ export class PostgresContextStore implements ContextStore {
       [entry.namespace, entry.key, JSON.stringify(entry.value), entry.ownerDid, isServer],
     );
 
-    // If ON CONFLICT ... WHERE filtered out the row (owner mismatch and not server),
-    // RETURNING yields 0 rows. This means a different agent owns this namespace+key.
     if (result.rows.length === 0) {
       throw new Error(
         `Context store access denied: entry '${entry.namespace}/${entry.key}' is owned by ` +
@@ -82,18 +60,12 @@ export class PostgresContextStore implements ContextStore {
       namespace: entry.namespace,
       key: entry.key,
       value: entry.value,
-      // Use the actual owner_did from the database, not the caller-provided value.
-      // On insert, these are the same. On upsert, the DB preserves the original owner.
       ownerDid: result.rows[0].owner_did,
       createdAt: result.rows[0].created_at?.toISOString?.() ?? result.rows[0].created_at,
       updatedAt: result.rows[0].updated_at?.toISOString?.() ?? result.rows[0].updated_at,
     };
   }
 
-  /**
-   * Read a context entry by namespace + key.
-   * Returns null if not found OR if the caller lacks access.
-   */
   async get(
     namespace: string,
     key: string,
@@ -105,12 +77,10 @@ export class PostgresContextStore implements ContextStore {
     let params: unknown[];
 
     if (isServer) {
-      // Server bypass: no owner_did filter.
       query = `SELECT namespace, key, value, owner_did, created_at, updated_at
                FROM agent_context WHERE namespace = $1 AND key = $2`;
       params = [namespace, key];
     } else {
-      // Identity-gated: only return if caller is owner.
       query = `SELECT namespace, key, value, owner_did, created_at, updated_at
                FROM agent_context WHERE namespace = $1 AND key = $2 AND owner_did = $3`;
       params = [namespace, key, identity.callerDid];
@@ -130,10 +100,6 @@ export class PostgresContextStore implements ContextStore {
     };
   }
 
-  /**
-   * List entries in a namespace. Returns only entries the caller owns.
-   * Server identity returns all entries in the namespace.
-   */
   async list(
     namespace: string,
     identity: IdentityContext,
@@ -169,10 +135,6 @@ export class PostgresContextStore implements ContextStore {
     }));
   }
 
-  /**
-   * Delete a context entry. Returns true if deleted, false if not found
-   * or caller lacks access.
-   */
   async delete(namespace: string, key: string, identity: IdentityContext): Promise<boolean> {
     const isServer = identity.callerDid === identity.issuerDid;
 

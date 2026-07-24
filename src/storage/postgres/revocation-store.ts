@@ -13,12 +13,8 @@
 // limitations under the License.
 
 /**
- * Postgres implementation of RevocationStore. Durable JTI revocation with
- * in-process cache and configurable poll-based cross-instance coherency (default 30s).
- *
- * isRevoked() is plain SELECT (no lock). Same-process revoke() writes through to cache
- * immediately. Cross-instance staleness bounded by pollIntervalMs.
- * revoke() throws on any Postgres error — callers must treat rejection as a hard failure.
+ * PostgreSQL revocations with an in-process cache and poll-bounded
+ * cross-instance coherency.
  */
 
 import type { Pool } from 'pg';
@@ -28,27 +24,12 @@ import { getLogger } from '#observability/logger.js';
 
 export interface PostgresRevocationStoreOptions {
   /**
-   * Coherency mode for cross-instance cache invalidation.
-   *
-   * 'poll' (default): re-read all revocations from Postgres every pollIntervalMs.
-   *   Works against any backing store; no Postgres-specific infrastructure needed.
-   *
-   * 'listen-notify': RESERVED FOR FUTURE USE — not implemented.
-   *   Constructing the store with this mode throws. The type is preserved in
-   *   the option shape so consumers can see the planned surface. Consumers
-   *   who need tighter coherency bounds today should reduce pollIntervalMs.
-   *
-   * Operational note: 'poll' consumes one pool connection per pollIntervalMs cycle
-   * for the SELECT * FROM revoked_credentials query.
+   * Cache-coherency mode. listen-notify is reserved and rejected at construction.
    */
   mode?: 'poll' | 'listen-notify';
 
   /**
-   * Poll interval in milliseconds. Only used when mode='poll'.
-   * Default: 30_000 (30 seconds). This is the maximum cross-instance staleness
-   * bound — a revocation performed on instance A is visible on instance B within
-   * this window. Lower values reduce the staleness window at the cost of more
-   * Postgres queries.
+   * Poll interval and maximum cross-instance staleness. Defaults to 30 seconds.
    */
   pollIntervalMs?: number;
 }
@@ -64,28 +45,23 @@ export class PostgresRevocationStore implements RevocationStore {
   private readonly pollIntervalMs: number;
   private readonly logger: Logger;
 
-  /** Positive cache: JTI → expiry ms. Hot-path O(1) positive check. */
+  /** Positive cache: JTI to credential expiry. */
   private cache = new Map<string, { credentialExpMs?: number }>();
 
-  /**
-   * Negative cache: JTI → TTL expiry ms. Short-circuits DB on recent misses.
-   * FIFO-bounded. Never consulted when positive cache hits.
-   */
+  /** FIFO-bounded negative cache: JTI to cache expiry. */
   private negativeCache = new Map<string, number>();
 
-  /** Timer for the poll loop. Cleared on close(). */
   private pollTimer: ReturnType<typeof setInterval> | undefined;
 
-  /** Whether the store has been closed. */
   private closed = false;
 
-  constructor(pool: Pool, options: PostgresRevocationStoreOptions = {}, logger: Logger = getLogger()) {
+  constructor(
+    pool: Pool,
+    options: PostgresRevocationStoreOptions = {},
+    logger: Logger = getLogger(),
+  ) {
     this.pool = pool;
     this.logger = logger;
-    // Poll is the only implemented mode. listen-notify is kept in the option
-    // type as a documented future mode, but is rejected here — silently
-    // degrading would mislead callers who think they have tighter coherency
-    // than they actually do.
     if (options.mode && options.mode !== 'poll') {
       throw new Error(
         `[PostgresRevocationStore] mode='${options.mode}' is not implemented in this release. ` +
@@ -95,10 +71,7 @@ export class PostgresRevocationStore implements RevocationStore {
     this.pollIntervalMs = options.pollIntervalMs ?? 30_000;
   }
 
-  /**
-   * Start the background poll loop. Called by PostgresStorageBackend after initialize().
-   * Idempotent — second call is a no-op.
-   */
+  /** Idempotently starts cross-instance cache polling. */
   startCoherency(): void {
     if (this.closed || this.pollTimer) return;
 
@@ -107,23 +80,17 @@ export class PostgresRevocationStore implements RevocationStore {
       try {
         await this._refreshCache();
       } catch (err) {
-        // Non-fatal: poll failure means stale cache until next poll.
-        // Log but don't throw — the coherency mechanism is advisory.
         this.logger.warn('[PostgresRevocationStore] Poll refresh failed', { error: err });
       }
     }, this.pollIntervalMs);
 
-    // Allow Node.js to exit even if the interval is still running.
-    // The process should not be kept alive by the poll loop alone.
     const timerWithUnref = this.pollTimer as { unref?: () => void } | undefined;
     if (timerWithUnref && typeof timerWithUnref.unref === 'function') {
       timerWithUnref.unref();
     }
   }
 
-  /**
-   * Stop the background coherency mechanism. Called by PostgresStorageBackend.close().
-   */
+  /** Stops cross-instance cache polling. */
   stopCoherency(): void {
     this.closed = true;
     if (this.pollTimer) {
@@ -132,10 +99,7 @@ export class PostgresRevocationStore implements RevocationStore {
     }
   }
 
-  /**
-   * Hot path: positive cache → negative cache → DB SELECT.
-   * Cross-instance false negatives bounded by pollIntervalMs.
-   */
+  /** Checks positive cache, negative cache, then PostgreSQL. */
   async isRevoked(jti: string): Promise<boolean> {
     if (this.cache.has(jti)) return true;
 
@@ -151,14 +115,13 @@ export class PostgresRevocationStore implements RevocationStore {
     try {
       result = await this.pool.query(`SELECT 1 FROM revoked_credentials WHERE jti = $1`, [jti]);
     } catch (err) {
-      // SQLSTATE 42P01: schema-missing → treat as no revocations (pre-migration boot).
       if (
         typeof err === 'object' &&
         err !== null &&
         'code' in err &&
         (err as { code: unknown }).code === '42P01'
       ) {
-        return false; // don't cache — table may exist on the next call
+        return false; // The table may exist on the next call.
       }
       throw err;
     }
@@ -172,7 +135,7 @@ export class PostgresRevocationStore implements RevocationStore {
     return false;
   }
 
-  /** Insert/refresh a JTI in the negative cache. FIFO evict on overflow; delete+set for tail ordering. */
+  /** Inserts a negative result with FIFO eviction. */
   private recordNegative(jti: string): void {
     if (this.negativeCache.size >= NEGATIVE_CACHE_MAX_ENTRIES && !this.negativeCache.has(jti)) {
       const oldestKey = this.negativeCache.keys().next().value;
@@ -184,11 +147,7 @@ export class PostgresRevocationStore implements RevocationStore {
     this.negativeCache.set(jti, Date.now() + NEGATIVE_CACHE_TTL_MS);
   }
 
-  /**
-   * Revoke a JTI. Idempotent (ON CONFLICT DO NOTHING). Throws on any Postgres
-   * error — callers MUST treat rejection as a hard failure.
-   * Writes through to cache immediately; peers pick up on next poll.
-   */
+  /** Idempotently revokes a JTI and updates the local cache. */
   async revoke(jti: string, opts: { reason?: string; credentialExp?: Date }): Promise<void> {
     if (!jti || typeof jti !== 'string') {
       throw new Error('RevocationStore.revoke: jti must be a non-empty string');
@@ -207,7 +166,7 @@ export class PostgresRevocationStore implements RevocationStore {
     this.negativeCache.delete(jti);
   }
 
-  /** Startup cache warm-up. Cold cache (DB unavailable) is non-fatal. */
+  /** Loads current revocations into the local cache. */
   async loadAll(): Promise<Array<{ jti: string; credentialExp?: Date }>> {
     const result = await this.pool.query(`SELECT jti, expires_at FROM revoked_credentials`);
 
@@ -221,11 +180,7 @@ export class PostgresRevocationStore implements RevocationStore {
     return entries;
   }
 
-  /**
-   * Prune expired revocations. Default cutoff: 30 days ago.
-   * NULL expires_at rows (non-expiring credentials) are never pruned.
-   * Returns count deleted.
-   */
+  /** Prunes expiring credentials older than the cutoff; null expiry is retained. */
   async pruneExpired(beforeTs?: Date): Promise<number> {
     const cutoff = beforeTs ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
@@ -244,12 +199,7 @@ export class PostgresRevocationStore implements RevocationStore {
     return result.rows.length;
   }
 
-  // ─── Internal ──────────────────────────────────────────────────────────────
-
-  /**
-   * Full cache refresh from Postgres. Drops negative entries for JTIs now
-   * seen as positively revoked (prevents widening cross-instance staleness).
-   */
+  /** Replaces the positive cache and clears contradictory negative entries. */
   private async _refreshCache(): Promise<void> {
     const result = await this.pool.query(`SELECT jti, expires_at FROM revoked_credentials`);
 

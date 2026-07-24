@@ -13,16 +13,8 @@
 // limitations under the License.
 
 /**
- * SqliteAuditStore — SQLite implementation of AuditStore.
- *
- * SQLite adaptations: columns_accessed is TEXT (JSON), append-only via
- * BEFORE UPDATE/DELETE triggers, synchronous calls wrapped in async interface.
- *
- * Security: the SQLite triggers (trg_audit_no_update, trg_audit_no_delete) provide the same
- * append-only guarantee as the Postgres triggers. Any direct UPDATE or DELETE on agent_audit
- * will raise an error and abort the transaction. This is defense-in-depth alongside the
- * interface design (AuditStore has no update/delete methods) and hash chaining (tampering
- * is detectable offline).
+ * SQLite append-only audit persistence using JSON text for accessed columns.
+ * Database triggers complement the interface and hash-chain protections.
  */
 
 import type { Database } from 'better-sqlite3';
@@ -56,7 +48,6 @@ export class SqliteAuditStore implements AuditStore {
     this.db = db;
   }
 
-  /** Append an audit record. org_id is nullable — free-tier agents have no org context. */
   async append(record: AuditRecord): Promise<void> {
     this.insertRecord(record);
   }
@@ -68,9 +59,10 @@ export class SqliteAuditStore implements AuditStore {
   async appendWithChainLock(
     buildRecord: (lastRecord: AuditRecord | null) => AuditRecord | Promise<AuditRecord>,
   ): Promise<AuditRecord> {
-    // JS mutex: async buildRecord yields the event loop before SQLite COMMIT
     let release!: () => void;
-    const acquired = new Promise<void>((resolve) => { release = resolve; });
+    const acquired = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const prev = this.lockQueue;
     this.lockQueue = acquired;
     await prev;
@@ -134,22 +126,10 @@ export class SqliteAuditStore implements AuditStore {
   }
 
   /**
-   * Load the chain head under BEGIN IMMEDIATE (RESERVED lock) to prevent
-   * concurrent process init from forking the hash chain.
-   *
-   * BEGIN IMMEDIATE acquires a RESERVED lock on the database at transaction start — before any
-   * read or write statement. This prevents any other writer from starting a transaction until
-   * this one commits. Two processes can still read concurrently, but no other writer can begin.
-   *
-   * Why not BEGIN DEFERRED: DEFERRED defers lock acquisition until the first write. With DEFERRED,
-   * two processes can both reach the chain-head SELECT before either writes, leaving the
-   * read-then-write race open. IMMEDIATE closes it.
-   *
-   * App-level mutexes do not work across processes — the RESERVED lock is DB-level.
+   * Uses BEGIN IMMEDIATE so the database lock precedes the chain-head read;
+   * BEGIN DEFERRED would leave a cross-process read-then-write race.
    */
   async loadLastRecordLocked(): Promise<AuditRecord | null> {
-    // BEGIN IMMEDIATE: acquires RESERVED lock at transaction start — prevents concurrent writers.
-    // SQLite-native equivalent of Postgres advisory lock serialization.
     const row = this.db
       .transaction(() => {
         return this.loadLastRecordRow();
@@ -160,7 +140,6 @@ export class SqliteAuditStore implements AuditStore {
     return this._rowToRecord(row);
   }
 
-  /** Map a SQLite row to an AuditRecord. Shared by loadLastRecord and loadLastRecordLocked. */
   private _rowToRecord(row: AuditRow): AuditRecord {
     return {
       id: row.id,
@@ -193,7 +172,6 @@ export class SqliteAuditStore implements AuditStore {
       query += ' AND id = ?';
       params.push(filter.id);
     }
-    // agentDids takes precedence over agentDid when both are set.
     if (filter?.agentDids && filter.agentDids.length > 0) {
       const placeholders = filter.agentDids.map(() => '?').join(', ');
       query += ` AND agent_did IN (${placeholders})`;
@@ -249,7 +227,6 @@ export class SqliteAuditStore implements AuditStore {
     }));
   }
 
-  /** Count audit records with optional filters. Same WHERE logic as query(). */
   async count(filter?: AuditQueryFilter): Promise<number> {
     let query = 'SELECT COUNT(*) AS cnt FROM agent_audit WHERE 1=1';
     const params: unknown[] = [];
