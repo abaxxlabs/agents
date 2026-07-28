@@ -13,50 +13,12 @@
 // limitations under the License.
 
 /**
- * SessionEnvelope — re-establishment metadata persisted per session token.
+ * Minimal metadata required to rebuild a live session across processes.
+ * Private keys, OAuth secrets, closures, and derived column keys are never
+ * persisted. Authority is re-verified on every re-establishment.
  *
- * Process-local `Map<token, SessionEntry>` disappears on restart and is
- * invisible to peer instances behind a load balancer. This envelope is the
- * minimum metadata needed to re-call `createSessionFromDid` on a cross-
- * instance hit, reconstructing a live `AuthenticatedSession` that was never
- * itself serialized.
- *
- * The envelope is NOT a serialized session. `AuthenticatedSession` holds
- * `humanPrivateKey`, `verifier`, `sdk`, `parentProvider` references —
- * closures over instance-local state. Persisting them would require
- * serializing JavaScript closures (impossible) and private keys (a security
- * regression). Instead we persist only:
- *
- *   - Identity fields (DID, email, OIDC claims)
- *   - A compact parent JWT whose authority is re-verified on every read
- *   - Lifecycle metadata (createdAt, expiresAt)
- *   - Provider binding (issuer URL — keyed into a local allowlist)
- *
- * Authority fields (scope ceiling, parent-issuer DID, parent-credential exp)
- * are re-derived / re-verified from these bytes on every re-establishment.
- * Envelope bytes are never trusted as authority — they are trust roots for
- * the server to re-compute authority against.
- *
- * Security: identity fields (humanDid, oidcSubject, oidcIssuer) are
- * key-equivalent material. `createOidcSession` derives its Ed25519 keypair
- * from sha256(oidcIssuer || '\x00' || oidcSubject). A row-tamper that
- * rewrites oidcSubject synthesizes a different key on re-establishment ->
- * impersonation vector. MAC (HMAC-SHA256 over canonical envelope encoding,
- * HKDF-derived key from master key) is the only defense against this specific
- * tamper class. MAC is not confidentiality — envelope fields remain readable
- * in the DB.
- *
- * Envelope size cap: canonical-encoded byte length MUST be <= 32768 (32KB).
- * Defense against unbounded `oidcGroupClaims` from self-hosted Keycloak
- * tenants — the one envelope field outside Abaxx's issuance control.
- *
- * Not serializable by design:
- *   - humanPrivateKey — closures stay instance-local. Non-portable sessions
- *     are rejected at put() with SessionNotPortableError.
- *   - parentAccessToken / refresh tokens — no OAuth-secret persistence.
- *     Cross-instance hits requiring a live parent token fall back to
- *     re-auth-on-miss.
- *   - derived column keys — never on sessions (ScopeEngine concern).
+ * Identity fields are key-equivalent, so an HMAC protects envelope integrity;
+ * it does not provide confidentiality. Canonical envelopes are capped at 32KB.
  */
 export interface SessionEnvelope {
   /** The human DID this session represents (did:dht or did:key). */
@@ -68,9 +30,9 @@ export interface SessionEnvelope {
   oidcIssuer: string;
   /** OIDC subject (sub claim). */
   oidcSubject: string;
-  /** OIDC group claims (if any) — used to re-derive scope ceiling. */
+  /** OIDC groups used to re-derive the scope ceiling. */
   oidcGroupClaims?: string[];
-  /** Optional tenant URL for keycloak/abaxx-one providers. */
+  /** Optional tenant URL for Keycloak and AbaxxOne providers. */
   oidcTenantUrl?: string;
 
   parentJwt?: string;
@@ -86,76 +48,43 @@ export interface SessionEnvelope {
   expiresAt: number;
 }
 
-/** Options for SessionStore.put(). `ttlSeconds` is authoritative; the store computes `expiresAt` storage-side. */
+/** Options for SessionStore.put(). */
 export interface SessionPutOptions {
   ttlSeconds: number;
 }
 
 /**
- * SessionStore — durable re-establishment envelope persistence.
- *
- * Makes server session state durable across process restart and coherent
- * across instances behind a load balancer.
- *
- * Error contract: all methods throw on backing-store failure at runtime.
- * NEVER swallow. HTTP handler maps throws to 503. No silent in-memory fallback.
+ * Durable session re-establishment envelopes shared across server instances.
+ * Backing-store failures are never replaced with a silent in-memory fallback.
  */
 export interface SessionStore {
   /**
-   * Hot path: read an envelope by token.
-   *
-   * Returns null if:
-   *   - Token is unknown
-   *   - Row's expires_at < NOW() (expired — caller re-authenticates)
-   *
-   * Throws on:
-   *   - MAC mismatch (EnvelopeIntegrityError) — row-tamper detected
-   *   - Backing-store failure (SQL error, connection loss, etc.)
+   * Reads an unexpired envelope by token.
+   * @returns Null when the token is unknown or expired.
+   * @throws {EnvelopeIntegrityError} When MAC verification fails.
    */
   get(token: string): Promise<SessionEnvelope | null>;
 
   /**
-   * Persist an envelope with a TTL (seconds).
-   *
-   * `expires_at` is computed storage-side as `NOW() + ttlSeconds`.
-   *
-   * Throws on:
-   *   - `envelope.providerKind === 'mock'` (ProviderNotAllowedError). Mock
-   *     sessions are instance-local by design and must never be persisted.
-   *   - Canonical-encoded envelope byte length > MAX_ENVELOPE_BYTES
-   *     (EnvelopeTooLargeError).
-   *   - Backing-store failure.
+   * Persists an envelope with a storage-authoritative TTL.
+   * @throws {ProviderNotAllowedError} When the provider cannot be persisted.
+   * @throws {EnvelopeTooLargeError} When canonical data exceeds the size limit.
    */
   put(token: string, envelope: SessionEnvelope, opts: SessionPutOptions): Promise<void>;
 
-  /**
-   * Revoke a session. Used by admin-revoke path and on token rotation.
-   * Idempotent — delete() on an unknown token is a no-op.
-   */
+  /** Idempotently deletes a session by token. */
   delete(token: string): Promise<void>;
 
-  /**
-   * GDPR Art. 17 helper. Deletes all sessions for a given humanDid.
-   * Returns count deleted.
-   */
+  /** Deletes all sessions for a human DID and returns the count. */
   deleteByHumanDid(humanDid: string): Promise<number>;
 
   /**
-   * Consumer-scheduled pruning. Deletes rows WHERE expires_at < beforeTs
-   * (default NOW()). Optional `limit` bounds single-call DELETE size to avoid
-   * million-row locks.
-   *
-   * Returns count deleted.
+   * Deletes expired sessions. The optional limit bounds each delete operation.
    */
   pruneExpired(beforeTs?: Date, limit?: number): Promise<number>;
 }
 
-/**
- * Thrown when envelope MAC verification fails at get() time.
- *
- * This is a tamper indicator. Callers should NOT retry with the same token.
- * HTTP handler maps to 401 `SESSION_INTEGRITY_FAILED`.
- */
+/** Indicates persisted session-envelope tampering. */
 export class EnvelopeIntegrityError extends Error {
   readonly code = 'SESSION_INTEGRITY_FAILED' as const;
   constructor(message = 'Session envelope integrity check failed') {
@@ -164,11 +93,7 @@ export class EnvelopeIntegrityError extends Error {
   }
 }
 
-/**
- * Thrown by server-side rehydrate when a session is not portable — typically
- * because it was created via createMockSession or carries a closure-bound
- * humanPrivateKey. These sessions stay instance-local.
- */
+/** Indicates a session contains instance-local state and cannot be persisted. */
 export class SessionNotPortableError extends Error {
   readonly code = 'SESSION_NOT_PORTABLE' as const;
   constructor(message = 'Session is instance-local and cannot be externalized') {
@@ -177,10 +102,7 @@ export class SessionNotPortableError extends Error {
   }
 }
 
-/**
- * Thrown when put() encounters providerKind='mock' OR when re-establishment
- * encounters an envelope whose oidcIssuer is not in OIDC_ALLOWED_ISSUERS.
- */
+/** Indicates a provider cannot be persisted or re-established. */
 export class ProviderNotAllowedError extends Error {
   readonly code = 'PROVIDER_NOT_ALLOWED' as const;
   readonly issuer?: string;
@@ -191,10 +113,7 @@ export class ProviderNotAllowedError extends Error {
   }
 }
 
-/**
- * Thrown when put() encounters a canonical-encoded envelope exceeding
- * MAX_ENVELOPE_BYTES (32768 / 32KB).
- */
+/** Indicates a canonical envelope exceeds the configured size limit. */
 export class EnvelopeTooLargeError extends Error {
   readonly code = 'ENVELOPE_TOO_LARGE' as const;
   readonly sizeBytes: number;

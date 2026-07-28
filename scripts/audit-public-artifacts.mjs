@@ -21,97 +21,20 @@ import path from 'node:path';
 const ROOT_DIR = process.cwd();
 const PUBLIC_REPO_LIST_ENV = 'ABAXXLABS_PUBLIC_REPO_CANDIDATE_LIST';
 const PUBLIC_REPO_ROOT_ENV = 'ABAXXLABS_PUBLIC_REPO_ROOT';
+const PUBLIC_REPO_POLICY = JSON.parse(
+  readFileSync(new URL('./public-repo-policy.json', import.meta.url), 'utf8'),
+);
 
-const PACKAGE_ALLOWED_PATHS = ['package.json', 'README.md', 'LICENSE', 'dist/**', 'vendor/id-sdk-mcp/**'];
-
-const PUBLIC_REPO_ALLOWED_PATHS = [
-  '.github/pull_request_template.md',
-  '.github/workflows/ci.yml',
-  '.github/workflows/jsdoc-types.yml',
-  '.gitignore',
-  '.prettierrc',
-  'CHANGELOG.md',
-  'CODE_OF_CONDUCT.md',
-  'CONTRIBUTING.md',
-  'demo/showcase/Dockerfile',
-  'demo/showcase/package-lock.json',
-  'demo/showcase/package.json',
-  'demo/showcase/scripts/**',
-  'demo/showcase/src/**',
-  'demo/showcase/tsconfig.json',
-  'demo/showcase/vite.config.ts',
-  'LICENSE',
-  'README.md',
-  'SECURITY.md',
-  'VERSION',
-  'api/public-api.*.snapshot.json',
-  'bun.lock',
-  'docs/DECISIONS.md',
-  'docs/migration-*.md',
-  'docs/rollback-*.md',
-  'eslint.config.js',
-  'migrations/**',
+const PACKAGE_ALLOWED_PATHS = [
   'package.json',
-  'packages/create-agents/package-lock.json',
-  'packages/create-agents/package.json',
-  'packages/create-agents/src/**',
-  'packages/create-agents/template/**',
-  'packages/create-agents/tsconfig.json',
-  'packages/server/package-lock.json',
-  'packages/server/package.json',
-  'packages/server/src/**',
-  'packages/server/tsconfig.json',
-  'scripts/assert-package-artifacts.mjs',
-  'scripts/audit-public-artifacts.mjs',
-  'scripts/check-npm-cache.mjs',
-  'scripts/check-public-api.mjs',
-  'scripts/extract-jsdoc-examples.ts',
-  'scripts/release-gate.mjs',
-  'scripts/smoke-installed-package.mjs',
-  'src/**',
-  'tsconfig.cjs.json',
-  'tsconfig.json',
-  'vitest.config.ts',
-];
-
-const PUBLIC_REPO_FORBIDDEN_PATHS = [
-  '.claude/**',
-  '.mcp.json',
-  '.npmrc',
-  'CLAUDE.md',
-  'TODOS.md',
-  'coverage/**',
-  'data/**',
-  'demo/hackathon/_review*.md',
-  'demo/hackathon/findings/**',
+  'README.md',
+  'LICENSE',
   'dist/**',
-  'docs/abxagnts-*.md',
-  'docs/plan-*.md',
-  'docs/support-runbook-*.md',
-  'node_modules/**',
-  'package/**',
-  'packages/*/dist/**',
-  '*.log',
-  '*.tgz',
-  '*.zip',
+  'vendor/id-sdk-mcp/**',
 ];
 
-const LOCAL_CREDENTIAL_PATHS = [
-  '**/.env',
-  '**/.env.*',
-  '**/.agent-scope-master-key',
-  '**/agent-scope.config.json',
-  '**/client_secret.json',
-  '**/credentials.json',
-  '**/id_ed25519',
-  '**/id_rsa',
-  '**/service-account.json',
-  '**/service_account.json',
-  '**/*.key',
-  '**/*.p12',
-  '**/*.pfx',
-  '**/*.pem',
-];
+export const PUBLIC_REPO_ALLOWED_PATHS = PUBLIC_REPO_POLICY.publicAllowedPaths;
+const PUBLIC_REPO_FORBIDDEN_PATHS = PUBLIC_REPO_POLICY.publicForbiddenPaths;
 
 const SECRET_CONTENT_PATTERNS = [
   {
@@ -247,14 +170,15 @@ const BLOCKED_RELEASE_TERM_ALLOWLIST = [
     reason: 'The release audit source must declare the exact blocked terms it enforces.',
   },
   {
-    path: 'scripts/audit-public-artifacts.mjs',
-    linePattern: String.raw`^\s*'(?:demo/hackathon|docs/abxagnts-)`,
-    reason: 'The release audit source must declare forbidden internal-only public-repo path globs.',
+    path: 'scripts/public-repo-policy.json',
+    linePattern: String.raw`^\s*"(?:demo/hackathon|docs/abxagnts-)`,
+    reason: 'The public repository policy must declare forbidden internal-only path globs.',
   },
   {
     path: 'LICENSE',
     linePattern: String.raw`other commercial damages or losses`,
-    reason: 'Standard Apache License 2.0 section 8 boilerplate ("damages or losses"); not project-authored positioning.',
+    reason:
+      'Standard Apache License 2.0 section 8 boilerplate ("damages or losses"); not project-authored positioning.',
   },
 ];
 
@@ -362,7 +286,10 @@ function normalizeArtifactPaths(paths) {
 
 function artifactFileStatus(artifactPath, rootDir) {
   const absolutePath = path.resolve(rootDir, artifactPath);
-  if (!absolutePath.startsWith(path.resolve(rootDir) + path.sep) && absolutePath !== path.resolve(rootDir)) {
+  if (
+    !absolutePath.startsWith(path.resolve(rootDir) + path.sep) &&
+    absolutePath !== path.resolve(rootDir)
+  ) {
     return { withinRoot: false };
   }
   if (!existsSync(absolutePath)) {
@@ -400,13 +327,19 @@ function validateBlockedTermAllowlistEntry(entry, index) {
     throw new Error(`blocked release term allowlist entry ${index + 1} must include a file path`);
   }
   if (entry.path.includes('*')) {
-    throw new Error(`blocked release term allowlist entry ${index + 1} must be file-specific, not a glob`);
+    throw new Error(
+      `blocked release term allowlist entry ${index + 1} must be file-specific, not a glob`,
+    );
   }
   if (path.posix.isAbsolute(entry.path) || entry.path.startsWith('../') || entry.path === '..') {
-    throw new Error(`blocked release term allowlist entry ${index + 1} path must be relative to the audit root`);
+    throw new Error(
+      `blocked release term allowlist entry ${index + 1} path must be relative to the audit root`,
+    );
   }
   if (typeof entry.reason !== 'string' || entry.reason.trim().length < 12) {
-    throw new Error(`blocked release term allowlist entry ${index + 1} must include a narrow reason`);
+    throw new Error(
+      `blocked release term allowlist entry ${index + 1} must include a narrow reason`,
+    );
   }
   if (
     (typeof entry.term !== 'string' || entry.term.trim().length === 0) &&
@@ -484,7 +417,9 @@ function databaseCredentialViolations(contents, artifactPath) {
 }
 
 function secretContentViolations(contents, artifactPath) {
-  const patternViolations = SECRET_CONTENT_PATTERNS.filter(({ pattern }) => pattern.test(contents)).map(({ name }) => ({
+  const patternViolations = SECRET_CONTENT_PATTERNS.filter(({ pattern }) =>
+    pattern.test(contents),
+  ).map(({ name }) => ({
     path: artifactPath,
     reason: `contains high-confidence secret pattern: ${name}`,
   }));
@@ -524,7 +459,9 @@ function scanFileForContentViolations(artifactPath, rootDir, options = {}) {
   const contents = readFileSync(absolutePath, 'utf8');
   return [
     ...secretContentViolations(contents, artifactPath),
-    ...blockedReleaseTermViolations(contents, artifactPath, options.blockedTermAllowlist),
+    ...(options.scanBlockedTerms === false
+      ? []
+      : blockedReleaseTermViolations(contents, artifactPath, options.blockedTermAllowlist)),
   ];
 }
 
@@ -532,11 +469,12 @@ function auditFiles(paths, policy, options = {}) {
   const rootDir = options.rootDir ?? ROOT_DIR;
   const scanContents = options.scanContents ?? true;
   const requireExistingFiles = options.requireExistingFiles ?? false;
+  const scanBlockedTerms = options.scanBlockedTerms ?? true;
   const blockedTermAllowlist = normalizeBlockedTermAllowlist(
     options.blockedTermAllowlist ?? BLOCKED_RELEASE_TERM_ALLOWLIST,
   );
   const { paths: normalizedPaths, violations } = normalizeArtifactPaths(paths);
-  const allForbiddenGlobs = [...(policy.forbidden ?? []), ...LOCAL_CREDENTIAL_PATHS];
+  const allForbiddenGlobs = policy.forbidden ?? [];
 
   for (const artifactPath of normalizedPaths) {
     const forbiddenGlob = firstMatchingGlob(artifactPath, allForbiddenGlobs);
@@ -554,7 +492,10 @@ function auditFiles(paths, policy, options = {}) {
     if (requireExistingFiles) {
       const fileStatus = artifactFileStatus(artifactPath, rootDir);
       if (!fileStatus.exists) {
-        violations.push({ path: artifactPath, reason: 'candidate file does not exist under audit root' });
+        violations.push({
+          path: artifactPath,
+          reason: 'candidate file does not exist under audit root',
+        });
         continue;
       }
       if (!fileStatus.isFile) {
@@ -564,7 +505,12 @@ function auditFiles(paths, policy, options = {}) {
     }
 
     if (scanContents) {
-      violations.push(...scanFileForContentViolations(artifactPath, rootDir, { blockedTermAllowlist }));
+      violations.push(
+        ...scanFileForContentViolations(artifactPath, rootDir, {
+          blockedTermAllowlist,
+          scanBlockedTerms,
+        }),
+      );
     }
   }
 
@@ -598,10 +544,14 @@ export function auditPublicRepoFiles(paths, options = {}) {
 }
 
 export function defaultPublicRepoCandidatePaths(rootDir = ROOT_DIR) {
-  const output = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], {
-    cwd: rootDir,
-    encoding: 'utf8',
-  });
+  const output = execFileSync(
+    'git',
+    ['ls-files', '--cached', '--others', '--exclude-standard', '-z'],
+    {
+      cwd: rootDir,
+      encoding: 'utf8',
+    },
+  );
   return output
     .split('\0')
     .filter(Boolean)
@@ -611,7 +561,9 @@ export function defaultPublicRepoCandidatePaths(rootDir = ROOT_DIR) {
 
 export function readPublicRepoList(filePath) {
   const contents =
-    filePath === '-' ? readFileSync(0, 'utf8') : readFileSync(path.resolve(ROOT_DIR, filePath), 'utf8');
+    filePath === '-'
+      ? readFileSync(0, 'utf8')
+      : readFileSync(path.resolve(ROOT_DIR, filePath), 'utf8');
   return contents
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -631,7 +583,14 @@ export function npmPackDryRunFiles(rootDir = ROOT_DIR) {
     path.join(tmpdir(), 'abaxxlabs-agents-npm-logs');
   const output = execFileSync(
     'npm',
-    ['pack', '--dry-run', '--json', '--ignore-scripts', `--cache=${npmCache}`, `--logs-dir=${npmLogs}`],
+    [
+      'pack',
+      '--dry-run',
+      '--json',
+      '--ignore-scripts',
+      `--cache=${npmCache}`,
+      `--logs-dir=${npmLogs}`,
+    ],
     {
       cwd: rootDir,
       encoding: 'utf8',
@@ -668,7 +627,9 @@ function printResult(name, result) {
 function usage() {
   return `
 Usage:
-  node scripts/audit-public-artifacts.mjs [all|package|public-repo] [--public-root <path>] [--public-list <path|-|git>]
+  node scripts/audit-public-artifacts.mjs [all|package|public-repo] [--public-root <path>] [--public-list <path|-|git>] [--security-only]
+
+  --security-only  Enforce path and secret checks without editorial release-term checks.
 
 Environment:
   ${PUBLIC_REPO_ROOT_ENV}=<assembled public repo root>
@@ -687,6 +648,7 @@ function parseArgs(argv) {
   const command = args[0] && !args[0].startsWith('-') ? args.shift() : 'all';
   let publicList = process.env[PUBLIC_REPO_LIST_ENV] ?? 'git';
   let publicRoot = process.env[PUBLIC_REPO_ROOT_ENV];
+  let securityOnly = false;
 
   while (args.length > 0) {
     const arg = args.shift();
@@ -700,6 +662,8 @@ function parseArgs(argv) {
       if (!publicRoot) {
         throw new Error('--public-root requires the assembled public repository root path');
       }
+    } else if (arg === '--security-only') {
+      securityOnly = true;
     } else if (arg === '--help' || arg === '-h') {
       return { help: true };
     } else {
@@ -711,7 +675,7 @@ function parseArgs(argv) {
     throw new Error(`Unknown audit command: ${command}`);
   }
 
-  return { command, publicList, publicRoot };
+  return { command, publicList, publicRoot, securityOnly };
 }
 
 function publicRepoAuditInput(args) {
@@ -746,7 +710,6 @@ function runCli(argv) {
     console.log(usage());
     return 0;
   }
-
   const results = [];
   if (args.command === 'all' || args.command === 'package') {
     const packageFiles = npmPackDryRunFiles();
@@ -760,6 +723,7 @@ function runCli(argv) {
       auditPublicRepoFiles(publicRepoInput.paths, {
         rootDir: publicRepoInput.rootDir,
         requireExistingFiles: true,
+        scanBlockedTerms: !args.securityOnly,
       }),
     ]);
   }

@@ -158,7 +158,6 @@ function buildSnapshot() {
   return {
     schemaVersion: 1,
     packageName: pkg.name,
-    packageVersion: pkg.version,
     publicSubpaths: Object.keys(PUBLIC_ENTRIES),
     entries: collectExports(program),
   };
@@ -204,9 +203,6 @@ function summarizeSnapshotDiff(expected, actual) {
   if (expected.packageName !== actual.packageName) {
     lines.push(`packageName: ${expected.packageName} -> ${actual.packageName}`);
   }
-  if (expected.packageVersion !== actual.packageVersion) {
-    lines.push(`packageVersion: ${expected.packageVersion} -> ${actual.packageVersion}`);
-  }
 
   const subpaths = new Set([
     ...Object.keys(expected.entries ?? {}),
@@ -250,6 +246,10 @@ function runCli(argv) {
   }
 
   const expected = JSON.parse(readFileSync(snapshotPath, 'utf8'));
+
+  // Strip packageVersion from legacy snapshots to prevent version-bump drift
+  delete expected.packageVersion;
+
   const expectedJson = stableJson(expected);
   if (expectedJson === actualJson) {
     const exportCount = Object.values(actual.entries).reduce((sum, entry) => sum + entry.length, 0);

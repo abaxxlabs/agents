@@ -13,14 +13,8 @@
 // limitations under the License.
 
 /**
- * SqliteRevocationStore — SQLite implementation of RevocationStore.
- *
- * Single-process durable JTI revocation. SQLite adaptations: ISO 8601 TEXT
- * timestamps, no LISTEN/NOTIFY. Uses BEGIN IMMEDIATE on isRevoked() and
- * revoke() to close the concurrent revoke+verify race.
- *
- * Security: storage bugs here are security incidents, not operational ones.
- * A missed revocation is a credential-validity violation.
+ * Single-process durable JTI revocation. BEGIN IMMEDIATE serializes concurrent
+ * verification and revocation operations.
  */
 
 import type { Database } from 'better-sqlite3';
@@ -29,23 +23,17 @@ import type { RevocationStore } from '../types.js';
 export class SqliteRevocationStore implements RevocationStore {
   private readonly db: Database;
 
-  // Simple Set (not Map with expiry): pruneExpired() is the explicit eviction path.
-  // Lazy eviction on isRevoked() could mask revocation of an expired credential.
+  // Explicit pruning avoids silently hiding a recorded revocation during lookup.
   private readonly cache = new Set<string>();
 
   constructor(db: Database) {
     this.db = db;
   }
 
-  /**
-   * Hot path: O(1) Set lookup, falls back to DB under BEGIN IMMEDIATE if cache miss.
-   * BEGIN IMMEDIATE closes the concurrent revoke+verify race window.
-   */
+  /** Checks the local cache, then SQLite under a write-reserving transaction. */
   async isRevoked(jti: string): Promise<boolean> {
     if (this.cache.has(jti)) return true;
 
-    // DB lookup under RESERVED lock — prevents concurrent revoke+verify race.
-    // Cast to any: .immediate() exists on better-sqlite3 Transaction but isn't typed.
     /* eslint-disable @typescript-eslint/no-explicit-any */
     const found = (this.db as any)
       .transaction(() => {
@@ -63,10 +51,7 @@ export class SqliteRevocationStore implements RevocationStore {
     return found;
   }
 
-  /**
-   * Revoke a JTI under BEGIN IMMEDIATE. Idempotent (ON CONFLICT DO NOTHING).
-   * Throws on any SQLite error — callers must treat rejection as a hard failure.
-   */
+  /** Idempotently revokes a JTI under a write-reserving transaction. */
   async revoke(jti: string, opts: { reason?: string; credentialExp?: Date }): Promise<void> {
     if (!jti || typeof jti !== 'string') {
       throw new Error('RevocationStore.revoke: jti must be a non-empty string');
@@ -89,9 +74,7 @@ export class SqliteRevocationStore implements RevocationStore {
     this.cache.add(jti);
   }
 
-  /**
-   * Startup cache warm-up. Non-fatal if the table doesn't exist yet.
-   */
+  /** Loads current revocations into the local cache. */
   async loadAll(): Promise<Array<{ jti: string; credentialExp?: Date }>> {
     let rows: Array<{ jti: string; expires_at: string | null }>;
     try {
@@ -100,7 +83,6 @@ export class SqliteRevocationStore implements RevocationStore {
         expires_at: string | null;
       }>;
     } catch {
-      // Table may not exist if initialize() hasn't run yet. Return empty.
       return [];
     }
 
@@ -115,10 +97,7 @@ export class SqliteRevocationStore implements RevocationStore {
     return result;
   }
 
-  /**
-   * Delete expired revocations (expires_at < beforeTs). Default: 30 days ago.
-   * Evicts matching entries from the in-process cache. Returns count deleted.
-   */
+  /** Deletes expired revocations and evicts them from the local cache. */
   async pruneExpired(beforeTs?: Date): Promise<number> {
     const cutoff = (beforeTs ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)).toISOString();
 

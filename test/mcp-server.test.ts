@@ -1,6 +1,4 @@
 import { describe, it, expect, vi, type Mock } from 'vitest';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { Pool } from 'pg';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createMcpServer } from '#mcp/server.js';
@@ -12,9 +10,7 @@ import { AgentScope } from '#sql/index.js';
 import { generateDidKey, issueCredential, createSigner } from '#auth/index.js';
 import { encrypt, generateColumnKey } from '#encryption/index.js';
 import type { RegisteredAgent, AuditRecord, AuthenticatedSession } from '#types/index.js';
-import type { AuditStore } from '#storage/types.js';
 import { createMockAuditStore } from './mocks/audit-store.js';
-
 
 function createMcpTestFixtures() {
   const human = generateDidKey();
@@ -166,14 +162,14 @@ function createMcpTestFixtures() {
   };
 }
 
-
 describe('MCP Server', () => {
   describe('createMcpServer', () => {
     it('creates a server with tools and resources registered', () => {
       const { scope, session, auditLogger } = createMcpTestFixtures();
       const server = createMcpServer({ scope, session, auditLogger });
       expect(server).toBeInstanceOf(McpServer);
-      const tools = (server as unknown as { _registeredTools: Record<string, unknown> })._registeredTools;
+      const tools = (server as unknown as { _registeredTools: Record<string, unknown> })
+        ._registeredTools;
       expect(Object.keys(tools).length).toBeGreaterThan(0);
       expect(tools).toHaveProperty('query');
     });
@@ -477,7 +473,6 @@ describe('MCP Server', () => {
     });
   });
 
-
   describe('Resource: agent metadata', () => {
     it('returns agent info for known DID', async () => {
       const { scope, agentA, human } = createMcpTestFixtures();
@@ -517,7 +512,6 @@ describe('MCP Server', () => {
       expect(status.encryptedColumns).toContain('patients.dob');
     });
   });
-
 
   describe('SQL table extraction', () => {
     it('extracts table from simple SELECT', async () => {
@@ -564,11 +558,9 @@ describe('MCP Server', () => {
     });
   });
 
-
   describe('HTTP bearer auth boot', () => {
-    const tlsDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'mcp-tls');
-    const tlsCert = join(tlsDir, 'cert.pem');
-    const tlsKey = join(tlsDir, 'key.pem');
+    const tlsCert = 'unused-test-cert.pem';
+    const tlsKey = 'unused-test-key.pem';
 
     it('exits in production with HTTP TLS and no bearer auth before DB work', async () => {
       const originalEnv = process.env.NODE_ENV;
@@ -703,7 +695,6 @@ describe('MCP Server', () => {
     });
   });
 
-
   describe('Production storage gate', () => {
     it('refuses to start in production with default storage and no --single-instance', async () => {
       const originalEnv = process.env.NODE_ENV;
@@ -768,7 +759,9 @@ describe('MCP Server', () => {
       );
       const warningCall = errorSpy.mock.calls.find((c) =>
         c.some((arg) =>
-          String(arg).includes('MCP server booting in NODE_ENV=production without an explicit storage injection'),
+          String(arg).includes(
+            'MCP server booting in NODE_ENV=production without an explicit storage injection',
+          ),
         ),
       );
       expect(ackCall).toBeDefined();
@@ -809,7 +802,9 @@ describe('MCP Server', () => {
 
       const warningCall = errorSpy.mock.calls.find((c) =>
         c.some((arg) =>
-          String(arg).includes('MCP server booting in NODE_ENV=production without an explicit storage injection'),
+          String(arg).includes(
+            'MCP server booting in NODE_ENV=production without an explicit storage injection',
+          ),
         ),
       );
       expect(warningCall).toBeUndefined();
@@ -855,7 +850,6 @@ describe('MCP Server', () => {
       if (originalKey !== undefined) process.env.AGENTS_MASTER_KEY = originalKey;
     });
   });
-
 
   describe('Integration: full flow', () => {
     it('create agent → issue credential → query → verify flow works end-to-end', async () => {
@@ -953,7 +947,6 @@ describe('MCP Server', () => {
     });
   });
 
-
   describe('Default limits', () => {
     it('query enforces max 1000 row limit', () => {
       // Simulate the tool's row limiting logic
@@ -969,7 +962,6 @@ describe('MCP Server', () => {
       expect(result.metadata.rowCount).toBe(1000);
     });
   });
-
 
   describe('Error mapping', () => {
     it('maps CredentialExpiredError correctly', async () => {
@@ -991,7 +983,6 @@ describe('MCP Server', () => {
     });
   });
 });
-
 
 function buildChainedRecords(count: number): AuditRecord[] {
   const records: AuditRecord[] = [];
@@ -1062,7 +1053,6 @@ function verifyChain(
 
   return brokenLinks;
 }
-
 
 async function getTableExtractor() {
   const { parseSync, loadModule } = await import('libpg-query');
