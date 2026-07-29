@@ -100,11 +100,6 @@ export interface AgentVerifyResult {
   credential: DecodedCredential;
 }
 
-/** Layer 2 agent auth orchestration contract. Depend on this interface, not the class. */
-export interface AgentVerifier {
-  verify(request: AgentVerifyRequest): Promise<AgentVerifyResult>;
-}
-
 export interface AgentVerifierOptions {
   vcVerifier: VcVerifier;
   trustAnchorStore: TrustAnchorStore;
@@ -118,7 +113,7 @@ export interface AgentVerifierOptions {
  * 3. Org boundary: orgDomain must match expectedOrg
  * 4. CapabilityEngine: action must be in capability set
  */
-export class AgentVerifier implements AgentVerifier {
+export class AgentVerifier {
   private readonly vcVerifier: VcVerifier;
   private readonly trustAnchorStore: TrustAnchorStore;
   private readonly capabilityEngine: CapabilityEngine;

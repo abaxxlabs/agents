@@ -124,10 +124,13 @@ describe('SqliteRevocationStore (in-memory)', () => {
 
     let Database: SqliteDatabaseCtor;
     try {
-      Database = require('bun:sqlite').Database;
+      // @ts-expect-error — bun:sqlite only resolves under Bun; absent from Node's type graph.
+      const mod = await import('bun:sqlite');
+      Database = mod.Database as SqliteDatabaseCtor;
     } catch {
       try {
-        Database = require('better-sqlite3');
+        const mod = await import('better-sqlite3');
+        Database = mod.default as unknown as SqliteDatabaseCtor;
       } catch {
         console.log('Skipping SqliteRevocationStore test: no SQLite runtime available');
         return;
@@ -173,10 +176,13 @@ describe('SqliteRevocationStore (in-memory)', () => {
   it('revoke throws on empty JTI', async () => {
     let Database: SqliteDatabaseCtor;
     try {
-      Database = require('bun:sqlite').Database;
+      // @ts-expect-error — bun:sqlite only resolves under Bun; absent from Node's type graph.
+      const mod = await import('bun:sqlite');
+      Database = mod.Database as SqliteDatabaseCtor;
     } catch {
       try {
-        Database = require('better-sqlite3');
+        const mod = await import('better-sqlite3');
+        Database = mod.default as unknown as SqliteDatabaseCtor;
       } catch {
         console.log('Skipping: no SQLite runtime available');
         return;

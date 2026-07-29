@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { statSync, writeFileSync, chmodSync, existsSync, mkdirSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir, homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
@@ -32,7 +33,6 @@ describe('JsonFileBackend', () => {
   afterEach(() => {
     // Cleanup — best effort
     try {
-      const { execSync } = require('node:child_process');
       execSync(`rm -rf ${dir}`);
     } catch {
       /* ignore */
@@ -123,7 +123,7 @@ describe('JsonFileBackend', () => {
   });
 
   it('write() handles multiline values (e.g., PEM keys)', async () => {
-    const pem = '-----BEGIN PRIVATE KEY-----\nMC4CAQ\nABBCD\n-----END PRIVATE KEY-----';
+    const pem = '-----BEGIN TEST VALUE-----\nMC4CAQ\nABBCD\n-----END TEST VALUE-----';
     await backend.write('pem-key', pem);
     expect(await backend.read('pem-key')).toBe(pem);
   });
@@ -316,7 +316,6 @@ describe('createKeystore()', () => {
     else process.env.AGENTS_KEYSTORE_PATH = origKeystorePath;
 
     try {
-      const { execSync } = require('node:child_process');
       execSync(`rm -rf ${dir}`);
     } catch {
       /* ignore */

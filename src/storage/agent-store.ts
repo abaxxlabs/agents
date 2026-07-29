@@ -12,15 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/**
- * AgentRecord — a registered agent in the agents table.
- *
- * Maps 1:1 to the agents schema:
- *   did TEXT PRIMARY KEY → did
- *   name TEXT NOT NULL → name
- *   owner_did TEXT NOT NULL → ownerDid
- *   created_at TIMESTAMPTZ DEFAULT NOW() → createdAt
- */
 export interface AgentRecord {
   did: string;
   name: string;
@@ -32,61 +23,24 @@ export interface AgentRecord {
   publicKey?: Buffer | null;
 }
 
-/**
- * Filter options for AgentStore.list().
- */
 export interface AgentListFilter {
   ownerDid?: string;
   limit?: number; // default: 100, max: 100
 }
 
 /**
- * AgentStore — CRUD interface for the agent registry.
- *
- * Server-internal: called by the auth module after AgentVerifier has already
- * verified the requesting human/agent. No IdentityContext parameter — the
- * trust boundary is at the MCP layer, not the storage layer.
- *
- * Maps to the agents table (Postgres) or equivalent (SQLite).
+ * Server-internal agent registry. Authorization occurs before this interface.
  */
 export interface AgentStore {
-  /**
-   * Register a new agent. Throws on duplicate DID.
-   * createdAt is set by the implementation (current timestamp).
-   */
+  /** Register a new agent. Throws on duplicate DID. */
   create(agent: Omit<AgentRecord, 'createdAt'>): Promise<AgentRecord>;
 
-  /**
-   * Find an agent by DID. Returns null if not found.
-   * Must not throw on missing agent — return null instead.
-   */
   findByDid(did: string): Promise<AgentRecord | null>;
 
-  /**
-   * List agents with optional filters.
-   * Default limit: 100. Max limit: 100 (capped by implementation).
-   */
+  /** Lists at most 100 agents. */
   list(filter?: AgentListFilter): Promise<AgentRecord[]>;
 
-  /**
-   * Load all registered agents, unbounded.
-   *
-   * Used by restoreAgents() to reload agents into memory at boot. Returns every
-   * row in the agents table without pagination. For deployments with >1000
-   * agents, consider implementing batched restore.
-   *
-   * Architectural note: listAll() exists separately from list() because list()
-   * is designed for API-facing use with mandatory caps (limit <= 100). Boot-time
-   * restore needs the full set without artificial caps. Keeping them separate
-   * prevents accidental removal of the API-facing limit guard.
-   */
   listAll(): Promise<AgentRecord[]>;
 
-  /**
-   * Count registered agents, optionally filtered by ownerDid.
-   *
-   * O(1) on indexed tables. Used for dashboard stats, pagination metadata,
-   * and capacity checks before batch operations.
-   */
   count(filter?: { ownerDid?: string }): Promise<number>;
 }

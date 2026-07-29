@@ -13,11 +13,7 @@
 // limitations under the License.
 
 /**
- * SqliteContextStore — SQLite implementation of ContextStore.
- *
- * SQLite adaptations: value as JSON TEXT, ISO 8601 timestamps, upsert via
- * INSERT ... ON CONFLICT DO UPDATE, synchronous calls wrapped async.
- * Server identity bypass (callerDid === issuerDid) skips owner_did filter.
+ * SQLite context storage using JSON text and ISO 8601 timestamps.
  */
 
 import type { Database, RunResult } from 'better-sqlite3';
@@ -59,13 +55,11 @@ export class SqliteContextStore implements ContextStore {
     const now = new Date().toISOString();
     const valueJson = JSON.stringify(entry.value);
 
-    // Check if entry exists and verify ownership for updates.
     const existing = this.db
       .prepare('SELECT owner_did, created_at FROM agent_context WHERE namespace = ? AND key = ?')
       .get(entry.namespace, entry.key) as ContextExistingRow | undefined;
 
     if (existing) {
-      // Update path: verify ownership.
       if (!isServer && existing.owner_did !== identity.callerDid) {
         throw new Error(
           `Context store access denied: entry '${entry.namespace}/${entry.key}' is owned by ` +
@@ -90,7 +84,6 @@ export class SqliteContextStore implements ContextStore {
       };
     }
 
-    // Insert path: new entry.
     this.db
       .prepare(
         `INSERT INTO agent_context (namespace, key, value, owner_did, created_at, updated_at)

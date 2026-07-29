@@ -13,20 +13,17 @@
 // limitations under the License.
 
 /**
- * SqliteSessionStore — SQLite implementation of SessionStore.
- *
- * SQLite adaptations: envelope as JSON TEXT, MAC as BLOB, expires_at as INTEGER
- * unix-ms, no read-through cache (single-process). Every put() MACs the envelope;
- * every get() verifies it — mismatch throws EnvelopeIntegrityError.
- *
- * Security: envelope rows are untrusted data. MAC verification closes the row-tamper gap —
- * a direct DB write cannot produce a valid envelope without the master key.
- * See envelope-mac.ts for the full threat model and rationale.
+ * SQLite session envelopes stored as JSON text with a binary MAC and Unix-ms
+ * expiry. Every read verifies integrity because database rows are untrusted.
  */
 
 import type { Database } from 'better-sqlite3';
 import type { SessionStore, SessionEnvelope, SessionPutOptions } from '../types.js';
-import { EnvelopeIntegrityError, EnvelopeTooLargeError, ProviderNotAllowedError } from '../types.js';
+import {
+  EnvelopeIntegrityError,
+  EnvelopeTooLargeError,
+  ProviderNotAllowedError,
+} from '../types.js';
 import { computeMac, verifyMac, MAX_ENVELOPE_BYTES } from '../envelope-mac.js';
 
 export class SqliteSessionStore implements SessionStore {
@@ -41,11 +38,8 @@ export class SqliteSessionStore implements SessionStore {
     this.macKey = macKey;
   }
 
-  // ─── get ────────────────────────────────────────────────────────────────
-
   async get(token: string): Promise<SessionEnvelope | null> {
     const now = Date.now();
-    // expires_at filter in SQL avoids fetching already-expired rows.
     const row = (this.db as unknown as Database)
       .prepare(
         `SELECT envelope, mac, expires_at
@@ -71,8 +65,6 @@ export class SqliteSessionStore implements SessionStore {
     return envelope;
   }
 
-  // ─── put ────────────────────────────────────────────────────────────────
-
   async put(token: string, envelope: SessionEnvelope, opts: SessionPutOptions): Promise<void> {
     if (!token || typeof token !== 'string') {
       throw new Error('SqliteSessionStore.put: token must be a non-empty string');
@@ -96,8 +88,6 @@ export class SqliteSessionStore implements SessionStore {
 
     const { mac } = computeMac(effectiveEnvelope, this.macKey);
 
-    // Storing non-canonical JSON is intentional: MAC covers canonical encoding,
-    // not this column. get() re-parses and re-canonicalizes before verifying.
     (this.db as unknown as Database)
       .prepare(
         `INSERT INTO sessions (token, envelope, mac, human_did, created_at, expires_at)
@@ -119,8 +109,6 @@ export class SqliteSessionStore implements SessionStore {
       );
   }
 
-  // ─── delete ─────────────────────────────────────────────────────────────
-
   async delete(token: string): Promise<void> {
     (this.db as unknown as Database).prepare(`DELETE FROM sessions WHERE token = ?`).run(token);
   }
@@ -131,8 +119,6 @@ export class SqliteSessionStore implements SessionStore {
       .run(humanDid);
     return Number(result.changes ?? 0);
   }
-
-  // ─── pruneExpired ───────────────────────────────────────────────────────
 
   async pruneExpired(beforeTs?: Date, limit?: number): Promise<number> {
     const cutoff = (beforeTs ?? new Date()).getTime();

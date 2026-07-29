@@ -314,7 +314,8 @@ describe('transport boundary error normalization', () => {
 
   it('does not expose internal diagnostics from unknown errors', () => {
     const err = new Error(
-      'connect ECONNREFUSED postgresql://user:secret@db.internal:5432/app at /srv/private/file.ts:12',
+      'connect ECONNREFUSED postgresql://' +
+        'user:secret@db.internal:5432/app at /srv/private/file.ts:12',
     );
 
     const body = toHttpErrorBody(normalizeDomainError(err));

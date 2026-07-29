@@ -6,7 +6,6 @@ import {
   WrongOrgError,
   AgentUnauthorizedError,
   type AgentVerifyResult,
-  type AgentVerifier,
 } from '#identity/agent-verifier.js';
 import type { VerificationResult, DecodedCredential } from '#types/index.js';
 import { createMockVcVerifier } from './mocks/vc-verifier.js';
@@ -635,7 +634,7 @@ describe('AgentVerifier — createAgentVerifier factory', () => {
     expect(verifier).toBeInstanceOf(AgentVerifier);
   });
 
-  test('satisfies AgentVerifier interface (verify method exists)', async () => {
+  test('satisfies AgentVerifier type (verify method exists)', async () => {
     const store = await makeTrustStore();
     const verifier: AgentVerifier = createAgentVerifier({
       vcVerifier: createMockVcVerifier(validVcResult()),

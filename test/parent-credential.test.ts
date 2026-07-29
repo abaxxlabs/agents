@@ -130,6 +130,57 @@ describe('issueCredentialFromParent', () => {
       expiresIn: '1h',
     });
   });
+
+  it('forwards explicit maxDepth to the parent provider', async () => {
+    const expected = { jwt: 'eyJ...parent', issuerDid: PARENT_DID };
+    const provider = makeParentProvider(expected);
+
+    await issueCredentialFromParent(provider, 'access-token-123', AGENT_DID, {
+      columns: ['patients.name'],
+      actions: ['read'],
+      expiresIn: '1h',
+      maxDepth: 3,
+    });
+
+    expect(provider.requestAgentCredential).toHaveBeenCalledWith('access-token-123', AGENT_DID, {
+      columns: ['patients.name'],
+      actions: ['read'],
+      expiresIn: '1h',
+      maxDepth: 3,
+    });
+  });
+
+  it('throws on invalid maxDepth before invoking the provider', async () => {
+    const expected = { jwt: 'eyJ...parent', issuerDid: PARENT_DID };
+    const provider = makeParentProvider(expected);
+
+    await expect(
+      issueCredentialFromParent(provider, 'access-token-123', AGENT_DID, {
+        columns: ['patients.name'],
+        actions: ['read'],
+        expiresIn: '1h',
+        maxDepth: 0,
+      }),
+    ).rejects.toThrow(/positive integer/);
+
+    expect(provider.requestAgentCredential).not.toHaveBeenCalled();
+  });
+
+  it('preserves parent-decides semantics when maxDepth is omitted', async () => {
+    const expected = { jwt: 'eyJ...parent', issuerDid: PARENT_DID };
+    const provider = makeParentProvider(expected);
+
+    await issueCredentialFromParent(provider, 'access-token-123', AGENT_DID, {
+      columns: ['patients.name'],
+      actions: ['read'],
+      expiresIn: '1h',
+    });
+
+    const forwardedOptions = (provider.requestAgentCredential as ReturnType<typeof vi.fn>).mock
+      .calls[0]?.[2];
+    expect(forwardedOptions).toBeDefined();
+    expect(forwardedOptions).not.toHaveProperty('maxDepth');
+  });
 });
 
 describe('createSessionFromDid — parent credential fallback', () => {
