@@ -13,16 +13,7 @@
 // limitations under the License.
 
 /**
- * PostgresAuditStore — Postgres implementation of AuditStore.
- *
- * Append-only at three levels:
- *   1. Interface design — AuditStore has no update() or delete() methods.
- *   2. Database triggers — BEFORE UPDATE/DELETE triggers raise exceptions
- *      (migrations/001_init.sql: agent_audit_immutable, agent_audit_no_truncate).
- *   3. Hash chaining — each record includes SHA-256 of the previous record,
- *      making retroactive tampering detectable offline by any verifier.
- *
- * Pure persistence layer — IDs, hashes, and signatures are owned by AuditLogger.
+ * PostgreSQL append-only audit persistence. AuditLogger owns IDs, hashes, and signatures.
  */
 
 import type { Pool, PoolClient } from 'pg';
@@ -36,7 +27,6 @@ export class PostgresAuditStore implements AuditStore {
     this.pool = pool;
   }
 
-  /** Append a pre-populated audit record. org_id is nullable (free-tier agents). */
   async append(record: AuditRecord): Promise<void> {
     await this.insertRecord(this.pool, record);
   }
@@ -93,7 +83,6 @@ export class PostgresAuditStore implements AuditStore {
     );
   }
 
-  /** Load the most recent audit record for hash chain initialization. Returns null in GENESIS state. */
   async loadLastRecord(): Promise<AuditRecord | null> {
     return this.loadLastRecordFrom(this.pool);
   }
@@ -111,9 +100,7 @@ export class PostgresAuditStore implements AuditStore {
   }
 
   /**
-   * Load the last record under a Postgres advisory lock (key 1234567890).
-   * Advisory rather than row-level FOR UPDATE because the table may be empty.
-   * Called by AuditLogger.initialize() to prevent concurrent init forking the chain.
+   * Uses an advisory lock because the table may be empty and have no row to lock.
    */
   async loadLastRecordLocked(): Promise<AuditRecord | null> {
     const client = await this.pool.connect();
@@ -132,7 +119,6 @@ export class PostgresAuditStore implements AuditStore {
     }
   }
 
-  /** Map a Postgres row to an AuditRecord. Shared by loadLastRecord and loadLastRecordLocked. */
   private _rowToRecord(row: Record<string, unknown>): AuditRecord {
     return {
       id: row.id as string,
@@ -154,7 +140,6 @@ export class PostgresAuditStore implements AuditStore {
     };
   }
 
-  /** Query audit records with optional filters, ordered by timestamp ASC. */
   async query(filter?: AuditQueryFilter): Promise<AuditRecord[]> {
     let query = 'SELECT * FROM agent_audit WHERE 1=1';
     const params: unknown[] = [];
@@ -163,7 +148,6 @@ export class PostgresAuditStore implements AuditStore {
       params.push(filter.id);
       query += ` AND id = $${params.length}`;
     }
-    // agentDids (alias-aware) takes precedence over single agentDid.
     if (filter?.agentDids && filter.agentDids.length > 0) {
       params.push(filter.agentDids);
       query += ` AND agent_did = ANY($${params.length}::text[])`;
@@ -215,7 +199,7 @@ export class PostgresAuditStore implements AuditStore {
     }));
   }
 
-  /** Count audit records with optional filters. `::int` cast: pg maps bigint to string. */
+  /** The int cast prevents pg from returning COUNT as a string. */
   async count(filter?: AuditQueryFilter): Promise<number> {
     let query = 'SELECT COUNT(*)::int AS cnt FROM agent_audit WHERE 1=1';
     const params: unknown[] = [];

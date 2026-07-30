@@ -13,25 +13,9 @@
 // limitations under the License.
 
 /**
- * IdentityContext — proof that a caller has been verified by AgentVerifier.
- *
- * Constructed only from AgentVerifyResult via createIdentityContext(). Cannot be
- * fabricated directly by application code. Passed to external-facing storage
- * operations (ContextStore) to enforce identity-gated access.
- *
- * Security decision: IdentityContext is a plain object (not a class with a
- * private constructor) because TypeScript's structural typing means a class
- * offers no real fabrication protection at runtime. Instead, the factory function
- * in identity-context.ts is the single construction point, and the TypeScript
- * module boundary provides compile-time discipline. Runtime code that needs to
- * verify an IdentityContext is genuine should check that verifiedAt is recent
- * (within the session's token TTL) and that callerDid is non-empty.
- *
- * Fields mirror AgentVerifyResult with renaming for clarity:
- *   - subjectDid → callerDid (the agent performing the storage operation)
- *   - issuerDid stays (the server that vouched for this agent)
- *   - orgDomain stays (org isolation enforcement)
- *   - verifiedAt is added (timestamp for staleness checks)
+ * Verified caller data passed to identity-gated storage operations. The plain
+ * object is structurally forgeable, so trust must come from the verification
+ * path that creates it rather than from this TypeScript shape.
  */
 export interface IdentityContext {
   /** DID of the verified agent performing the storage operation. */

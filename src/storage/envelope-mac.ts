@@ -24,12 +24,7 @@
  */
 
 import { createHmac, hkdfSync, timingSafeEqual } from 'node:crypto';
-// canonicalize ships as CJS with `module.exports = function serialize(...)` and
-// a hand-rolled .d.ts declaring `export default function serialize(...)`. Under
-// Node16/NodeNext moduleResolution in TS, the default-import form is typed as
-// the module namespace and is reported as "not callable" even though it
-// functions correctly at runtime. The `* as` + `.default` form works across
-// both TS typecheck and Node runtime CJS-ESM interop.
+// This import shape satisfies both canonicalize's CJS runtime and its default-export types.
 import * as canonicalizeModule from 'canonicalize';
 const canonicalize = (
   canonicalizeModule as unknown as {
@@ -40,46 +35,26 @@ import type { SessionEnvelope } from './types.js';
 import { EnvelopeTooLargeError } from './types.js';
 import type { MasterKey } from '#crypto/master-key.js';
 
-// ─── Public constants ───────────────────────────────────────────────────────────
-
 /**
- * HKDF "info" context for the session MAC key. Each subsystem MUST use a
- * distinct context string. Changing this invalidates all envelopes in flight.
+ * HKDF context isolated to session MACs. Changing it invalidates persisted envelopes.
  */
 export const HKDF_CONTEXT_SESSION_MAC = 'agents:SessionStore:mac:v1';
 
-/** Zero-length HKDF salt: master key provides entropy; per-deployment salt would break cross-process agreement. */
+/** A deployment salt would prevent instances from deriving the same MAC key. */
 export const HKDF_SALT_SESSION_MAC = Buffer.alloc(0);
 
-/**
- * Max canonical envelope size (bytes). Checked AFTER canonicalization.
- * Caps unbounded oidcGroupClaims; typical envelope is < 2KB.
- */
+/** Maximum canonical envelope size, bounding untrusted OIDC group claims. */
 export const MAX_ENVELOPE_BYTES = 32768;
 
-/**
- * MAC byte length for HMAC-SHA256. Exported so adapters can size their BLOB
- * columns consistently.
- */
+/** HMAC-SHA256 byte length exposed for adapter column sizing. */
 export const MAC_BYTES = 32;
 
-// ─── Key derivation ─────────────────────────────────────────────────────────────
-
 /**
- * Derive the MAC key from a master key via HKDF-SHA256.
- *
- * Called once at startup by adapters. The derived key is held in-memory for
- * the process lifetime and used for every MAC compute/verify. HKDF is
- * deterministic, so all instances sharing the same master key derive the
- * same MAC key — required for cross-instance MAC verification.
- *
- * @param masterKey The library master key (32 bytes, branded `MasterKey`).
- *   Construct via `asMasterKey(buf)` from a trusted source. The brand prevents
- *   accidental flow into loggers or error formatters at compile time.
+ * Derives the shared session MAC key via HKDF-SHA256.
+ * @param masterKey The branded 32-byte library master key.
  * @returns A 32-byte Buffer suitable for HMAC-SHA256.
  */
 export function deriveSessionMacKey(masterKey: MasterKey): Buffer {
-  // hkdfSync returns an ArrayBuffer; wrap in Buffer for Node API compat.
   const derived = hkdfSync(
     'sha256',
     masterKey,
@@ -90,22 +65,8 @@ export function deriveSessionMacKey(masterKey: MasterKey): Buffer {
   return Buffer.from(derived);
 }
 
-// ─── Canonical encoding ─────────────────────────────────────────────────────────
-
-/**
- * Canonicalize a SessionEnvelope to its RFC 8785 (JCS) byte encoding.
- *
- * Exposed for tests. Adapters typically call `computeMac()` which composes
- * canonicalize + size-check + HMAC in one step.
- */
+/** Canonicalizes a SessionEnvelope to RFC 8785 UTF-8 bytes. */
 export function canonicalizeEnvelope(envelope: SessionEnvelope): Buffer {
-  // canonicalize returns a UTF-8 string. RFC 8785 byte encoding is the UTF-8
-  // representation, so Buffer.from(canonical, 'utf8') is correct.
-  //
-  // canonicalize() may return undefined for non-JSON values. Since
-  // SessionEnvelope is a plain-object shape, this should never happen in
-  // practice — treat it as a programmer error rather than a silent
-  // zero-length buffer.
   const canonical = canonicalize(envelope as unknown as Record<string, unknown>);
   if (canonical === undefined) {
     throw new Error(
@@ -117,19 +78,9 @@ export function canonicalizeEnvelope(envelope: SessionEnvelope): Buffer {
   return Buffer.from(canonical, 'utf8');
 }
 
-// ─── MAC compute / verify ───────────────────────────────────────────────────────
-
 /**
- * Compute HMAC-SHA256 over the canonical-encoded envelope.
- *
- * Also enforces the size cap. put() flow:
- *   1. canonicalize
- *   2. size-check (throws EnvelopeTooLargeError if > MAX_ENVELOPE_BYTES)
- *   3. HMAC-SHA256
- *   4. return { mac, canonicalBytes } — caller writes both to the store
- *
- * Size check is AFTER canonicalization because canonical output length is
- * the authoritative measure.
+ * Computes HMAC-SHA256 and enforces the canonical byte-size limit.
+ * @throws {EnvelopeTooLargeError} When canonical data exceeds the size limit.
  */
 export function computeMac(
   envelope: SessionEnvelope,
@@ -144,15 +95,8 @@ export function computeMac(
 }
 
 /**
- * Verify a stored envelope against its stored MAC.
- *
- * Returns true on match, false on mismatch. Does NOT throw on mismatch — the
- * caller decides whether to throw EnvelopeIntegrityError or handle the
- * mismatch differently.
- *
- * Uses `timingSafeEqual` to prevent timing-oracle attacks that leak byte-by-
- * byte MAC comparison progress. For HMAC this matters less than for password
- * comparisons, but the cost is nil.
+ * Verifies a stored envelope using a constant-time MAC comparison.
+ * @returns False on mismatch; callers decide how to surface tampering.
  */
 export function verifyMac(
   envelope: SessionEnvelope,

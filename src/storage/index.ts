@@ -15,11 +15,9 @@
 /**
  * StorageBackend public API barrel.
  *
- * SQLite backend is at `@abaxxlabs/agents/sqlite` (subpath) so better-sqlite3
+ * SQLite backend is at `@abaxxlabs/agents/sqlite` so better-sqlite3
  * remains optional. Importing this module never triggers a better-sqlite3 import.
  */
-
-// ─── Types ──────────────────────────────────────────────────────────────────────
 
 export type {
   StorageBackend,
@@ -41,7 +39,6 @@ export type {
   AuditQueryFilter,
 } from './types.js';
 
-// SessionStore error classes
 export {
   EnvelopeIntegrityError,
   SessionNotPortableError,
@@ -49,17 +46,10 @@ export {
   EnvelopeTooLargeError,
 } from './types.js';
 
-// Exported so consumers can pass their own instance (e.g. tests that stub
-// revocation behavior).
 export { InMemoryRevocationStore } from './memory/revocation-store.js';
 
-// Exported so consumers can construct the default session store directly
-// without going through createStorageBackend.
 export { InMemorySessionStore } from './memory/session-store.js';
 
-// Envelope-MAC primitive + context constants. Subsystems deriving keys from
-// the master key MUST use the exported HKDF context strings rather than
-// reverse-engineering them.
 export {
   deriveSessionMacKey,
   canonicalizeEnvelope,
@@ -71,27 +61,17 @@ export {
   MAC_BYTES,
 } from './envelope-mac.js';
 
-// ─── Factories ──────────────────────────────────────────────────────────────────
-
 export { createIdentityContext, createServerIdentityContext } from './identity-context.js';
 
-// StorageBackend composition helper. Lets consumers swap individual sub-stores
-// onto a base backend without re-implementing the full StorageBackend interface.
 export { composeStorageBackend } from './compose.js';
-
-// ─── StorageBackend factory ─────────────────────────────────────────────────────
 
 import type { StorageBackend, StorageBackendOptions } from './types.js';
 
 /**
  * Create a StorageBackend from configuration options.
  *
- * For 'postgres': creates a PostgresStorageBackend wrapping a new pg.Pool.
- * For 'sqlite': dynamically imports the SQLite module (requires better-sqlite3
- * as a peer dependency — throws a clear error if not installed).
- *
- * The returned backend is NOT initialized — caller must await backend.initialize()
- * before using sub-stores.
+ * SQLite is dynamically imported to keep its native dependency optional.
+ * The caller must initialize the returned backend before using its stores.
  *
  * @example
  *   const macKey = await deriveSessionMacKey(masterKey);
@@ -125,8 +105,6 @@ export async function createStorageBackend(
       return SqliteStorageBackend.create(options, { sessionMacKey: options.sessionMacKey });
     }
     default: {
-      // Exhaustiveness check — TypeScript should catch this at compile time,
-      // but runtime guard for JavaScript callers or type-cast bypasses.
       const exhaustive: never = options;
       throw new Error(`Unknown storage backend type: ${(exhaustive as { type: string }).type}`);
     }
