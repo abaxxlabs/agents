@@ -14,33 +14,27 @@
 
 /**
  * Transport-neutral service layer shared by REST and MCP adapters.
- *
- * Authorization, audit filtering, row caps, and response shaping live here so
- * they stay consistent across transports. SQL enforcement remains in ScopeEngine.
- * Telemetry hooks are optional and one-way — they cannot alter service behavior.
+ * Authorization and response shaping stay consistent across transports. SQL
+ * enforcement remains in ScopeEngine, and telemetry cannot alter behavior.
  */
 
-import { hashAuditRecord } from '#audit/index.js';
 import { assertScopeFitsInCeiling, type ScopeCeiling } from '#auth/ceiling.js';
-import { RequestValidationError } from '#transport/errors.js';
-import type {
-  AuthenticatedSession,
-  CreateAgentOptions,
-  RegisteredAgent,
-} from '#types/auth.js';
-import type {
-  DelegateCredentialOptions,
-  IssueCredentialOptions,
-} from '#types/credential.js';
-import type { AuditRecord } from '#types/audit.js';
-import type { VerificationResult } from '#types/verification.js';
+import type { AuthenticatedSession, CreateAgentOptions, RegisteredAgent } from '#types/auth.js';
+import type { DelegateCredentialOptions, IssueCredentialOptions } from '#types/credential.js';
 import type { AuditQueryFilter } from '#storage/types.js';
+import { createAuditService } from './audit.js';
+import type { AuditReader, AuditService, AuditVerifier } from './audit.js';
 
-const AUDIT_EXPORT_DEFAULT_LIMIT = 100;
-const AUDIT_EXPORT_MAX_LIMIT = 1000;
+export { createAuditService } from './audit.js';
+export type { AuditReader, AuditService, AuditVerifier } from './audit.js';
+
 const CREDENTIAL_AUDIT_DEFAULT_LIMIT = 500;
 const CREDENTIAL_AUDIT_MAX_LIMIT = 1000;
 
+/**
+ * Required primary credential or presentation; always evaluated.
+ * Optional additional credentials or presentations used for scope unions.
+ */
 export interface ScopedQueryInput {
   agent: string;
   credential: string;
@@ -80,20 +74,18 @@ export interface QueryServiceTelemetrySink {
     credentialCount: number;
     error?: unknown;
   }): void;
-  queryRejected(event: {
-    agentDid: string;
-    table: string;
-    error: unknown;
-  }): void;
-  auditWriteFailed(event: {
-    agentDid: string;
-    table: string;
-    error: unknown;
-  }): void;
+  queryRejected(event: { agentDid: string; table: string; error: unknown }): void;
+  auditWriteFailed(event: { agentDid: string; table: string; error: unknown }): void;
 }
 
 export interface AgentDirectory {
   createAgent(options: CreateAgentOptions): Promise<RegisteredAgent>;
+  getAgent?(did: string): Promise<{
+    did: string;
+    name: string;
+    ownerDid: string;
+    createdAt: string;
+  } | null>;
   listAgents(filter?: { ownerDid?: string; limit?: number }): Promise<
     Array<{
       did: string;
@@ -114,6 +106,13 @@ export interface AgentDirectoryService {
       createdAt: string;
     }>
   >;
+  /** Return one agent by DID, or null when it is not registered. */
+  getAgent?(input: { did: string }): Promise<{
+    did: string;
+    name: string;
+    ownerDid: string;
+    createdAt: string;
+  } | null>;
 }
 
 export interface CredentialIssuer {
@@ -130,14 +129,6 @@ export interface CredentialDelegator {
     sourceCredential: string,
     options: DelegateCredentialOptions,
   ): Promise<string>;
-}
-
-export interface AuditReader {
-  export(filter?: AuditQueryFilter): Promise<AuditRecord[]>;
-}
-
-export interface AuditVerifier {
-  verify(auditRecord: AuditRecord): Promise<VerificationResult>;
 }
 
 export interface CredentialService {
@@ -173,31 +164,23 @@ export interface CredentialService {
   ): Promise<{ revoked: true; credentialId: string; sdkNotificationFailed?: string }>;
 }
 
-export interface AuditService {
-  exportAudit(
-    input?: { agentDid?: string; since?: Date; orgId?: string; limit?: number },
-    context?: { ownerDid?: string; orgId?: string },
-  ): Promise<{ records: AuditRecord[]; count: number }>;
-  verifyAudit(
-    input: { auditId: string },
-    context?: { ownerDid?: string; orgId?: string },
-  ): Promise<
-    | {
-        verified: boolean;
-        status: VerificationResult['status'];
-        record: AuditRecord;
-        agentDid: string;
-      }
-    | { error: 'NOT_FOUND'; message: string }
-  >;
-  verifyChain(
-    input?: { limit?: number },
-    context?: { ownerDid?: string; orgId?: string },
-  ): Promise<{
-    verified: boolean;
-    recordsChecked: number;
-    brokenLinks: Array<{ index: number; recordId: string; expected: string; actual: string }>;
-  }>;
+/** Transport-neutral server status returned by inspection adapters. */
+export interface ServerStatus {
+  agentCount: number;
+  auditRecordCount: number;
+  encryptedColumns: string[];
+  inMemoryAgents: number;
+  scopeMode: 'projection';
+}
+
+/** Domain port for retrieving server status. */
+export interface StatusReader {
+  getServerStatus(): Promise<ServerStatus>;
+}
+
+/** Service facade for server status retrieval. */
+export interface StatusService {
+  getStatus(): Promise<ServerStatus>;
 }
 
 export interface AgentToolServices {
@@ -205,6 +188,7 @@ export interface AgentToolServices {
   agents: AgentDirectoryService;
   credentials: CredentialService;
   audit: AuditService;
+  status?: StatusService;
 }
 
 export function createQueryService(deps: {
@@ -273,6 +257,7 @@ export function createQueryService(deps: {
 export function createAgentDirectoryService(deps: {
   agents: AgentDirectory;
 }): AgentDirectoryService {
+  const getAgent = deps.agents.getAgent?.bind(deps.agents);
   return {
     createAgent(options) {
       return deps.agents.createAgent(options);
@@ -280,6 +265,7 @@ export function createAgentDirectoryService(deps: {
     listAgents(filter) {
       return deps.agents.listAgents(filter);
     },
+    ...(getAgent && { getAgent: (input: { did: string }) => getAgent(input.did) }),
   };
 }
 
@@ -401,111 +387,11 @@ export function createCredentialService(deps: {
   };
 }
 
-export function createAuditService(deps: {
-  auditReader: AuditReader;
-  verifier: AuditVerifier;
-}): AuditService {
+/** Create a transport-neutral server status service. */
+export function createStatusService(deps: { statusReader: StatusReader }): StatusService {
   return {
-    async exportAudit(input = {}, context = {}) {
-      const maxRecords = boundedLimit(
-        input.limit,
-        AUDIT_EXPORT_DEFAULT_LIMIT,
-        AUDIT_EXPORT_MAX_LIMIT,
-      );
-      const filter: AuditQueryFilter = { limit: maxRecords };
-      if (input.agentDid) filter.agentDid = input.agentDid;
-      if (input.since) filter.since = input.since;
-      if (context.ownerDid) filter.ownerDid = context.ownerDid;
-      const orgId = input.orgId ?? context.orgId;
-      if (orgId) filter.orgId = orgId;
-
-      assertBoundedAuditQuery(filter);
-      const records = await deps.auditReader.export(filter);
-      return { records, count: records.length };
-    },
-
-    async verifyAudit(input, context = {}) {
-      const records = await deps.auditReader.export({
-        id: input.auditId,
-        ownerDid: context.ownerDid,
-        orgId: context.orgId,
-        limit: 1,
-      });
-      const record = records.find(
-        (candidate) =>
-          candidate.id === input.auditId &&
-          (!context.ownerDid || candidate.ownerDid === context.ownerDid) &&
-          (!context.orgId || candidate.orgId === context.orgId),
-      );
-
-      if (!record) {
-        return {
-          error: 'NOT_FOUND' as const,
-          message: `Audit record ${input.auditId} not found`,
-        };
-      }
-
-      const result = await deps.verifier.verify(record);
-      return {
-        verified: result.valid,
-        status: result.status,
-        record,
-        agentDid: record.agentDid,
-      };
-    },
-
-    async verifyChain(input = {}, context = {}) {
-      const maxRecords = boundedLimit(input.limit, AUDIT_EXPORT_MAX_LIMIT, AUDIT_EXPORT_MAX_LIMIT);
-      const filter: AuditQueryFilter = {
-        ownerDid: context.ownerDid,
-        orgId: context.orgId,
-        limit: maxRecords,
-      };
-      assertBoundedAuditQuery(filter);
-      const bounded = await deps.auditReader.export(filter);
-
-      const brokenLinks: Array<{
-        index: number;
-        recordId: string;
-        expected: string;
-        actual: string;
-      }> = [];
-      let previousHash = 'GENESIS';
-
-      for (let i = 0; i < bounded.length; i++) {
-        const record = bounded[i];
-        if (record.previousHash !== previousHash) {
-          brokenLinks.push({
-            index: i,
-            recordId: record.id,
-            expected: previousHash,
-            actual: record.previousHash,
-          });
-        }
-        previousHash = hashAuditRecord({
-          id: record.id,
-          timestamp: record.timestamp,
-          agentDid: record.agentDid,
-          ownerDid: record.ownerDid,
-          credentialId: record.credentialId,
-          queryHash: record.queryHash,
-          columnsAccessed: record.columnsAccessed,
-          rowCount: record.rowCount,
-          durationMs: record.durationMs,
-          previousHash: record.previousHash,
-          version: record.version ?? 1,
-          status: record.status,
-          reason: record.reason,
-          reasonCode: record.reasonCode,
-          orgId: record.orgId,
-        });
-      }
-
-      return {
-        verified: brokenLinks.length === 0,
-        recordsChecked: bounded.length,
-        brokenLinks,
-      };
+    getStatus() {
+      return deps.statusReader.getServerStatus();
     },
   };
 }
@@ -516,22 +402,6 @@ function boundedLimit(value: number | undefined, defaultValue: number, max: numb
   return Math.min(Math.trunc(candidate), max);
 }
 
-function assertBoundedAuditQuery(filter: AuditQueryFilter): void {
-  if (
-    filter.id ||
-    filter.agentDid ||
-    (filter.agentDids && filter.agentDids.length > 0) ||
-    filter.since ||
-    filter.ownerDid ||
-    filter.credentialId ||
-    filter.orgId
-  ) {
-    return;
-  }
-
-  throw new RequestValidationError([{ path: 'audit', code: 'bounded_filter_required' }]);
-}
-
 export function createAgentToolServices(deps: {
   queryExecutor: QueryExecutor;
   agentDirectory: AgentDirectory;
@@ -540,6 +410,7 @@ export function createAgentToolServices(deps: {
   credentialDelegator: CredentialDelegator;
   auditReader: AuditReader;
   auditVerifier: AuditVerifier;
+  statusReader?: StatusReader;
   maxQueryRows?: number;
   queryTelemetry?: QueryServiceTelemetrySink;
 }): AgentToolServices {
@@ -560,6 +431,7 @@ export function createAgentToolServices(deps: {
       auditReader: deps.auditReader,
       verifier: deps.auditVerifier,
     }),
+    ...(deps.statusReader && { status: createStatusService({ statusReader: deps.statusReader }) }),
   };
 }
 
@@ -568,19 +440,24 @@ function credentialCount(input: ScopedQueryInput): number {
 }
 
 function errorCode(err: unknown): string | undefined {
-  return err && typeof err === 'object' && 'code' in err && typeof (err as { code?: unknown }).code === 'string'
+  return err &&
+    typeof err === 'object' &&
+    'code' in err &&
+    typeof (err as { code?: unknown }).code === 'string'
     ? (err as { code: string }).code
     : undefined;
 }
 
 function isCredentialVerificationCode(code: string | undefined): boolean {
-  return code === 'CREDENTIAL_INVALID' ||
+  return (
+    code === 'CREDENTIAL_INVALID' ||
     code === 'CREDENTIAL_EXPIRED' ||
     code === 'CREDENTIAL_REVOKED' ||
     code === 'CREDENTIAL_MALFORMED' ||
     code === 'CREDENTIAL_REPLAYED' ||
     code === 'UNKNOWN_ISSUER' ||
-    code === 'DID_RESOLUTION_FAILED';
+    code === 'DID_RESOLUTION_FAILED'
+  );
 }
 
 function isQueryRejectionCode(code: string | undefined): boolean {

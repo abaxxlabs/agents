@@ -50,11 +50,7 @@ export { defaultLogger, getLogger } from './observability/logger.js';
 
 // ─── Redaction helpers ──────────────────────────────────────────────
 
-export {
-  REDACTED_MASTER_KEY,
-  REDACTED_SIGNER,
-  withRedactedSerialization,
-} from '#crypto/redact.js';
+export { REDACTED_MASTER_KEY, REDACTED_SIGNER, withRedactedSerialization } from '#crypto/redact.js';
 
 // ─── Migration credential branded types ──────────────────────────
 
@@ -120,7 +116,6 @@ export {
   PrecisionLossError,
 } from '#errors/index.js';
 
-
 export {
   encrypt,
   decrypt,
@@ -176,6 +171,9 @@ export {
   SIGN_RATE_WINDOW_MS,
   CHALLENGE_RATE_LIMIT,
   CHALLENGE_RATE_WINDOW_MS,
+  CREDENTIAL_MINT_OPERATION,
+  CREDENTIAL_MINT_RATE_LIMIT,
+  CREDENTIAL_MINT_RATE_WINDOW_MS,
   assertExpiresInBound,
   assertUtf8MaxBytes,
   assertWithinRateLimit,
@@ -191,6 +189,7 @@ export {
   type RateLimitCheck,
   type RateLimitDecision,
   type RateLimiter,
+  type RateLimitTelemetrySink,
   type RequestSchema,
   type SafeValidationIssue,
 } from '#transport/index.js';

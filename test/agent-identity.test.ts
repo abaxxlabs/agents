@@ -4,6 +4,7 @@ import { InMemoryRevocationStore } from '#storage/memory/revocation-store.js';
 import { InMemorySessionStore } from '#storage/memory/session-store.js';
 import { asMasterKey } from '#crypto/master-key.js';
 import { deriveSessionMacKey } from '#storage/envelope-mac.js';
+import { decodeJwt } from '#crypto/jwt.js';
 import { generateDidKey } from '#auth/index.js';
 import { createMockSession } from '#auth/session-factory.js';
 import type { ScopeCeiling } from '#auth/ceiling.js';
@@ -236,15 +237,83 @@ describe('AgentIdentity', () => {
       { storage, masterKey: asMasterKey(Buffer.alloc(32, 0x55)) },
     );
     const session = await identity.authenticate({ mockHumanDid: 'did:key:z6MkOwner' });
+    await expect(identity.createAgent({ ownerDid: session.humanDid } as never)).rejects.toThrow(
+      /createAgent\(\) requires name/,
+    );
+    await expect(identity.createAgent({ name: '', ownerDid: session.humanDid })).rejects.toThrow(
+      /createAgent\(\) requires name/,
+    );
+    await expect(identity.createAgent({ name: '   ', ownerDid: session.humanDid })).rejects.toThrow(
+      /createAgent\(\) requires name/,
+    );
+    identity.close();
+  });
+
+  it('createPresentationForAgent creates VP for owner-bound agent', async () => {
+    const storage = buildTestStorage();
+    const identity = await AgentIdentity.create(
+      { audit: { enabled: true }, devMode: true },
+      { storage, masterKey: asMasterKey(Buffer.alloc(32, 0x56)) },
+    );
+    const session = await identity.authenticate({ mockHumanDid: 'did:key:z6MkPresenter' });
+    const agent = await identity.createAgent({ name: 'presenter', ownerDid: session.humanDid });
+    const credential = await session.issueCredential({
+      agent: agent.did,
+      columns: ['patients.name'],
+      actions: ['read'],
+      expiresIn: '1h',
+    });
+
+    const result = await identity.createPresentationForAgent({
+      agentDid: agent.did,
+      credential,
+      requesterDid: session.humanDid,
+      audience: 'did:key:zVerifierDid',
+    });
+
+    expect(typeof result.presentation).toBe('string');
+    const decoded = decodeJwt(result.presentation).payload as {
+      jti?: string;
+      exp?: number;
+      aud?: string | string[];
+      vp?: { type?: string[]; verifiableCredential?: string[] };
+    };
+    expect(result.jti).toBe(decoded.jti);
+    expect(result.exp).toBe(decoded.exp);
+    expect(decoded.vp?.type).toContain('VerifiablePresentation');
+    expect(decoded.vp?.verifiableCredential?.[0]).toBe(credential);
+    expect(decoded.aud).toBe('did:key:zVerifierDid');
+
+    identity.close();
+  });
+
+  it('createPresentationForAgent rejects non-owner requester', async () => {
+    const storage = buildTestStorage();
+    const identity = await AgentIdentity.create(
+      { audit: { enabled: true }, devMode: true },
+      { storage, masterKey: asMasterKey(Buffer.alloc(32, 0x57)) },
+    );
+    const ownerSession = await identity.authenticate({ mockHumanDid: 'did:key:z6MkOwner' });
+    const otherSession = await identity.authenticate({ mockHumanDid: 'did:key:z6MkOther' });
+    const agent = await identity.createAgent({
+      name: 'presenter',
+      ownerDid: ownerSession.humanDid,
+    });
+    const credential = await ownerSession.issueCredential({
+      agent: agent.did,
+      columns: ['patients.name'],
+      actions: ['read'],
+      expiresIn: '1h',
+    });
+
     await expect(
-      identity.createAgent({ ownerDid: session.humanDid } as never),
-    ).rejects.toThrow(/createAgent\(\) requires name/);
-    await expect(
-      identity.createAgent({ name: '', ownerDid: session.humanDid }),
-    ).rejects.toThrow(/createAgent\(\) requires name/);
-    await expect(
-      identity.createAgent({ name: '   ', ownerDid: session.humanDid }),
-    ).rejects.toThrow(/createAgent\(\) requires name/);
+      identity.createPresentationForAgent({
+        agentDid: agent.did,
+        credential,
+        requesterDid: otherSession.humanDid,
+      }),
+    ).rejects.toThrow(/does not own agent/i);
+
     identity.close();
   });
 

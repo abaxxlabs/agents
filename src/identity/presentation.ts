@@ -17,12 +17,12 @@
  *
  * Key architectural distinction:
  *   VCs are REUSABLE — like a driver's license, valid until expiry.
- *   VPs are SINGLE-USE — each presentation gets a fresh nonce (JTI) and may be audience-bound.
+ *   VPs created here get a fresh nonce (JTI) by default and may be audience-bound.
  *   The credential already exists and can be replayed to other servers; replay protection
  *   belongs at the VP layer, not the VC layer.
  *
  * Replay protection tracks VP nonces — a VC can be presented many times (each in a fresh VP),
- * but the same VP cannot be replayed. ScopeEngine wraps raw VCs in VPs before verification.
+ * and replay protection rejects a reused VP JTI when enabled. ScopeEngine wraps raw VCs in VPs.
  */
 
 import type { AgentSigner } from '#types/index.js';
@@ -50,15 +50,13 @@ export interface CreatePresentationOptions {
    * case-sensitive strings — both shapes are handled by `VcVerifier` already.
    */
   audience?: string | string[];
-  /** Override the VP's JTI. Defaults to a fresh UUIDv4. */
+  /** Override the VP's JTI. Defaults to a fresh UUIDv7. */
   nonce?: string;
   /**
    * VP lifetime as a duration string. Defaults to `'60s'`.
    *
-   * Accepted format: integer + unit, where unit is one of `s` (seconds),
-   * `m` (minutes), `h` (hours), or `d` (days). Examples: `'30s'`, `'5m'`,
-   * `'1h'`, `'1d'`. Compound (`'1m30s'`) and fractional (`'1.5s'`) forms are
-   * not accepted — pass the equivalent integer in a smaller unit instead.
+   * Accepts fractional and compound duration strings such as `'1.5s'`,
+   * `'1m30s'`, `'5m'`, `'1h'`, or `'1d'`.
    * Minimum: 1 second. `'0s'` and other zero values throw.
    *
    * Practical maximum: 1 day. The library does not enforce an upper bound
@@ -81,7 +79,7 @@ export interface CreatePresentationOptions {
  *
  * The VP is signed by the agent's private key (via AgentSigner), proving
  * that the presenter is the credential holder — not just someone who
- * intercepted the VC JWT. The fresh JTI on every call is what enables
+ * intercepted the VC JWT. The default fresh JTI on every call enables
  * per-presentation replay protection without making the VC single-use.
  *
  * @param vcJwt      The raw VC JWT to present.

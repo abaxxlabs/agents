@@ -1,7 +1,12 @@
+import { createHash } from 'node:crypto';
 import { describe, it, expect } from 'vitest';
 import { checkDelegationChainRevocation } from '#identity/delegation-chain.js';
 import { InMemoryRevocationStore } from '#storage/memory/revocation-store.js';
 import { generateDidKey, createSigner } from '#auth/index.js';
+
+function hashCredentialId(jwt: string): string {
+  return createHash('sha256').update(jwt).digest('hex').slice(0, 16);
+}
 
 function makeDeps(knownKeys = new Map<string, Uint8Array>()) {
   return {
@@ -34,6 +39,19 @@ describe('checkDelegationChainRevocation guards', () => {
     expect(result?.status).toBe('MALFORMED');
   });
 
+  it('rejects ancestor revoked by hashed credential id', async () => {
+    const issuer = generateDidKey();
+    const knownKeys = new Map([[issuer.did, issuer.publicKey]]);
+    const ancestor = await signPlain(issuer, 'ancestor-jti');
+
+    const deps = makeDeps(knownKeys);
+    await deps.revocationStore.revoke(hashCredentialId(ancestor), {});
+
+    const result = await checkDelegationChainRevocation([ancestor], deps);
+    expect(result?.valid).toBe(false);
+    expect(result?.status).toBe('REVOKED');
+  });
+
   it('rejects a wide flat chain exceeding the total-node cap before verifying every node', async () => {
     const issuer = generateDidKey();
     const knownKeys = new Map([[issuer.did, issuer.publicKey]]);
@@ -52,6 +70,7 @@ describe('checkDelegationChainRevocation guards', () => {
     const result = await checkDelegationChainRevocation(chain, deps);
     expect(result?.valid).toBe(false);
     expect(result?.status).toBe('MALFORMED');
-    expect(lookups).toBeLessThanOrEqual(10);
+    // Each ancestor now checks up to 2 revocation identifiers (hash + jti).
+    expect(lookups).toBeLessThanOrEqual(20);
   });
 });

@@ -17,7 +17,7 @@
  *
  * Read-only diagnostic that scans a consumer codebase for BYOK migration signals
  * and categorizes the codebase into one of the four migration cases documented in
- * `docs/migration-byok.md`. Writes nothing; no network connections.
+ * `docs/migrations/byok.md`. Writes nothing; no network connections.
  *
  * Regex, not AST: an AST parse would be more precise but adds heavyweight deps and
  * parse-failure modes (mixed JS/TS, syntax errors, decorator metadata). The failure
@@ -65,7 +65,7 @@ export interface Hit {
 
 /** Top-level categorization result. */
 export interface Categorization {
-  /** Migration case from `docs/migration-byok.md`, or null if no signals found. */
+  /** Migration case from `docs/migrations/byok.md`, or null if no signals found. */
   caseId:
     | '#1'
     | '#2'
@@ -76,7 +76,7 @@ export interface Categorization {
     | 'config-advisory-only';
   /** Human-readable summary headline. */
   headline: string;
-  /** Pointer paragraphs — what to read in `migration-byok.md`. */
+  /** Pointer paragraphs — what to read in `docs/migrations/byok.md`. */
   guidance: string[];
 }
 
@@ -396,9 +396,7 @@ export function categorize(hits: Hit[]): Categorization {
         'Each advisory section below names the specific env var and the v0.10.0',
         'migration path. Apply each migration at your consumer boundary; the',
         'library no longer reads any of these env vars directly.',
-        'See `docs/support-runbook-v0.9.10.0.md` § "Environment variables read by',
-        'the library" for the full list of which env vars the library DOES still',
-        'read (NODE_ENV + CI, both intentional).',
+        'Core library code intentionally reads NODE_ENV and CI; MCP entrypoints have separate configuration.',
       ],
     };
   }
@@ -413,7 +411,7 @@ export function categorize(hits: Hit[]): Categorization {
         'another path the scanner did not recognize. Inspect each AgentScope.create',
         'call manually and confirm the second `injections` argument supplies a',
         '32-byte Buffer via injections.masterKey.',
-        'For non-env hex sources see docs/migration-byok.md § "Case #4".',
+        'For non-env hex sources see docs/migrations/byok.md § "Case #4".',
       ],
     };
   }
@@ -426,7 +424,7 @@ export function categorize(hits: Hit[]): Categorization {
       headline: 'Trap detected — both env-read AND encryption.masterKey config sites present.',
       guidance: [
         'Previously the env var silently won and the config field was dead code.',
-        'Run the environment audit in docs/migration-byok.md § "Environment audit',
+        'Run the environment audit in docs/migrations/byok.md § "Environment audit',
         '(do this first)" before applying any of the four worked examples.',
         'Once you have identified the canonical key value, you will be in case #1',
         '(env-only) or case #2 (config-hex). Do NOT migrate without the audit —',
@@ -449,7 +447,7 @@ export function categorize(hits: Hit[]): Categorization {
       caseId: '#1',
       headline: 'Case #1 — env-only master key.',
       guidance: [
-        'If you are keeping the same key value: see docs/migration-byok.md § "Case #1".',
+        'If you are keeping the same key value: see docs/migrations/byok.md § "Case #1".',
         'If you are rotating the key as part of this upgrade (KMS migration, fresh',
         'credential, security incident): see § "Case #3" or § "Case #4" and read',
         'the rewrapColumnKey migration protocol BEFORE applying the upgrade.',
@@ -463,7 +461,7 @@ export function categorize(hits: Hit[]): Categorization {
       caseId: '#2',
       headline: 'Case #2 — config-hex master key (no env-read sites detected).',
       guidance: [
-        'See docs/migration-byok.md § "Case #2".',
+        'See docs/migrations/byok.md § "Case #2".',
         'The hex string moves out of config (no longer a config field at the',
         'type level) and becomes a Buffer in injections. Decoding moves to your',
         'consumer boundary via parseMasterKeyHex from @abaxxlabs/agents/bootstrap.',
@@ -478,7 +476,7 @@ export function categorize(hits: Hit[]): Categorization {
     headline: 'Master-key signal found (env writes only — unusual pattern).',
     guidance: [
       'Detected env writes but no reads or config-writes. This is rare; you may',
-      'be in a test fixture or migration script. See docs/migration-byok.md § "Case #1"',
+      'be in a test fixture or migration script. See docs/migrations/byok.md § "Case #1"',
       'and replace the writes with explicit Buffer arguments to AgentScope.create.',
     ],
   };
@@ -539,7 +537,6 @@ function printReport(hits: Hit[], report: Categorization, root: string): void {
     console.log();
   }
 
-
   if (trustedServersHits > 0) {
     console.log('Advisory — AGENTS_TRUSTED_SERVERS migration:');
     console.log('  v0.10.0 moves this env-read from `LocalTrustAnchorStore` to a consumer-');
@@ -558,7 +555,9 @@ function printReport(hits: Hit[], report: Categorization, root: string): void {
     console.log('Advisory — AGENTS_CONSUMER_DOMAINS migration:');
     console.log('  The library no longer reads AGENTS_CONSUMER_DOMAINS from env at both');
     console.log('  library sites (org-boundary.ts and auth/generic.ts) — the dual-read');
-    console.log('  surface let the two engines drift. Promoted to a single config field. Bridge env at the');
+    console.log(
+      '  surface let the two engines drift. Promoted to a single config field. Bridge env at the',
+    );
     console.log('  consumer boundary and pass the SAME list to both engines:');
     console.log('    const extra = (process.env.AGENTS_CONSUMER_DOMAINS ?? "").split(",")');
     console.log('      .map(s => s.trim()).filter(Boolean);');
@@ -578,7 +577,7 @@ function printReport(hits: Hit[], report: Categorization, root: string): void {
   }
 
   console.log('This script is read-only. Nothing in your codebase has been modified.');
-  console.log('Full migration guide: docs/migration-byok.md');
+  console.log('Full migration guide: docs/migrations/byok.md');
 }
 
 // ─── Public entrypoint ────────────────────────────────────────────────────────

@@ -1,3 +1,234 @@
+# [0.23.0](https://github.com/abaxxtech/agents/compare/v0.22.2...v0.23.0) (2026-08-24)
+
+
+### Features
+
+* **identity:** add owner-bound createPresentationForAgent API ([552ffd6](https://github.com/abaxxtech/agents/commit/552ffd6d11eb1136a86979a330390b911cd88304))
+
+## [0.22.2](https://github.com/abaxxtech/agents/compare/v0.22.1...v0.22.2) (2026-08-24)
+
+
+### Bug Fixes
+
+* **audit:** normalize VP credential hash to inner VC ([71b7156](https://github.com/abaxxtech/agents/commit/71b71568a824cab8fa6482758c3a0e1982b8e3eb))
+
+## [0.22.1](https://github.com/abaxxtech/agents/compare/v0.22.0...v0.22.1) (2026-08-24)
+
+
+### Bug Fixes
+
+* **auth:** enforce hash-based revocation checks on delegation ancestors ([da8ae09](https://github.com/abaxxtech/agents/commit/da8ae0942382d07699fdcc9f0f5e2277b640ef3a))
+* **auth:** support revocation checks for jti and hashed credential id ([eb99ce1](https://github.com/abaxxtech/agents/commit/eb99ce1d7d4e81f2229949a1ebffdd30057cdb75))
+* **telemetry:** emit single revocation check event per credential ([9487934](https://github.com/abaxxtech/agents/commit/9487934e18adeccd4a668777d2807a8981d67da2))
+
+# [0.22.0](https://github.com/abaxxtech/agents/compare/v0.21.3...v0.22.0) (2026-08-24)
+
+
+### Features
+
+* **docs-site:** add installation, overview, quick start, interfaces, and security documentation ([b32fa52](https://github.com/abaxxtech/agents/commit/b32fa528a1f3cce45f1cdedd45023596d3bbe08f))
+
+## [0.21.3](https://github.com/abaxxtech/agents/compare/v0.21.2...v0.21.3) (2026-08-24)
+
+
+### Bug Fixes
+
+*: Remove unused scoped-query instance state ([b635965](https://github.com/abaxxtech/agents/commit/b63596524bae4d2906b72f4dbad7ffc0e6d2d723))
+
+## [0.21.2](https://github.com/abaxxtech/agents/compare/v0.21.1...v0.21.2) (2026-08-21)
+
+
+### Bug Fixes
+
+*: move AgentScope into its own module ([218eec9](https://github.com/abaxxtech/agents/commit/218eec99a0a293ab7bedced66593b14b844fcd32))
+
+## [0.21.1](https://github.com/abaxxtech/agents/compare/v0.21.0...v0.21.1) (2026-08-21)
+
+
+### Bug Fixes
+
+*: align scoped-query doc with projection enforcement ([f408317](https://github.com/abaxxtech/agents/commit/f408317bcc81fa19d8e559f24adffb00e06600a3))
+
+# [0.21.0](https://github.com/abaxxtech/agents/compare/v0.20.4...v0.21.0) (2026-08-21)
+
+
+### Bug Fixes
+
+* update registerIdentityTools to use registerTool for better clarity ([dd70a57](https://github.com/abaxxtech/agents/commit/dd70a57fd8de743942bb248674c59f8c5742e3a5))
+
+
+### Features
+
+* **docs-site:**: restructure documentation site and add landing page ([711ecd1](https://github.com/abaxxtech/agents/commit/711ecd1b72936fcfde39595b8e645d29fcd5b3fc))
+
+## [0.20.4](https://github.com/abaxxtech/agents/compare/v0.20.3...v0.20.4) (2026-08-21)
+
+
+### Bug Fixes
+
+* persist v3 audit columns in SQLite store ([b245dbc](https://github.com/abaxxtech/agents/commit/b245dbc3873bd7338eed27748a3509d668e0d266))
+* pin Bun version in jsdoc workflow ([cdf1a37](https://github.com/abaxxtech/agents/commit/cdf1a372e4fe958d93530cf2ea448fd62c8ce811))
+* support MCP registerTool in rate-limit test harness ([6bc146f](https://github.com/abaxxtech/agents/commit/6bc146fe5cf6a50b87555d73bc7f07c826b14626))
+
+## [0.20.3](https://github.com/abaxxtech/agents/compare/v0.20.2...v0.20.3) (2026-08-20)
+
+
+### Bug Fixes
+
+*: Centralize first-party license notices ([bb9c76d](https://github.com/abaxxtech/agents/commit/bb9c76d47d00a730ead00d95d773a51db4637295))
+*: update tests and add agents rule ([533639a](https://github.com/abaxxtech/agents/commit/533639ad033598fe92261206fbeed00e9118c1e9))
+
+## [0.20.2](https://github.com/abaxxtech/agents/compare/v0.20.1...v0.20.2) (2026-08-20)
+
+
+### Bug Fixes
+
+*: give session and revocation stores separate SQLite paths ([ef1a779](https://github.com/abaxxtech/agents/commit/ef1a7796f8183dff587b85f22b49be63c3c7d419))
+
+## [0.20.1](https://github.com/abaxxtech/agents/compare/v0.20.0...v0.20.1) (2026-08-19)
+
+
+### Bug Fixes
+
+* Replace deprecated MCP tool and resource registration APIs ([b27ce47](https://github.com/abaxxtech/agents/commit/b27ce473ae25b67e5c129b44eca03b2bda457bc9))
+
+# [0.20.0](https://github.com/abaxxtech/agents/compare/v0.19.1...v0.20.0) (2026-08-19)
+
+
+### Features
+
+*: add documentation sync and boundary check scripts with manifest validation ([9231e33](https://github.com/abaxxtech/agents/commit/9231e33d557ce1324ce05193713da311450fb7e2))
+
+## [0.19.1](https://github.com/abaxxtech/agents/compare/v0.19.0...v0.19.1) (2026-08-19)
+
+
+### Bug Fixes
+
+*: key rate limits by human across REST and MCP ([64113c8](https://github.com/abaxxtech/agents/commit/64113c8b49cb8c2d0c7efaf411fbc66e220f8257))
+
+# [0.19.0](https://github.com/abaxxtech/agents/compare/v0.18.0...v0.19.0) (2026-08-13)
+
+
+### Features
+
+* Present both blocked attacks in a simpler Demo V2 Beat 6 ([19fcf6c](https://github.com/abaxxtech/agents/commit/19fcf6c781dc30c7fe7314d8a162a428123ede7a))
+
+# [0.18.0](https://github.com/abaxxtech/agents/compare/v0.17.0...v0.18.0) (2026-08-13)
+
+
+### Bug Fixes
+
+* refine V2 audit chain navigation ([c74b944](https://github.com/abaxxtech/agents/commit/c74b944dc85dc822ee7a1135ce80f08b59332dd4))
+
+
+### Features
+
+* add V2 audit registry and tamper test ([14d1c84](https://github.com/abaxxtech/agents/commit/14d1c8475015b1d95e110fb4c17f9ebbc9684c41))
+
+# [0.17.0](https://github.com/abaxxtech/agents/compare/v0.16.0...v0.17.0) (2026-08-13)
+
+
+### Features
+
+* refactor V2 Beat 4 pipeline ([d0fe77d](https://github.com/abaxxtech/agents/commit/d0fe77d58942cdd014858b501d8612c7cbe35b0e))
+
+# [0.16.0](https://github.com/abaxxtech/agents/compare/v0.15.5...v0.16.0) (2026-08-13)
+
+
+### Bug Fixes
+
+* guard V2 credential map ([5530ff5](https://github.com/abaxxtech/agents/commit/5530ff52f1f42b8409684a70f17dce706887dcd1))
+
+
+### Features
+
+* build V2 identity ceremony ([8aa848c](https://github.com/abaxxtech/agents/commit/8aa848c6f4ce7db8180bcde46b7d4fcecf665cb6))
+* implement V2 Beat 3 scope comparison ([8d6a0b9](https://github.com/abaxxtech/agents/commit/8d6a0b92c68af26da5de02cd4783629763410490))
+* refine V2 identity ceremony ([7a80d02](https://github.com/abaxxtech/agents/commit/7a80d020e8f6c82a989a9a7c59a459635249b37c))
+
+## [0.15.5](https://github.com/abaxxtech/agents/compare/v0.15.4...v0.15.5) (2026-08-13)
+
+
+### Bug Fixes
+
+* harden NumericDate validation ([4d35df0](https://github.com/abaxxtech/agents/commit/4d35df046ed5d0225a56df70592ab1cd9af174f5))
+
+## [0.15.4](https://github.com/abaxxtech/agents/compare/v0.15.3...v0.15.4) (2026-08-13)
+
+
+### Bug Fixes
+
+*: route MCP resources through services ([5cd47b5](https://github.com/abaxxtech/agents/commit/5cd47b5b883f2c0b2b8f587994235bba79c3fd31))
+
+## [0.15.3](https://github.com/abaxxtech/agents/compare/v0.15.2...v0.15.3) (2026-08-11)
+
+
+### Bug Fixes
+
+* ABXAGNTS: refactor repository agent guidance ([f561289](https://github.com/abaxxtech/agents/commit/f561289f5df3e2b97e0c5f031455e1aea4581b75))
+
+## [0.15.2](https://github.com/abaxxtech/agents/compare/v0.15.1...v0.15.2) (2026-08-10)
+
+
+### Bug Fixes
+
+*: split ScopeEngine query into focused modules ([a3c3e6a](https://github.com/abaxxtech/agents/commit/a3c3e6aa263be3715078578d01d364c7af3fe593))
+*: update documentation ([085f698](https://github.com/abaxxtech/agents/commit/085f69809a2217b9d0114cc08a0533472f1facf9))
+
+## [0.15.1](https://github.com/abaxxtech/agents/compare/v0.15.0...v0.15.1) (2026-08-10)
+
+
+### Bug Fixes
+
+* split mcp tool into domain-specific modules ([925feb2](https://github.com/abaxxtech/agents/commit/925feb2c1c61d30da6da3a70d6fc40991cab9b3d))
+*: fix tests ([634fe66](https://github.com/abaxxtech/agents/commit/634fe66ef93d91d28d193ea121ec3b525f923f0b))
+
+# [0.15.0](https://github.com/abaxxtech/agents/compare/v0.14.14...v0.15.0) (2026-08-10)
+
+
+### Features
+
+*: Build the Demo V2 problem screen ([bd76423](https://github.com/abaxxtech/agents/commit/bd764232a9a15e6ea0859eba8f5ccbd9d49dffe1))
+
+## [0.14.14](https://github.com/abaxxtech/agents/compare/v0.14.13...v0.14.14) (2026-08-07)
+
+
+### Bug Fixes
+
+* **audit:** run public artifact audit when invoked as a CLI ([e911c7a](https://github.com/abaxxtech/agents/commit/e911c7abd4e1efa21337d3e17effda3562c03ff2))
+
+## [0.14.13](https://github.com/abaxxtech/agents/compare/v0.14.12...v0.14.13) (2026-08-05)
+
+
+### Bug Fixes
+
+* reject scoped queries without read auth ([455af42](https://github.com/abaxxtech/agents/commit/455af423c97727fa41acec4ff6fd95dd920a5d79))
+*: remove self explanatory comments ([f344a08](https://github.com/abaxxtech/agents/commit/f344a0840074c13356821555d4b212b2bde3b783))
+
+## [0.14.12](https://github.com/abaxxtech/agents/compare/v0.14.11...v0.14.12) (2026-08-05)
+
+
+### Bug Fixes
+
+* comments ([46249e1](https://github.com/abaxxtech/agents/commit/46249e1bf98bc4041657ddd4d3f74ef4c6afe5a9))
+*: align the scoped-query credential contract ([ca1ff82](https://github.com/abaxxtech/agents/commit/ca1ff827025c97885689dc926efe1bf54542d6b0))
+
+## [0.14.11](https://github.com/abaxxtech/agents/compare/v0.14.10...v0.14.11) (2026-08-05)
+
+
+### Bug Fixes
+
+*: add missing rate limiting ([29cfedd](https://github.com/abaxxtech/agents/commit/29cfeddbd43e70f68641a378982a4be7ea374cc3))
+*: Session rehydrate collapses scope ceiling to deny-all ([10c6db9](https://github.com/abaxxtech/agents/commit/10c6db9923de501cc3712c45b1a535cd9abc484f))
+* pr comments ([9b8f313](https://github.com/abaxxtech/agents/commit/9b8f313b61c93ade50cff29f807e47293b79d23f))
+
+## [0.14.10](https://github.com/abaxxtech/agents/compare/v0.14.9...v0.14.10) (2026-08-04)
+
+
+### Bug Fixes
+
+* **showcase:** remove retired legacy scenarios ([1d8fe4e](https://github.com/abaxxtech/agents/commit/1d8fe4e8a36bab296e31acb653ad357489773341))
+
 ## [0.14.9](https://github.com/abaxxtech/agents/compare/v0.14.8...v0.14.9) (2026-07-29)
 
 
@@ -151,6 +382,11 @@ entries may mention pre-public internal package names for historical context.
 
 ### Changed
 
+- **`ScopeEngine` query processing is split into focused internal modules.**
+  Credential and delegation authorization now lives in `QueryAuthorizer`, SQL
+  execution and column decryption in `QueryRunner`, and audit/result assembly in
+  `ResultAssembler`. `ScopeEngine` remains the public orchestration facade, with
+  no public API or behavioral change.
 - **HTTP credential-issuance integration tests use per-test session capture.**
   The `POST /credentials` route tests previously shared a single mutable
   `capturedOptions` closure across the describe block, which only stayed correct
@@ -167,6 +403,13 @@ entries may mention pre-public internal package names for historical context.
 
 ### Documentation
 
+- **NL-to-SQL claim removed from demo README.** The demo showcase README no longer claims "Natural language to SQL (optional LLM integration)" — NL is an optional demo-side LLM integration (showcase `nl-to-sql.ts`), not a library capability. Documentation only — no behavioural change.
+- **Query execution documented as validate-and-execute, not sanitize-and-return.** The MCP `query` tool description and `ScopeEngine.query` JSDoc previously implied queries are "sanitized" and that out-of-scope columns are returned as ciphertext. The engine does not rewrite SQL: it validates the statement (read-only, declared table, projection boundary), executes the original SQL, and returns decrypted rows for in-scope columns. Out-of-scope references are rejected before execution — nothing is returned as ciphertext. Documentation only — no behavioural change.
+- **`SELECT *` rejection documented.** The hackathon CHEATSHEET example no longer uses `SELECT *` (always rejected with `ScopeViolationError` — the engine never expands wildcards), and the column-scope story now states the rule explicitly. Documentation only — no behavioural change.
+- **Mutation error type clarified in MCP tool docs.** The `query` tool description now states mutations (INSERT/UPDATE/DELETE/DDL) are rejected at parse time with `QueryRejectedError`, distinct from `ScopeViolationError` for out-of-scope column references. Documentation only — no behavioural change.
+- **Projection enforcement documented across all column references.** The column-scope story now states that the projection boundary checks every column reference in the statement — SELECT, WHERE, ORDER BY, HAVING, and JOIN ON predicates — not just the SELECT target list, preventing boolean-oracle probes. Documentation only — no behavioural change.
+- **Delegation safety documentation now separates issuance-time from query-time enforcement.** The README's delegation narrative previously attributed full chain verification to the ScopeEngine. It now states that subset, TTL, and delegation-depth narrowing is enforced at issuance time, and that at query time the ScopeEngine re-verifies signatures, revocation, depth ceiling, and issuer-subject-owner bindings without re-deriving the subset or TTL narrowing. Delegation chain semantics are described using implemented concepts (supervisor/worker, issuer-subject-owner bindings) instead of a human-vs-agent DID type distinction, which no code path enforces. Documentation only — no behavioural change.
+- **MCP HTTP transport auth is documented as bearer-token validation.** The README's MCP + REST section now states that every `GET /sse` and `POST /messages?sessionId=...` request must carry an `Authorization: Bearer <token>` header (RFC 6750), that tokens come from the embedder's `getValidTokens()` callback re-read on every request, and that the `agents mcp` CLI HTTP transport requires `--allow-no-auth` (development/test-only; any other `NODE_ENV` is a startup error). It also clarifies that the `challenge` MCP tool / `POST /challenge` endpoint are for Verifiable-Presentation freshness and replay protection, not transport authentication. The MCP HTTP session-model ADR's stale code reference was corrected. Documentation only — no behavioural change.
 - **`IssueCredentialOptions.maxDepth` JSDoc now documents its constraints.** The
   IDE tooltip states the default (2), the valid range (positive integer `>= 1`),
   and that `issueCredential()` throws `maxDepth must be a positive integer` when
@@ -753,7 +996,7 @@ Session 7 — eight sub-tasks promoting the remaining implicit
 library env-reads to explicit consumer-supplied configuration. v0.10.0 closes
 the library-shrink arc: post-Session-7, the library reads exactly two env vars
 inside `src/` (`NODE_ENV` and `CI` — both intentional runtime-shape gates,
-documented in `docs/support-runbook-v0.9.10.0.md` § "Environment variables
+documented in `docs/internal/support-runbook-v0.9.10.0.md` § "Environment variables
 read by the library"). The five Session-6-era `AGENTS_*` env-reads are gone.
 
 ### Breaking changes
@@ -877,15 +1120,15 @@ read by the library"). The five Session-6-era `AGENTS_*` env-reads are gone.
 - — LIB-CONFIG: `AGENTS_ALLOW_LEGACY_SCOPE_MODE` removed; `ScopeMode` legacy value renamed to `'encryption-only-LEGACY-DO-NOT-USE'`.
 - — LIB-MIGRATE: `AGENTS_TRUSTED_SERVERS` → `resolveTrustedServersFromEnv()` bootstrap helper + `LocalTrustAnchorStore({ initialTrustedServers })` constructor option.
 - — LIB-MIGRATE: `AGENTS_CONSUMER_DOMAINS` → `AgentScopeConfig.orgBoundary.extraConsumerDomains` + `OrgBoundary.*(...,extraConsumerDomains?)` static-method param + `GenericOidcProvider({ extraConsumerDomains })` constructor option. Dual-read surface unified.
-- — DOCS: `NODE_ENV` and `CI` documented as library-implicit env reads. Both retained intentionally — `NODE_ENV` is a defense-in-depth runtime gate against booting mock auth in production; `CI` is a universal CI convention that lets the keystore skip the macOS Keychain prompt unattended. JSDoc on the four read sites (`src/auth/agent.ts`, `src/index.ts`, `src/auth/discovery-utils.ts`, `src/identity/keystore.ts`) cross-references the new "Environment variables read by the library" section in `docs/support-runbook-v0.9.10.0.md`.
-- — OBS: MCP CLI now emits a structured `WARNING` at startup when booting with `NODE_ENV=production` and no explicit `injections.storage` (the default-backend path has cross-instance revocation coherency poll OFF). Mirrors the API server's `SESSION_STORE_MODE=dual` warning pattern. New `docs/support-runbook-v0.9.10.0.md` § "MCP multi-instance revocation coherency" explains the trade-off and migration path for operators running multi-instance MCP.
+- — DOCS: `NODE_ENV` and `CI` documented as library-implicit env reads. Both retained intentionally — `NODE_ENV` is a defense-in-depth runtime gate against booting mock auth in production; `CI` is a universal CI convention that lets the keystore skip the macOS Keychain prompt unattended. JSDoc on the four read sites (`src/auth/agent.ts`, `src/index.ts`, `src/auth/discovery-utils.ts`, `src/identity/keystore.ts`) cross-references the new "Environment variables read by the library" section in `docs/internal/support-runbook-v0.9.10.0.md`.
+- — OBS: MCP CLI now emits a structured `WARNING` at startup when booting with `NODE_ENV=production` and no explicit `injections.storage` (the default-backend path has cross-instance revocation coherency poll OFF). Mirrors the API server's `SESSION_STORE_MODE=dual` warning pattern. New `docs/internal/support-runbook-v0.9.10.0.md` § "MCP multi-instance revocation coherency" explains the trade-off and migration path for operators running multi-instance MCP.
 - — TESTS: new `test/regression/env-isolation.test.ts` is the unified regression suite asserting the post-Session-7 contract that the library does NOT read any of the five migrated `AGENTS_*` env vars (`AGENTS_DEV_MODE`, `AGENTS_KEYSTORE_PATH`, `AGENTS_ALLOW_LEGACY_SCOPE_MODE`, `AGENTS_TRUSTED_SERVERS`, `AGENTS_CONSUMER_DOMAINS`). 11 tests covering both directions for each variable (env set + no consumer wiring → env content does NOT leak; env set + EXPLICIT consumer wiring with different value → env loses, explicit wins) plus a cross-cutting "all 5 set simultaneously" worst-case scenario. Catches drift if a future maintainer reintroduces any env-read.
 
 ## [0.9.10.0] — 2026-04-25 — Session 6 / Library-shrinking arc complete
 
 ### Security posture
 
-- **Revocation enforcement gap (pre-existing, v0.9.6.0–v0.9.9.x)**: versions v0.9.6.0 through v0.9.9.x advertised an injection path for `IRevocationStore` that no code implemented; all deployments ran on process-local in-memory revocation. The `IRevocationStore` interface and three adapters (`InMemoryRevocationStore`, `SqliteRevocationStore`, `PostgresRevocationStore`) shipped in v0.9.6.0, but `AgentScope.create` had no parameter to receive an injected store — the `VcVerifier` silently defaulted to `InMemoryRevocationStore` in every deployment. Multi-instance deployments and deployments relying on cross-restart durability were enforcing revocation only within a single process lifetime. This release wires the injection path (via the new `injections` parameter), structurally prevents recurrence (the type system now rejects a `VcVerifier` constructed without a `revocationStore`), and ships a default `PostgresRevocationStore` wiring in `packages/server/` when `DATABASE_URL` is set. **If you operate multi-instance or rely on revocation durability across restarts, read `docs/migration-byok.md` before upgrading.** Bounded by `credential.maxTtl` (default 24h). No CVE (pre-1.0, no external users known).
+- **Revocation enforcement gap (pre-existing, v0.9.6.0–v0.9.9.x)**: versions v0.9.6.0 through v0.9.9.x advertised an injection path for `IRevocationStore` that no code implemented; all deployments ran on process-local in-memory revocation. The `IRevocationStore` interface and three adapters (`InMemoryRevocationStore`, `SqliteRevocationStore`, `PostgresRevocationStore`) shipped in v0.9.6.0, but `AgentScope.create` had no parameter to receive an injected store — the `VcVerifier` silently defaulted to `InMemoryRevocationStore` in every deployment. Multi-instance deployments and deployments relying on cross-restart durability were enforcing revocation only within a single process lifetime. This release wires the injection path (via the new `injections` parameter), structurally prevents recurrence (the type system now rejects a `VcVerifier` constructed without a `revocationStore`), and ships a default `PostgresRevocationStore` wiring in `packages/server/` when `DATABASE_URL` is set. **If you operate multi-instance or rely on revocation durability across restarts, read `docs/migrations/byok.md` before upgrading.** Bounded by `credential.maxTtl` (default 24h). No CVE (pre-1.0, no external users known).
 
 - **BYOK — master key as a first-class injection**: the library no longer reads `AGENTS_MASTER_KEY` from the environment. Master key flows through `injections.masterKey: MasterKey` as a required constructor argument. Consumers who source keys from KMS / Vault / Secrets Manager get a clean injection point; the library itself holds zero opinions about how key material is sourced. Env-var loading is now an opt-in convenience helper in the `@abaxxlabs/agents/bootstrap` subpath, used by `packages/server/`, the CLI, and the `npm create @abaxxlabs/agents` scaffold. ESLint rules (lib + server) statically prevent the env-read pattern from re-entering the library or being re-introduced via destructure / computed-key bypass. Closes the six-session library-shrinking arc: the core library holds no infrastructure opinions (no env reads, no stores, no transports fetched from environment).
 
@@ -895,7 +1138,7 @@ read by the library"). The five Session-6-era `AGENTS_*` env-reads are gone.
 - **`injections.masterKey: MasterKey` is required.** Removed from `AgentScopeConfig.encryption`. `AgentScopeConfig.encryption` becomes `{ algorithm?, columns? }` only.
 - **`VcVerifierOptions.revocationStore` is required.** No silent fallback to `InMemoryRevocationStore` at the verifier layer. `AgentScope.create` supplies the default explicitly at the factory layer when `injections.storage` is omitted, so consumers who don't think about revocation get the same default they got before — but the verifier itself now refuses to be constructed without one.
 - **`registerColumn()` re-registration on an already-registered column throws.** (Already shipped in v0.9.9.0; restated here because Session 6's BYOK protocol intersects with column-key persistence.) Use `rotateColumnKey` or `rewrapColumnKey`.
-- **`MasterKeyMissingError` message changed.** New text points callers at `injections.masterKey` and `docs/migration-byok.md`.
+- **`MasterKeyMissingError` message changed.** New text points callers at `injections.masterKey` and `docs/migrations/byok.md`.
 
 ### Added
 
@@ -919,7 +1162,7 @@ read by the library"). The five Session-6-era `AGENTS_*` env-reads are gone.
 ### Changed
 
 - `loadColumnKeys` and `restoreAgents` now distinguish schema-missing (legitimate pre-migration case → empty map / no-op) from decrypt-failure (wrong master key → throws `MasterKeyMismatchError`). Schema-missing detection uses pattern-match on Postgres error codes, not catch-all swallows.
-- `MasterKeyMissingError` message: "Master key not provided. Pass a 32-byte Buffer as `injections.masterKey` to `AgentScope.create(config, injections)`. For env-var bootstrap, import `parseMasterKeyHex` from `@abaxxlabs/agents/bootstrap` (strict 64-hex validation). See `docs/migration-byok.md` for full examples."
+- `MasterKeyMissingError` message: "Master key not provided. Pass a 32-byte Buffer as `injections.masterKey` to `AgentScope.create(config, injections)`. For env-var bootstrap, import `parseMasterKeyHex` from `@abaxxlabs/agents/bootstrap` (strict 64-hex validation). See `docs/migrations/byok.md` for full examples."
 - `packages/server/src/index.ts` reads `AGENTS_MASTER_KEY` exactly once at bootstrap via `resolveMasterKeyFromEnv()`; the resulting `Buffer` is threaded to all consumers (`AgentScope.create(config, { masterKey })` AND `deriveSessionMacKey(masterKey)`). Removed: control-channel env writes, second env reads, and the format-sniffing `hex/utf8` branch.
 - `demo/showcase/src/server.ts` migrated off env-var control-channel. The 6 prior `process.env.AGENTS_MASTER_KEY = ...` writes are replaced with explicit `Buffer` arguments to each `AgentScope.create` call. Per-session and per-org key switching happens via `injections.masterKey` rather than env mutation.
 - `packages/create-agents/template/src/index.ts` (the `npm create @abaxxlabs/agents` scaffold) reads env once at bootstrap and passes `Buffer` into `AgentScope.create` — no env writes. Day-1 consumers learn the correct pattern.
@@ -933,11 +1176,11 @@ read by the library"). The five Session-6-era `AGENTS_*` env-reads are gone.
 
 ### Upgrade path
 
-- See `docs/migration-byok.md` for the full migration guide: 5-question decision tree, environment audit checklist, four worked examples (env-only/same-key, env-only/new-key, config-hex/same-key, new-key-with-rewrap), and the `rewrapColumnKey` migration protocol.
+- See `docs/migrations/byok.md` for the full migration guide: 5-question decision tree, environment audit checklist, four worked examples (env-only/same-key, env-only/new-key, config-hex/same-key, new-key-with-rewrap), and the `rewrapColumnKey` migration protocol.
 - **Diagnostic CLI** (`agents migrate-check`, also available via `npx @abaxxlabs/agents migrate-check`): read-only scanner. Walks the CWD, detects `process.env.AGENTS_MASTER_KEY` reads/writes, `encryption.masterKey` references, and `AgentScope.create(` call sites. Categorizes the project into one of the four migration cases (or the trap state where env was silently winning) and points at the relevant doc section. Useful for triaging codebases with many consumer projects. Read-only by design — no edits, no telemetry, no network calls.
 - **MAC-key co-rotation note**: BYOK key change requires a server restart (or explicit MAC-key re-derivation) for session-envelope coherency. Documented in the migration guide as a planned user-visible side effect.
-- **Rollback procedure**: `docs/rollback-v0.9.10.0.md`. No DB schema rollback (Session 6 ships zero new migrations). Code + bootstrap revert only. Data-loss risk only if the master key was rotated during the v0.9.10.0 upgrade window (the rollback doc explains both rotate-back and keep-new-key options).
-- **Support runbook**: `docs/support-runbook-v0.9.10.0.md`. Operational diagnostics for what's new in v0.9.10.0 — revocation-enforcement post-upgrade verification (which store am I actually running?), wrong-key boot triage (`MasterKeyMismatchError` decision tree), and admin operations (mass revoke, manual prune, audit queries). The pre-existing session-3 / session-5 runbooks remain authoritative for ongoing Postgres revocation-store and session-store CRUD operations.
+- **Rollback procedure**: `docs/migrations/v0.9.10-rollback.md`. No DB schema rollback (Session 6 ships zero new migrations). Code + bootstrap revert only. Data-loss risk only if the master key was rotated during the v0.9.10.0 upgrade window (the rollback doc explains both rotate-back and keep-new-key options).
+- **Support runbook**: `docs/internal/support-runbook-v0.9.10.0.md`. Operational diagnostics for what's new in v0.9.10.0 — revocation-enforcement post-upgrade verification (which store am I actually running?), wrong-key boot triage (`MasterKeyMismatchError` decision tree), and admin operations (mass revoke, manual prune, audit queries). The pre-existing session-3 / session-5 runbooks remain authoritative for ongoing Postgres revocation-store and session-store CRUD operations.
 
 ### Dependencies
 

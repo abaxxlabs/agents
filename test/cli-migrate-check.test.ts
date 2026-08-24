@@ -297,7 +297,6 @@ describe('migrate-check: env-keystore-path pattern', () => {
   });
 });
 
-
 // ─── Pattern matching: env-trusted-servers ───────────────────────────────────
 
 describe('migrate-check: env-trusted-servers pattern', () => {
@@ -642,7 +641,7 @@ describe('migrate-check: output format', () => {
     expect(stdout).toContain('Found:');
     expect(stdout).toContain('1 process.env.AGENTS_MASTER_KEY read site(s)');
     expect(stdout).toContain('Case #1');
-    expect(stdout).toContain('docs/migration-byok.md');
+    expect(stdout).toContain('docs/migrations/byok.md');
     expect(stdout).toContain('read-only');
     expect(stdout).toContain('src/server.ts:');
   });

@@ -23,9 +23,7 @@ const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;
 const HEADER_LENGTH = 1 + IV_LENGTH + AUTH_TAG_LENGTH + 1; // 30 bytes
 
-// Encrypted marker stored in place of SQL NULL. Storing real NULL would let an observer with
-// DB read access infer which rows have a value for the column from the NULL pattern alone,
-// leaking field-presence metadata even when the ciphertext is opaque.
+// Sentinel preserves SQL NULL round trips. The visible type code still identifies NULL ciphertexts.
 const NULL_SENTINEL = Buffer.from('__AGENTS_NULL__');
 
 enum TypeCode {
@@ -103,7 +101,10 @@ function deserializeValue(buf: Buffer, typeCode: TypeCode): unknown {
   }
 }
 
-/** Encrypt a value with AES-256-GCM, returning wire format `[version][IV][authTag][typeCode][ciphertext]`. */
+/**
+ * Encrypt a value with AES-256-GCM and a fresh random 96-bit IV.
+ * Returns `[version][IV][authTag][typeCode][ciphertext]`; length and type metadata remain visible.
+ */
 export function encrypt(value: unknown, columnKey: Buffer): Buffer {
   const typeCode = inferTypeCode(value);
   const plaintext = serializeValue(value, typeCode);
@@ -149,10 +150,7 @@ export function decrypt(ciphertext: Buffer, columnKey: Buffer): unknown {
   } catch {
     // GCM throws on auth tag mismatch: ciphertext tampered, IV/tag corrupted, or wrong key.
     // Fail closed with an opaque message so callers cannot distinguish the cause via error text.
-    throw new DecryptionFailedError(
-      'unknown',
-      'Decryption failed, encrypted with a different key',
-    );
+    throw new DecryptionFailedError('unknown', 'Decryption failed, encrypted with a different key');
   }
 }
 
@@ -182,7 +180,7 @@ export function isUndefinedTableError(err: unknown): boolean {
   );
 }
 
-/** Decrypt in-scope columns in a result row, leaving out-of-scope columns as base64 ciphertext. */
+/** Decrypt authorized encrypted columns; preserve unscoped encrypted values as encoded data for defense in depth. */
 export function decryptRow(
   row: Record<string, unknown>,
   scopeColumns: string[],

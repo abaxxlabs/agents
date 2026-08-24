@@ -1,8 +1,23 @@
+// Copyright 2026 Abaxx Technologies
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 import type { VerifyOptions, VerificationResult } from '#types/index.js';
 import type { JwtPayload } from '#crypto/jwt.js';
 import { decodeJwt, verifyJwtSignature } from '#crypto/jwt.js';
 import { IDENTITY_MIGRATION_CREDENTIAL } from '#types/index.js';
 import { DidResolutionFailedError } from '#errors/index.js';
+import { numericDateToMs } from './numeric-date.js';
 
 export class ReplayGuard {
   private seenJtis = new Map<string, number>();
@@ -109,9 +124,17 @@ export async function verifyPresentation(
     }
   }
 
-  const vpNbf = payload.nbf ?? payload.iat;
-  if (vpNbf) {
-    const vpNbfMs = vpNbf * 1000;
+  const vpIatMs = payload.iat !== undefined ? numericDateToMs(payload.iat) : null;
+  if (payload.iat !== undefined && vpIatMs === null) {
+    return { valid: false, status: 'MALFORMED', error: 'VP iat is not a valid NumericDate' };
+  }
+
+  const vpNbfMs = payload.nbf !== undefined ? numericDateToMs(payload.nbf) : vpIatMs;
+  if (payload.nbf !== undefined && vpNbfMs === null) {
+    return { valid: false, status: 'MALFORMED', error: 'VP nbf is not a valid NumericDate' };
+  }
+
+  if (vpNbfMs !== null) {
     if (Date.now() < vpNbfMs - deps.clockSkewMs) {
       return {
         valid: false,
@@ -121,21 +144,24 @@ export async function verifyPresentation(
     }
   }
 
-  if (payload.exp) {
-    const expMs = payload.exp * 1000;
-    if (Date.now() > expMs + deps.clockSkewMs) {
+  const vpExp: unknown = payload.exp;
+  let vpExpMs: number | null = null;
+  if (vpExp !== undefined) {
+    vpExpMs = numericDateToMs(vpExp);
+    if (vpExpMs === null) {
+      return { valid: false, status: 'MALFORMED', error: 'VP exp is not a valid NumericDate' };
+    }
+    if (Date.now() >= vpExpMs + deps.clockSkewMs) {
       return {
         valid: false,
         status: 'EXPIRED',
-        error: `VP expired at ${new Date(expMs).toISOString()}`,
+        error: `VP expired at ${new Date(vpExpMs).toISOString()}`,
       };
     }
   }
 
   if (payload.jti) {
-    const expiresAtMs = payload.exp
-      ? payload.exp * 1000 + deps.clockSkewMs
-      : Date.now() + 5 * 60 * 1000;
+    const expiresAtMs = vpExpMs === null ? Date.now() + 5 * 60 * 1000 : vpExpMs + deps.clockSkewMs;
     if (deps.replayGuard.checkAndRecord(payload.jti, expiresAtMs)) {
       return {
         valid: false,
@@ -172,8 +198,7 @@ export async function verifyPresentation(
           };
         }
       }
-    } catch {
-    }
+    } catch {}
   }
 
   const scopeVCs = innerVCs.filter((innerJwt: string) => {

@@ -281,7 +281,7 @@ Re-wrapping a column key under a new master key is a five-step, write-quiesced p
    ```
 3. **Verify-old.** Confirm the OLD master key actually unwraps every column key listed in `agent_keys`. If any unwrap fails here, your pre-rewrap state is already broken — stop and recover before proceeding.
    ```ts
-   import { verifyAllColumnKeys } from '@abaxxlabs/agents';
+   import { verifyAllColumnKeys } from '@abaxxlabs/agents/sql';
    import { parseMasterKeyHex } from '@abaxxlabs/agents/bootstrap';
 
    const oldMasterKey = parseMasterKeyHex(process.env.AGENTS_MASTER_KEY_OLD!);
@@ -295,7 +295,7 @@ Re-wrapping a column key under a new master key is a five-step, write-quiesced p
    `verifyAllColumnKeys` is read-only — one `SELECT` against `agent_keys`, no transactions, no row locks. Safe to call against a live system.
 4. **Rewrap.** Iterate over `agent_keys` and call `rewrapColumnKey` once per row:
    ```ts
-   import { rewrapColumnKey } from '@abaxxlabs/agents';
+   import { rewrapColumnKey } from '@abaxxlabs/agents/sql';
    import { parseMasterKeyHex } from '@abaxxlabs/agents/bootstrap';
 
    const oldMasterKey = parseMasterKeyHex(process.env.AGENTS_MASTER_KEY_OLD!);
@@ -381,29 +381,32 @@ This is optional — leaving the rows lets `pruneExpired` clean them up at TTL �
 
 ## Revocation-store injection (required for multi-instance)
 
-Whether your migration case is #1, #2, #3, or #4, a separate decision applies if you operate **multi-instance** OR rely on **revocation durability across process restarts**: you must inject a durable `IRevocationStore`. The default behavior when `injections.storage` is omitted is:
+Whether your migration case is #1, #2, #3, or #4, a separate decision applies if you operate **multi-instance** OR rely on **revocation durability across process restarts**: you must inject a durable `RevocationStore`. The default behavior when `injections.storage` is omitted is:
 
-- `packages/server/` consumer: auto-detects a default `PostgresRevocationStore` when `DATABASE_URL` is set (and runs migration 007 idempotently on boot). Single INFO log line on startup names the active store. No code change needed.
+- `packages/server/` consumer: auto-detects a default `PostgresRevocationStore` when `DATABASE_URL` is set and attempts migration 007 on boot when the migration file is available. Single INFO log line on startup names the active store. No code change needed.
 - Direct library consumer: `AgentScope.create` constructs a default `PostgresStorageBackend` from `config.database.connectionString`, but **does not call `.initialize()` on it**. Three concrete consequences:
   - The revocation cache starts cold (first hits round-trip to Postgres).
   - Cross-instance coherency polling never starts — peer-instance revocations are seen only on cache miss.
-  - **If migration 007 has not been applied yet (the `revoked_credentials` table does not exist), every `isRevoked` call throws `relation "revoked_credentials" does not exist`** and propagates through `VcVerifier.verify` to the caller. This is correct fail-loud behavior post-Session-6 (matches the wrong-key-boot posture), but consumers who haven't run migrations will see verification errors on the first credential check.
+  - Migration 007 must be applied before relying on durable revocation checks.
 
-  This default-backend behavior is correct for tests and demos with pre-applied schemas; it is **not** sufficient for production multi-instance, and it is **not** safe for consumers who run AgentScope before applying schema migrations. Production deployments should explicitly construct + initialize the StorageBackend (see the wiring example below).
+  This default-backend behavior is correct for tests and demos with pre-applied schemas; it is **not** sufficient for production multi-instance, and it is **not** safe for consumers who run AgentScope before applying schema migrations.
 
-For production multi-instance, pre-build the StorageBackend so migration 007 (and 008 for sessions) apply on boot and the revocation cache warms before traffic arrives:
+The current API couples migration execution to storage lifecycle initialization. `initialize()` executes SQL only when it finds a `migrations/` directory; the published npm package does not include that directory, so consumers must apply the migration files externally. When a directory is present, initialization starts the ordered sequence from its first file, has no migration-history table, and is not generally repeat-safe on an already migrated schema. Apply schema changes through controlled deployment tooling; do not call `initialize()` concurrently or on every process boot as an apply-once migration runner. The following shows construction and first-time initialization only:
 
 ```ts
-import { AgentScope, createStorageBackend } from '@abaxxlabs/agents';
+import { createStorageBackend, deriveSessionMacKey } from '@abaxxlabs/agents';
+import { AgentScope } from '@abaxxlabs/agents/sql';
 import { resolveMasterKeyFromEnv } from '@abaxxlabs/agents/bootstrap';
 
 const masterKey = resolveMasterKeyFromEnv();
+const sessionMacKey = deriveSessionMacKey(masterKey);
 
 const storage = await createStorageBackend({
   type: 'postgres',
   connectionString: process.env.DATABASE_URL!,
+  sessionMacKey,
 });
-await storage.initialize(); // applies revocation/session migrations idempotently, warms cache, starts coherency poll
+await storage.initialize(); // initial controlled schema setup only; not safe as a repeatable boot runner
 
 const scope = await AgentScope.create(
   { database: { connectionString: process.env.DATABASE_URL! } },
@@ -411,15 +414,22 @@ const scope = await AgentScope.create(
 );
 ```
 
-`createStorageBackend` is the consumer-facing factory. It is sufficient for revocation durability, agent persistence, and audit. **If you also persist sessions and need MAC integrity across processes**, the session-MAC derivation pathway is non-trivial — read `packages/server/src/index.ts` (search for `deriveSessionMacKey`) for the canonical wiring. The package thread-loads the master key once via `resolveMasterKeyFromEnv()`, derives the session MAC key, and passes both the master key and the StorageBackend (constructed via `PostgresStorageBackend.fromPool` with the derived MAC key) into `AgentScope.create`.
+`createStorageBackend` is the consumer-facing factory. Because lifecycle initialization and migration execution are coupled, direct consumers cannot start revocation coherency polling without also restarting the migration sequence. This is a current runtime limitation, not apply-once migration tracking.
 
-For mixed-backend setups (Postgres for agents/audit/context, Redis for revocation, SQLite for sessions in dev), use `composeStorageBackend(base, overrides)`:
+The session-MAC key is required to construct a durable session store. `AgentScope` receives the umbrella `StorageBackend` but its public identity and query flows do not call `storage.sessions`; server or consumer orchestration owns session persistence. See [Security and Storage Boundaries](../guides/security-and-storage-boundaries.md#sessions-and-pending-oidc-flows) for the ownership distinction.
+
+For test-only overrides of a composed backend, pass the required session-MAC key to the base backend:
 
 ```ts
-import { composeStorageBackend, createStorageBackend, InMemoryRevocationStore } from '@abaxxlabs/agents';
+import { composeStorageBackend, createStorageBackend, deriveSessionMacKey, InMemoryRevocationStore } from '@abaxxlabs/agents';
 
-const base = await createStorageBackend({ type: 'postgres', connectionString: process.env.DATABASE_URL! });
-await base.initialize();
+const sessionMacKey = deriveSessionMacKey(masterKey);
+const base = await createStorageBackend({
+  type: 'postgres',
+  connectionString: process.env.DATABASE_URL!,
+  sessionMacKey,
+});
+await base.initialize(); // initial controlled schema setup only
 
 const storage = composeStorageBackend(base, {
   revocation: new InMemoryRevocationStore(), // tests only — do NOT use in production
@@ -428,7 +438,7 @@ const storage = composeStorageBackend(base, {
 const scope = await AgentScope.create(config, { masterKey, storage });
 ```
 
-`composeStorageBackend` does NOT chain `.initialize()` across backends. The caller is responsible for initializing each sub-store before passing it in.
+`composeStorageBackend` does NOT chain `.initialize()` across backends. The caller is responsible for controlled initialization of each sub-store before passing it in.
 
 ---
 
@@ -455,13 +465,12 @@ The `demo/showcase/` consumer was used as the migration dry-run for this release
 ## References
 
 - **CHANGELOG entry**: `CHANGELOG.md` § `[0.9.10.0]`.
-- **Rollback procedure**: `docs/rollback-v0.9.10.0.md`.
+- **Rollback procedure**: `docs/migrations/v0.9.10-rollback.md`.
 - **API surface**:
   - `AgentScope.create(config, injections)` — `src/sql/index.ts`
   - `AgentScopeInjections` interface — `src/sql/types.ts`
   - `MasterKey` branded type, `asMasterKey(buf)` — `src/crypto/master-key.ts`
   - `resolveMasterKeyFromEnv()`, `parseMasterKeyHex(hex)` — `src/bootstrap/index.ts`
-  - `rewrapColumnKey({ pool, agentDid, tableName, columnName, oldMasterKey, newMasterKey })` — `src/column-encryption.ts`
+  - `rewrapColumnKey({ pool, agentDid, tableName, columnName, oldMasterKey, newMasterKey })` — `src/sql/column-keys.ts`
   - `composeStorageBackend(base, overrides)` — `src/storage/compose.ts`
 - **Diagnostic CLI**: `npx @abaxxlabs/agents migrate-check` (read-only codebase scanner).
-- **Issue / discussion**: Jira `[internal ref]` (BYOK), `[internal ref]` (revocation enforcement).
