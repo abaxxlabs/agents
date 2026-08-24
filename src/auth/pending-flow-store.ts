@@ -14,8 +14,9 @@
 
 /**
  * In-process PKCE state store for OAuth 2.0 flows.
- * Prevents CSRF (unknown state rejected), replay (single-use), and stale flows (10min TTL).
- * Multi-server: back with Redis or shared keystore so callbacks landing on a different instance can validate.
+ * Uses state as the key and stores codeVerifier plus expiresAt; no OIDC nonce is stored.
+ * Prevents CSRF (unknown state rejected), replay (single-use), and stale flows (10-minute default TTL).
+ * This implementation is process-local; multi-instance deployments require sticky callback routing.
  */
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -32,7 +33,7 @@ const DEFAULT_FLOW_TTL_MS = 10 * 60 * 1000;
 
 // ─── PendingFlowStore ─────────────────────────────────────────────────────────
 
-/** Tracks in-flight OAuth flows. One instance per OidcProvider. */
+/** Tracks in-flight OAuth flows as state -> { codeVerifier, expiresAt }. One instance per provider. */
 export class PendingFlowStore {
   private flows = new Map<string, PendingFlow>();
   private ttlMs: number;
@@ -63,8 +64,7 @@ export class PendingFlowStore {
     if (Date.now() > flow.expiresAt) {
       this.flows.delete(state);
       throw new PendingFlowError(
-        'OAuth authorization flow has expired (10-minute limit). ' +
-          'Restart the authorization flow.',
+        'OAuth authorization flow has expired. Restart the authorization flow.',
       );
     }
 

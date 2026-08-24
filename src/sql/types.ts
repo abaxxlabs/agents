@@ -110,12 +110,13 @@ export interface AgentScopeInstance {
 
 export interface QueryOptions {
   agent: string;
+  /** Required primary credential or presentation; always evaluated. */
   credential: string;
   sql: string;
   params?: unknown[];
   /** Target table name — required for column scope enforcement */
   table: string;
-  /** Pass multiple credentials for scope union */
+  /** Optional additional credentials or presentations used for scope unions. */
   credentials?: string[];
   /**
    * Remote transports set this to require an agent-signed Verifiable

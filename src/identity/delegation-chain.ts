@@ -1,3 +1,17 @@
+// Copyright 2026 Abaxx Technologies
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 import type { RevocationStore } from '#storage/types.js';
 import type { VerificationResult, IdSdkInstance } from '#types/index.js';
 import { decodeJwt, verifyJwtSignature } from '#crypto/jwt.js';
@@ -50,9 +64,10 @@ export async function resolveRegisteredIssuerKey(
  *
  * @param payload  The decoded leaf credential JWT payload.
  */
-export function checkDelegationDepthCeiling(
-  payload: { maxDepth?: unknown; delegationChain?: unknown },
-): VerificationResult | undefined {
+export function checkDelegationDepthCeiling(payload: {
+  maxDepth?: unknown;
+  delegationChain?: unknown;
+}): VerificationResult | undefined {
   const rootChain = payload.delegationChain;
   if (!Array.isArray(rootChain) || rootChain.length === 0) return undefined;
 
@@ -189,7 +204,7 @@ export async function checkDelegationChainRevocation(
           error: 'Delegation chain ancestor issuer not registered',
         };
       }
-      if (!await verifyJwtSignature(ancestorJwt, ancestorKey)) {
+      if (!(await verifyJwtSignature(ancestorJwt, ancestorKey))) {
         return {
           valid: false,
           status: 'INVALID_SIGNATURE',
@@ -200,7 +215,9 @@ export async function checkDelegationChainRevocation(
       const rawAncestorType = ancestorPayload.vc?.type;
       const ancestorVcType: unknown[] = Array.isArray(rawAncestorType)
         ? rawAncestorType
-        : typeof rawAncestorType === 'string' ? [rawAncestorType] : [];
+        : typeof rawAncestorType === 'string'
+          ? [rawAncestorType]
+          : [];
       if (isDelegatedScopeCredentialType(ancestorVcType)) {
         return {
           valid: false,

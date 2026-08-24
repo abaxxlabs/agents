@@ -172,7 +172,8 @@ export interface VerifyIdTokenOptions {
 }
 
 /**
- * Verify an id_token's signature against the provider's JWKS, then validate exp/iss/aud claims.
+ * Verify an id_token's signature against the provider's JWKS, require numeric exp, and strictly
+ * validate optional nbf plus configured iss/aud claims without clock-skew tolerance.
  * @returns The decoded (now trusted) JWT payload.
  * @throws IdTokenVerificationError on invalid signature or claims.
  * @throws AuthUnavailableError if the JWKS endpoint is unreachable.
@@ -275,10 +276,10 @@ export async function verifyIdTokenSignature(
   if (exp === undefined) {
     throw new IdTokenVerificationError('id_token is missing required exp claim');
   }
-  if (typeof exp !== 'number') {
-    throw new IdTokenVerificationError('id_token exp claim is not a number');
+  if (typeof exp !== 'number' || !Number.isFinite(exp)) {
+    throw new IdTokenVerificationError('id_token exp claim is not a finite number');
   }
-  if (now > exp) {
+  if (now >= exp) {
     throw new IdTokenVerificationError(
       `id_token is expired (exp=${exp}, now=${now}, delta=${now - exp}s)`,
     );
@@ -286,8 +287,8 @@ export async function verifyIdTokenSignature(
 
   const nbf = payload.nbf;
   if (nbf !== undefined) {
-    if (typeof nbf !== 'number') {
-      throw new IdTokenVerificationError('id_token nbf claim is not a number');
+    if (typeof nbf !== 'number' || !Number.isFinite(nbf)) {
+      throw new IdTokenVerificationError('id_token nbf claim is not a finite number');
     }
     if (now < nbf) {
       throw new IdTokenVerificationError(

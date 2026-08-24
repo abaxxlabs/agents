@@ -1,3 +1,17 @@
+// Copyright 2026 Abaxx Technologies
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 import { AgentScopeError } from './base.js';
 
 /**
@@ -53,7 +67,7 @@ export class MasterKeyMissingError extends AgentScopeError {
       'MASTER_KEY_MISSING',
       // Points at parseMasterKeyHex (not raw Buffer.from) because Buffer.from silently drops
       // non-hex characters and produces an undersized buffer.
-      "Master key not provided. Pass a 32-byte Buffer as injections.masterKey to AgentScope.create(config, injections). For env-var bootstrap, import parseMasterKeyHex from '@abaxxlabs/agents/bootstrap' (strict 64-hex validation). See docs/migration-byok.md for full examples.",
+      "Master key not provided. Pass a 32-byte Buffer as injections.masterKey to AgentScope.create(config, injections). For env-var bootstrap, import parseMasterKeyHex from '@abaxxlabs/agents/bootstrap' (strict 64-hex validation). See docs/migrations/byok.md for full examples.",
       {},
     );
     this.name = 'MasterKeyMissingError';

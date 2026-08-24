@@ -112,23 +112,24 @@ export function findMutationInAst(node: PgAstNode | null | undefined): string | 
   return null;
 }
 
-/**
- * Validate that a SQL string is a pure read-only query using the real PostgreSQL parser.
- * @throws QueryRejectedError if the query contains any mutation statements
- */
-export async function assertReadOnlyQuery(sql: string, agentDid: Did): Promise<void> {
-  await ensurePgQuery();
-
-  let parsed;
+/** Caller must have awaited ensurePgQuery(); the parser is not self-initializing here. */
+function parseQuery(sql: string, agentDid: Did): PgParsed {
   try {
-    parsed = parseSync(sql);
+    return parseSync(sql) as PgParsed;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Invalid SQL';
     throw new QueryRejectedError(agentDid, `SQL parse error: ${message}`);
   }
+}
 
+/**
+ * Validate that a parsed statement tree is a pure read-only query.
+ * @throws QueryRejectedError if the query contains any mutation statements
+ */
+export function assertReadOnlyQuery(parsed: PgParsed, agentDid: Did): void {
   for (const stmtWrapper of parsed.stmts) {
-    const mutation = findMutationInAst(stmtWrapper.stmt);
+    const stmt = stmtWrapper.stmt;
+    const mutation = findMutationInAst(stmt);
     if (mutation) {
       throw new QueryRejectedError(
         agentDid,
@@ -137,8 +138,8 @@ export async function assertReadOnlyQuery(sql: string, agentDid: Did): Promise<v
     }
 
     // Top-level statement must be a SELECT
-    if (!stmtWrapper.stmt.SelectStmt) {
-      const stmtType = Object.keys(stmtWrapper.stmt)[0] ?? 'unknown';
+    if (!stmt?.SelectStmt) {
+      const stmtType = stmt ? (Object.keys(stmt)[0] ?? 'unknown') : 'unknown';
       throw new QueryRejectedError(
         agentDid,
         `Query is a ${stmtType} — only SELECT queries are allowed.`,
@@ -331,39 +332,79 @@ export function assertSqlReadsOnlyDeclaredTable(
   }
 }
 
+function readableColumns(columnActionMap: Map<string, Set<string>>): string[] {
+  return Array.from(columnActionMap)
+    .filter(([, actions]) => actions.has('read'))
+    .map(([column]) => column);
+}
+
 /**
- * Check that no columns outside the credential's scope are referenced
- * ANYWHERE in the query — SELECT, WHERE, ORDER BY, HAVING, JOIN ON.
+ * Check that every column referenced ANYWHERE in the query — SELECT, WHERE,
+ * ORDER BY, HAVING, JOIN ON — is granted read by the presented credentials.
  *
- * @throws ScopeViolationError if out-of-scope columns are referenced
+ * @throws ScopeViolationError if any referenced column lacks read access
  */
-export async function assertProjectionBoundary(
-  sql: string,
+function assertColumnScope(
+  parsed: PgParsed,
   tableName: TableName,
-  unionScope: Set<string>,
+  columnActionMap: Map<string, Set<string>>,
   agentDid: Did,
-): Promise<void> {
+): void {
+  // Parser output is unqualified, so qualify with the declared table before matching scope.
+  const referenced = new Set<string>();
+  for (const column of extractAllReferencedColumns(parsed)) {
+    referenced.add(`${tableName}.${column}`);
+  }
+
+  const lackingRead = Array.from(referenced).filter(
+    (column) => !columnActionMap.get(column)?.has('read'),
+  );
+  if (lackingRead.length > 0) {
+    throw new ScopeViolationError(agentDid, lackingRead, readableColumns(columnActionMap));
+  }
+}
+
+/**
+ * Backstop for credentials that grant a literal `table.*`. Every other scope
+ * shape already fails assertColumnScope, which sees the wildcard as `table.*`.
+ * Reads only the top-level target list, so set operations are not covered.
+ *
+ * @throws ScopeViolationError if a top-level select target is a wildcard
+ */
+function assertNoWildcardTarget(
+  parsed: PgParsed,
+  columnActionMap: Map<string, Set<string>>,
+  agentDid: Did,
+): void {
+  if (extractTargetColumns(parsed).includes('*')) {
+    throw new ScopeViolationError(agentDid, ['*'], readableColumns(columnActionMap));
+  }
+}
+
+export interface QueryAuthorization {
+  sql: string;
+  tableName: TableName;
+  agentDid: Did;
+  /** Qualified column name to the actions the presented credentials grant on it. */
+  columnActionMap: Map<string, Set<string>>;
+}
+
+/**
+ * Authorize a scoped query. The SQL is parsed once and every policy check runs
+ * against that single syntax tree. Mutations are detected from the parse tree
+ * rather than by pattern matching, so writable CTEs and subquery mutations
+ * cannot slip through.
+ *
+ * @throws QueryRejectedError on unparseable SQL, mutations, or reads outside the declared table
+ * @throws ScopeViolationError when the query references columns without read access
+ */
+export async function authorizeQuery(input: QueryAuthorization): Promise<void> {
   await ensurePgQuery();
 
-  const parsed = parseSync(sql);
-  assertSqlReadsOnlyDeclaredTable(parsed, tableName, agentDid);
-  const targetColumns = extractTargetColumns(parsed);
+  const parsed = parseQuery(input.sql, input.agentDid);
 
-  if (targetColumns.includes('*')) {
-    throw new ScopeViolationError(agentDid, ['*'], Array.from(unionScope));
-  }
-
-  // Check ALL column references (SELECT + WHERE + ORDER BY + HAVING + JOIN)
-  const allColumns = extractAllReferencedColumns(parsed);
-  const outOfScope: string[] = [];
-  for (const col of allColumns) {
-    const qualified = `${tableName}.${col}`;
-    if (!unionScope.has(qualified)) {
-      outOfScope.push(qualified);
-    }
-  }
-
-  if (outOfScope.length > 0) {
-    throw new ScopeViolationError(agentDid, outOfScope, Array.from(unionScope));
-  }
+  assertReadOnlyQuery(parsed, input.agentDid);
+  assertColumnScope(parsed, input.tableName, input.columnActionMap, input.agentDid);
+  assertSqlReadsOnlyDeclaredTable(parsed, input.tableName, input.agentDid);
+  assertNoWildcardTarget(parsed, input.columnActionMap, input.agentDid);
 }

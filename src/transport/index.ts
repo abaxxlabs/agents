@@ -31,7 +31,11 @@ export {
   SIGN_RATE_WINDOW_MS,
   CHALLENGE_RATE_LIMIT,
   CHALLENGE_RATE_WINDOW_MS,
+  CREDENTIAL_MINT_RATE_LIMIT,
+  CREDENTIAL_MINT_RATE_WINDOW_MS,
+  CREDENTIAL_MINT_OPERATION,
   type RateLimiter,
+  type RateLimitTelemetrySink,
   type RateLimitCheck,
   type RateLimitDecision,
 } from './rate-limit.js';

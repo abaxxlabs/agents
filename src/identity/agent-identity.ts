@@ -87,6 +87,7 @@ export interface AgentIdentityConfig {
   };
   credential?: {
     maxTtl?: string;
+    /** Timestamp tolerance for VP envelopes only. VCs use strict nbf/iat and exp checks. */
     clockSkew?: string;
   };
   did?: {
@@ -477,6 +478,21 @@ export class AgentIdentity {
       valid,
       status: valid ? 'VALID' : 'INVALID_SIGNATURE',
       error: valid ? undefined : 'Audit record signature verification failed',
+    };
+  }
+
+  /** Return one registered agent by DID. */
+  async getAgent(
+    did: string,
+  ): Promise<{ did: string; name: string; ownerDid: string; createdAt: string } | null> {
+    this.assertOpen();
+    const record = await this.storage.agents.findByDid(did);
+    if (!record) return null;
+    return {
+      did: record.did,
+      name: record.name,
+      ownerDid: record.ownerDid,
+      createdAt: record.createdAt,
     };
   }
 

@@ -45,7 +45,7 @@ export interface OidcIdentity {
 export interface AuthorizationUrlResult {
   /** The URL to redirect the user/browser to. */
   url: string;
-  /** Opaque state parameter. Pass back to exchangeCode(). Expires in 60s. */
+  /** Opaque state parameter. Pass back to exchangeCode(). Expires after 10 minutes by default. */
   state: string;
   /** PKCE code verifier. Pass back to exchangeCode(). */
   codeVerifier: string;

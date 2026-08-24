@@ -19,9 +19,8 @@
  * compromised or attacker-controlled server — could issue binding VCs that
  * CapabilityEngine would honor.
  *
- * Intentionally NOT injected into VcVerifier (which stays pure/stateless) — enforcement
- * is AgentVerifier, the mandatory single door into MCP auth. Making VcVerifier "smart"
- * about trust would be a compositional trap that makes the security model opaque.
+ * Intentionally NOT injected into VcVerifier. AgentVerifier performs this check when consumers
+ * route credential authorization through it; VcVerifier does not enforce issuer trust policy.
  *
  * TrustAnchorSource types:
  *   'local'  — own server DID. Always trusted. Cannot be removed.
@@ -29,8 +28,8 @@
  *              `resolveTrustedServersFromEnv()` from bootstrap and pass the result here).
  *              Not persisted — re-evaluated on restart.
  *   'api'    — added programmatically. Persisted to keystore across restarts.
- *   'parent' — from a verified AbaxxOne parent credential's `iss` field. NOT persisted —
- *              re-derived each session so trust cannot outlive the credential.
+ *   'parent' — issuer DID supplied after a caller verifies an AbaxxOne parent credential.
+ *              NOT persisted; the caller owns removal or reconstruction of the in-memory entry.
  *
  * Events: 'server-discovered' (TrustAnchor) and 'server-removed' (DID string).
  * Only 'api' anchors are persisted; keystore corruption fails safe to own-DID + env trust only.
@@ -131,10 +130,8 @@ export interface TrustAnchorStore extends EventEmitter {
    * DID is trusted. The parent DID is extracted from the credential chain (not
    * OIDC discovery) — the credential's `iss` field is the source of truth.
    *
-   * Security: parent anchors are NOT persisted to the keystore. They are re-derived
-   * from the credential chain on each session, ensuring trust cannot outlive the
-   * credential that established it. If the parent credential expires or is revoked,
-   * the trust anchor disappears on the next session.
+   * Parent anchors are NOT persisted to the keystore. The store does not bind them
+   * to a session or credential lifetime; callers own removal or reconstruction.
    *
    * @param parentDid — the parent instance's issuer DID (must be did:key: or did:dht:)
    * @param label — optional human-readable label for display
@@ -284,7 +281,7 @@ export class LocalTrustAnchorStore extends EventEmitter implements TrustAnchorSt
    * Add a parent instance's issuer DID as a trust anchor.
    *
    * Validates DID format (must start with did:key: or did:dht:). Source 'parent' is NOT
-   * persisted — _persist() filters to 'api' only so parent anchors don't outlive the session.
+   * persisted; it remains in memory until removed by the caller or process shutdown.
    */
   async addParentTrust(parentDid: string, label?: string): Promise<void> {
     if (!parentDid || typeof parentDid !== 'string') {
@@ -316,7 +313,7 @@ export class LocalTrustAnchorStore extends EventEmitter implements TrustAnchorSt
   /**
    * Check whether a DID is trusted. O(1) Map lookup.
    *
-   * Called on every MCP request by AgentVerifier. Must not throw or block.
+   * Designed for authorization hot paths such as AgentVerifier. Must not throw or block.
    */
   isTrusted(did: string): boolean {
     return this._anchors.has(did);
@@ -364,7 +361,7 @@ export class LocalTrustAnchorStore extends EventEmitter implements TrustAnchorSt
 
   private async _persist(): Promise<void> {
     if (!this._keystore) return;
-    // Parent anchors MUST NOT be persisted — ephemerality ensures trust cannot outlive the credential.
+    // Parent anchors stay in memory only; callers own their credential/session lifecycle.
     const toSave = Array.from(this._anchors.values()).filter((a) => a.source === 'api');
     await this._keystore.write(KEYSTORE_KEY, JSON.stringify(toSave));
   }

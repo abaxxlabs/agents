@@ -129,11 +129,13 @@ function mcpError(data: unknown) {
  */
 export function registerRestBridgeTools(server: McpServer, config: RestBridgeConfig): void {
   // ─── create-agent ────────────────────────────────────────────────
-  server.tool(
+  server.registerTool(
     'create-agent',
-    'Create a new agent identity (DID + keypair). Returns DID and public key.',
     {
-      name: z.string().describe('Agent name'),
+      description: 'Create a new agent identity (DID + keypair). Returns DID and public key.',
+      inputSchema: {
+        name: z.string().describe('Agent name'),
+      },
     },
     async ({ name }) => {
       const { data, status } = await restPost(config, '/agents', { name });
@@ -142,22 +144,38 @@ export function registerRestBridgeTools(server: McpServer, config: RestBridgeCon
   );
 
   // ─── list-agents ─────────────────────────────────────────────────
-  server.tool('list-agents', 'List agents owned by the authenticated human.', {}, async () => {
-    const { data, status } = await restGet(config, '/agents');
-    return status === 200 ? mcpResult(data) : mcpError(data);
-  });
+  server.registerTool(
+    'list-agents',
+    {
+      description: 'List agents owned by the authenticated human.',
+      inputSchema: {},
+    },
+    async () => {
+      const { data, status } = await restGet(config, '/agents');
+      return status === 200 ? mcpResult(data) : mcpError(data);
+    },
+  );
 
   // ─── issue-credential ───────────────────────────────────────────
-  server.tool(
+  server.registerTool(
     'issue-credential',
-    'Issue a Verifiable Credential JWT scoping an agent to specific columns.',
     {
-      agent: z.string().describe('Agent DID'),
-      columns: z.array(z.string()).describe('Columns to authorize'),
-      actions: z.array(z.string()).optional().describe('Actions (default: ["read"])'),
-      expiresIn: expiresInField.optional().describe('Expiry ("4h", "1d", or seconds)'),
-      maxDepth: z.number().int().min(1).max(10).optional()
-        .describe('Maximum delegation chain depth embedded in the issued credential. Default: 2. Pass 1 to prevent any delegation.'),
+      description: 'Issue a Verifiable Credential JWT scoping an agent to specific columns.',
+      inputSchema: {
+        agent: z.string().describe('Agent DID'),
+        columns: z.array(z.string()).describe('Columns to authorize'),
+        actions: z.array(z.string()).optional().describe('Actions (default: ["read"])'),
+        expiresIn: expiresInField.optional().describe('Expiry ("4h", "1d", or seconds)'),
+        maxDepth: z
+          .number()
+          .int()
+          .min(1)
+          .max(10)
+          .optional()
+          .describe(
+            'Maximum delegation chain depth embedded in the issued credential. Default: 2. Pass 1 to prevent any delegation.',
+          ),
+      },
     },
     async ({ agent, columns, actions, expiresIn, maxDepth }) => {
       const { data, status } = await restPost(config, '/credentials', {
@@ -172,11 +190,13 @@ export function registerRestBridgeTools(server: McpServer, config: RestBridgeCon
   );
 
   // ─── revoke-credential ──────────────────────────────────────────
-  server.tool(
+  server.registerTool(
     'revoke-credential',
-    'Revoke a previously issued credential by JTI.',
     {
-      credentialId: z.string().describe('Credential JTI to revoke'),
+      description: 'Revoke a previously issued credential by JTI.',
+      inputSchema: {
+        credentialId: z.string().describe('Credential JTI to revoke'),
+      },
     },
     async ({ credentialId }) => {
       const { data, status } = await restDelete(
@@ -188,16 +208,18 @@ export function registerRestBridgeTools(server: McpServer, config: RestBridgeCon
   );
 
   // ─── delegate-credential ────────────────────────────────────────
-  server.tool(
+  server.registerTool(
     'delegate-credential',
-    'Delegate a subset of a credential to another agent.',
     {
-      sourceAgent: z.string().describe('Source agent DID'),
-      sourceCredential: z.string().describe('Source credential JWT'),
-      targetAgent: z.string().describe('Target agent DID'),
-      columns: z.array(z.string()).describe('Columns to delegate (must be subset of source)'),
-      actions: z.array(z.string()).optional().describe('Actions to delegate'),
-      expiresIn: expiresInField.optional().describe('Expiry'),
+      description: 'Delegate a subset of a credential to another agent.',
+      inputSchema: {
+        sourceAgent: z.string().describe('Source agent DID'),
+        sourceCredential: z.string().describe('Source credential JWT'),
+        targetAgent: z.string().describe('Target agent DID'),
+        columns: z.array(z.string()).describe('Columns to delegate (must be subset of source)'),
+        actions: z.array(z.string()).optional().describe('Actions to delegate'),
+        expiresIn: expiresInField.optional().describe('Expiry'),
+      },
     },
     async ({ sourceAgent, sourceCredential, targetAgent, columns, actions, expiresIn }) => {
       const { data, status } = await restPost(
@@ -210,14 +232,16 @@ export function registerRestBridgeTools(server: McpServer, config: RestBridgeCon
   );
 
   // ─── query ───────────────────────────────────────────────────────
-  server.tool(
+  server.registerTool(
     'query',
-    'Execute a scoped SQL query with verifiable credential authorization.',
     {
-      agent: z.string().describe('Agent DID'),
-      credential: z.string().describe('JWT credential'),
-      sql: z.string().describe('SQL SELECT query'),
-      table: z.string().describe('Target table name'),
+      description: 'Execute a scoped SQL query with verifiable credential authorization.',
+      inputSchema: {
+        agent: z.string().describe('Agent DID'),
+        credential: z.string().describe('JWT credential'),
+        sql: z.string().describe('SQL SELECT query'),
+        table: z.string().describe('Target table name'),
+      },
     },
     async ({ agent, credential, sql, table }) => {
       const { data, status } = await restPost(
@@ -231,12 +255,14 @@ export function registerRestBridgeTools(server: McpServer, config: RestBridgeCon
   );
 
   // ─── export-audit ────────────────────────────────────────────────
-  server.tool(
+  server.registerTool(
     'export-audit',
-    'Export audit trail records. Optionally filter by agent DID.',
     {
-      agent: z.string().optional().describe('Filter by agent DID'),
-      limit: z.number().optional().describe('Max records to return'),
+      description: 'Export audit trail records. Optionally filter by agent DID.',
+      inputSchema: {
+        agent: z.string().optional().describe('Filter by agent DID'),
+        limit: z.number().optional().describe('Max records to return'),
+      },
     },
     async ({ agent, limit }) => {
       const params = new URLSearchParams();
@@ -249,11 +275,13 @@ export function registerRestBridgeTools(server: McpServer, config: RestBridgeCon
   );
 
   // ─── verify-audit ────────────────────────────────────────────────
-  server.tool(
+  server.registerTool(
     'verify-audit',
-    'Verify the cryptographic signature on an audit record.',
     {
-      auditId: z.string().describe('Audit record ID'),
+      description: 'Verify the cryptographic signature on an audit record.',
+      inputSchema: {
+        auditId: z.string().describe('Audit record ID'),
+      },
     },
     async ({ auditId }) => {
       const { data, status } = await restPost(config, '/audit/verify', { auditId });
@@ -262,11 +290,13 @@ export function registerRestBridgeTools(server: McpServer, config: RestBridgeCon
   );
 
   // ─── verify-chain ────────────────────────────────────────────────
-  server.tool(
+  server.registerTool(
     'verify-chain',
-    'Verify the audit hash chain integrity from GENESIS.',
     {
-      limit: z.number().optional().describe('Max records to check'),
+      description: 'Verify the audit hash chain integrity from GENESIS.',
+      inputSchema: {
+        limit: z.number().optional().describe('Max records to check'),
+      },
     },
     async ({ limit }) => {
       const { data, status } = await restPost(config, '/audit/verify-chain', {
@@ -277,17 +307,26 @@ export function registerRestBridgeTools(server: McpServer, config: RestBridgeCon
   );
 
   // ─── whoami ─────────────────────────────────────────────────────
-  server.tool('whoami', "Return the server's DID and current DID method.", {}, async () => {
-    const { data, status } = await restGet(config, '/whoami', { authenticated: false });
-    return status === 200 ? mcpResult(data) : mcpError(data);
-  });
+  server.registerTool(
+    'whoami',
+    {
+      description: "Return the server's DID and current DID method.",
+      inputSchema: {},
+    },
+    async () => {
+      const { data, status } = await restGet(config, '/whoami', { authenticated: false });
+      return status === 200 ? mcpResult(data) : mcpError(data);
+    },
+  );
 
   // ─── sign ───────────────────────────────────────────────────────
-  server.tool(
+  server.registerTool(
     'sign',
-    "Sign an arbitrary payload with the server's Ed25519 key. Domain-separated.",
     {
-      payload: z.string().describe('Payload string to sign (max 64KB)'),
+      description: "Sign an arbitrary payload with the server's Ed25519 key. Domain-separated.",
+      inputSchema: {
+        payload: z.string().describe('Payload string to sign (max 64KB)'),
+      },
     },
     async ({ payload }) => {
       const { data, status } = await restPost(config, '/sign', { payload });
@@ -296,10 +335,12 @@ export function registerRestBridgeTools(server: McpServer, config: RestBridgeCon
   );
 
   // ─── discover ───────────────────────────────────────────────────
-  server.tool(
+  server.registerTool(
     'discover',
-    "Discover the server's trust topology: DID, method, and trusted anchors.",
-    {},
+    {
+      description: "Discover the server's trust topology: DID, method, and trusted anchors.",
+      inputSchema: {},
+    },
     async () => {
       const { data, status } = await restGet(config, '/discover', { authenticated: false });
       return status === 200 ? mcpResult(data) : mcpError(data);
@@ -307,12 +348,14 @@ export function registerRestBridgeTools(server: McpServer, config: RestBridgeCon
   );
 
   // ─── challenge ──────────────────────────────────────────────────
-  server.tool(
+  server.registerTool(
     'challenge',
-    'Issue a time-bound challenge for Verifiable Presentation requests.',
     {
-      requestorDid: z.string().optional().describe('DID of the requesting agent'),
-      ttlSeconds: z.number().optional().describe('Challenge TTL in seconds (default: 60)'),
+      description: 'Issue a time-bound challenge for Verifiable Presentation requests.',
+      inputSchema: {
+        requestorDid: z.string().optional().describe('DID of the requesting agent'),
+        ttlSeconds: z.number().optional().describe('Challenge TTL in seconds (default: 60)'),
+      },
     },
     async ({ requestorDid, ttlSeconds }) => {
       const body: Record<string, unknown> = {};

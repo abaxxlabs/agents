@@ -1,7 +1,6 @@
 {
   "schemaVersion": 1,
   "packageName": "@abaxxlabs/agents",
-  "packageVersion": "0.12.5",
   "publicSubpaths": [
     ".",
     "./sql",
@@ -354,6 +353,18 @@
       },
       {
         "name": "createTrustAnchorStore",
+        "kind": "value"
+      },
+      {
+        "name": "CREDENTIAL_MINT_OPERATION",
+        "kind": "value"
+      },
+      {
+        "name": "CREDENTIAL_MINT_RATE_LIMIT",
+        "kind": "value"
+      },
+      {
+        "name": "CREDENTIAL_MINT_RATE_WINDOW_MS",
         "kind": "value"
       },
       {
@@ -715,6 +726,10 @@
       {
         "name": "RateLimitExceededError",
         "kind": "type+value"
+      },
+      {
+        "name": "RateLimitTelemetrySink",
+        "kind": "type"
       },
       {
         "name": "REDACTED_MASTER_KEY",

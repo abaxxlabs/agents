@@ -31,6 +31,7 @@ import { decodeJwt, verifyJwtSignature } from '#crypto/jwt.js';
 import { isDelegatedScopeCredentialType } from '#auth/credential-issuance.js';
 import { DidCache } from '#did/cache.js';
 import { resolveDidKeyFallback } from '#did/resolve.js';
+import { numericDateToMs } from './numeric-date.js';
 import { ReplayGuard, verifyPresentation } from './vp-verification.js';
 import { checkDelegationChainRevocation, checkDelegationDepthCeiling } from './delegation-chain.js';
 
@@ -49,7 +50,7 @@ export interface VcVerifierOptions {
    */
   clockSkew?: string;
   resolverCacheTtl?: string;
-  /** Enable jti-based credential replay protection. Default: true */
+  /** Enable JTI-based VP replay protection. VCs remain reusable. Default: true. */
   replayProtection?: boolean;
   /** Max JTI cache entries before forced eviction. Default: 100_000 */
   maxReplayCacheSize?: number;
@@ -222,7 +223,8 @@ export class VcVerifier {
   }
 
   /**
-   * Verify a credential JWT. Checks signature, expiry, revocation, and scope structure.
+   * Verify a VC or VP JWT. VP timestamps use configured clock skew; VC timestamps are strict.
+   * Replay protection applies only to VPs that contain a JTI.
    *
    * @param jwt    The credential JWT to verify.
    * @param options  Optional verification controls.
@@ -267,9 +269,25 @@ export class VcVerifier {
     }
 
     const now = Date.now();
-    const nbf = payload.nbf ?? payload.iat;
-    if (nbf) {
-      const nbfMs = nbf * 1000;
+    const iatMs = payload.iat !== undefined ? numericDateToMs(payload.iat) : null;
+    if (payload.iat !== undefined && iatMs === null) {
+      return {
+        valid: false,
+        status: 'MALFORMED',
+        error: 'Credential iat is not a valid NumericDate',
+      };
+    }
+
+    const nbfMs = payload.nbf !== undefined ? numericDateToMs(payload.nbf) : iatMs;
+    if (payload.nbf !== undefined && nbfMs === null) {
+      return {
+        valid: false,
+        status: 'MALFORMED',
+        error: 'Credential nbf is not a valid NumericDate',
+      };
+    }
+
+    if (nbfMs !== null) {
       if (now < nbfMs) {
         return {
           valid: false,
@@ -279,9 +297,16 @@ export class VcVerifier {
       }
     }
 
-    if (payload.exp) {
-      const expMs = payload.exp * 1000;
-      if (now > expMs) {
+    const expMs = payload.exp !== undefined ? numericDateToMs(payload.exp) : null;
+    if (payload.exp !== undefined && expMs === null) {
+      return {
+        valid: false,
+        status: 'MALFORMED',
+        error: 'Credential exp is not a valid NumericDate',
+      };
+    }
+    if (expMs !== null) {
+      if (now >= expMs) {
         return {
           valid: false,
           status: 'EXPIRED',
@@ -368,7 +393,9 @@ export class VcVerifier {
     const rawVcType = payload.vc?.type;
     const vcTypes: string[] | undefined = Array.isArray(rawVcType)
       ? rawVcType
-      : typeof rawVcType === 'string' ? [rawVcType] : undefined;
+      : typeof rawVcType === 'string'
+        ? [rawVcType]
+        : undefined;
     const delegationChain: string[] | undefined = Array.isArray(payload.delegationChain)
       ? payload.delegationChain
       : undefined;
@@ -376,11 +403,14 @@ export class VcVerifier {
       return {
         valid: false,
         status: 'MALFORMED',
-        error: 'Credential has empty delegationChain -- a delegated credential must have at least one ancestor.',
+        error:
+          'Credential has empty delegationChain -- a delegated credential must have at least one ancestor.',
       };
     }
     const isDelegatedType = vcTypes !== undefined && isDelegatedScopeCredentialType(vcTypes);
-    const hasChain = delegationChain !== undefined && delegationChain.some((e): e is string => typeof e === 'string');
+    const hasChain =
+      delegationChain !== undefined &&
+      delegationChain.some((e): e is string => typeof e === 'string');
     if (isDelegatedType && !hasChain) {
       return {
         valid: false,
@@ -484,8 +514,8 @@ export class VcVerifier {
     const credential: DecodedCredential = {
       issuer: payload.iss,
       subject: payload.sub,
-      issuedAt: new Date((payload.iat ?? 0) * 1000),
-      expiresAt: new Date((payload.exp ?? 0) * 1000),
+      issuedAt: new Date(iatMs ?? 0),
+      expiresAt: new Date(expMs ?? 0),
       scope,
       credentialStatus: payload.vc?.credentialStatus
         ? {

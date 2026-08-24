@@ -81,7 +81,7 @@ describe('public artifact audit policy', () => {
         'src/index.ts',
         'packages/server/src/index.ts',
         'packages/create-agents/template/README.md',
-        'docs/migration-byok.md',
+        'docs/migrations/byok.md',
         'demo/showcase/src/server.ts',
         'demo/showcase/scripts/launch-smoke.mjs',
         'scripts/audit-public-artifacts.mjs',
@@ -104,11 +104,20 @@ describe('public artifact audit policy', () => {
         'README.md',
         '.claude/settings.local.json',
         '.mcp.json',
+        'docs/DECISIONS.md',
+        'docs/adr-query-policy.md',
+        'docs/internal/plan.md',
+        'docs/reference/capability-engine.md',
+        'docs/guides/archive.zip',
+        'AGENTS.md',
+        'CLAUDE.md',
+        'conventions.md',
         'docs/plan-v0.11.1-prelanding-fixes.md',
         'docs/support-runbook-v0.9.10.0.md',
         'demo/hackathon/findings/matias/01-createagent-missing-returning.md',
         '.env.local',
         'client_secret.json',
+        'workflows-rules.md',
       ],
       { scanContents: false },
     );
@@ -117,11 +126,20 @@ describe('public artifact audit policy', () => {
     expect(violationReasons(result)).toEqual([
       '.claude/settings.local.json: forbidden path (.claude/**)',
       '.mcp.json: forbidden path (.mcp.json)',
+      'docs/DECISIONS.md: forbidden path (docs/DECISIONS.md)',
+      'docs/adr-query-policy.md: forbidden path (docs/adr-*.md)',
+      'docs/internal/plan.md: forbidden path (docs/internal/**)',
+      'docs/reference/capability-engine.md: forbidden path (docs/reference/**)',
+      'docs/guides/archive.zip: forbidden path (**/*.zip)',
+      'AGENTS.md: forbidden path (AGENTS.md)',
+      'CLAUDE.md: forbidden path (CLAUDE.md)',
+      'conventions.md: forbidden path (conventions.md)',
       'docs/plan-v0.11.1-prelanding-fixes.md: forbidden path (docs/plan-*.md)',
       'docs/support-runbook-v0.9.10.0.md: forbidden path (docs/support-runbook-*.md)',
       'demo/hackathon/findings/matias/01-createagent-missing-returning.md: forbidden path (demo/hackathon/findings/**)',
       '.env.local: forbidden path (**/.env.*)',
       'client_secret.json: forbidden path (**/client_secret.json)',
+      'workflows-rules.md: forbidden path (workflows-rules.md)',
     ]);
   });
 
@@ -265,15 +283,14 @@ describe('public artifact audit policy', () => {
 
   it('fails explicitly when text files exceed the content scan size limit', () => {
     const rootDir = mkdtempSync(join(tmpdir(), 'artifact-audit-large-'));
-    mkdirSync(join(rootDir, 'docs'));
-    writeFileSync(join(rootDir, 'docs', 'migration-large.md'), 'x'.repeat(1024 * 1024 + 1));
+    writeFixture(rootDir, 'docs/guides/large.md', 'x'.repeat(1024 * 1024 + 1));
 
-    const result = auditPublicRepoFiles(['docs/migration-large.md'], { rootDir });
+    const result = auditPublicRepoFiles(['docs/guides/large.md'], { rootDir });
 
     expect(result.ok).toBe(false);
     expect(result.violations).toEqual([
       {
-        path: 'docs/migration-large.md',
+        path: 'docs/guides/large.md',
         reason: 'exceeds text content scan size limit (1048576 bytes)',
       },
     ]);
