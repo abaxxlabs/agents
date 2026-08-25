@@ -24,7 +24,7 @@ if (!process.env.NODE_ENV) process.env.NODE_ENV = 'development';
  * 3. Create Agent A (full scope) and Agent B (name only)
  * 4. Issue scoped credentials to both
  * 5. Both agents query the same table
- * 6. Print side-by-side comparison showing Agent A sees cleartext, Agent B sees ciphertext
+ * 6. Print side-by-side comparison showing each agent sees only its authorized columns
  * 7. Print audit trail with both agents' signed records
  */
 
@@ -68,7 +68,7 @@ export async function runDemo(options: DemoOptions): Promise<void> {
   console.log('     a) Verifies the credential signature and expiry');
   console.log("     b) Confirms the credential issuer is the agent's owner");
   console.log('     c) Decrypts only the columns the credential authorizes');
-  console.log('     d) Returns everything else as base64 ciphertext');
+  console.log('     d) Decrypts only columns covered by the credential scope');
   console.log("     e) Signs an audit record with the agent's private key");
   console.log('  4. No key? No cleartext. The encryption IS the access control.');
   console.log('');
@@ -283,7 +283,7 @@ export async function runDemo(options: DemoOptions): Promise<void> {
   // ─── Step 5: Query — Agent A (full scope) ────────────────────
 
   console.log('─'.repeat(70));
-  console.log('  AGENT A QUERY: SELECT * FROM patients LIMIT 3');
+  console.log('  AGENT A QUERY: SELECT name, dob, diagnosis FROM patients LIMIT 3');
   console.log('  Pipeline: verify JWT → check issuer → SELECT guard → decrypt → audit');
   console.log('─'.repeat(70) + '\n');
 
@@ -291,19 +291,19 @@ export async function runDemo(options: DemoOptions): Promise<void> {
     agent: agentA.did,
     credential: credA,
     table: 'patients',
-    sql: 'SELECT name, dob, diagnosis, ssn FROM patients LIMIT 3',
+    sql: 'SELECT name, dob, diagnosis FROM patients LIMIT 3',
   });
 
   console.log('  Agent A sees:\n');
   printResultTable(resultA.rows);
-  console.log(`\n  Decrypted: ${resultA.metadata.columnsDecrypted.join(', ')}`);
-  console.log(`  Ciphertext: ${resultA.metadata.columnsEncrypted.join(', ')}`);
+  console.log(`\n  Decrypted columns: ${resultA.metadata.columnsDecrypted.join(', ')}`);
+  console.log(`  Encrypted metadata: ${resultA.metadata.columnsEncrypted.join(', ') || '(none)'}`);
   console.log(`  Audit ID: ${resultA.metadata.auditId}\n`);
 
   // ─── Step 6: Query — Agent B (narrow scope) ──────────────────
 
   console.log('─'.repeat(70));
-  console.log('  AGENT B QUERY: SELECT * FROM patients LIMIT 3');
+  console.log('  AGENT B QUERY: SELECT name FROM patients LIMIT 3');
   console.log('  Pipeline: verify JWT → check issuer → SELECT guard → decrypt → audit');
   console.log('  Same pipeline, same table — but credential only authorizes "name"');
   console.log('─'.repeat(70) + '\n');
@@ -312,15 +312,15 @@ export async function runDemo(options: DemoOptions): Promise<void> {
     agent: agentB.did,
     credential: credB,
     table: 'patients',
-    sql: 'SELECT name, dob, diagnosis, ssn FROM patients LIMIT 3',
+    sql: 'SELECT name FROM patients LIMIT 3',
   });
 
   console.log('  Agent B sees:\n');
   printResultTable(resultB.rows);
   console.log(
-    `\n  Decrypted: ${resultB.metadata.columnsDecrypted.join(', ') || '(none beyond name)'}`,
+    `\n  Decrypted columns: ${resultB.metadata.columnsDecrypted.join(', ') || '(none beyond name)'}`,
   );
-  console.log(`  Ciphertext: ${resultB.metadata.columnsEncrypted.join(', ')}`);
+  console.log(`  Encrypted metadata: ${resultB.metadata.columnsEncrypted.join(', ') || '(none)'}`);
   console.log(`  Audit ID: ${resultB.metadata.auditId}\n`);
 
   // ─── Step 7: Show audit trail ────────────────────────────────
@@ -367,12 +367,12 @@ export async function runDemo(options: DemoOptions): Promise<void> {
   // ─── Kicker ──────────────────────────────────────────────────
 
   console.log('═'.repeat(70));
-  console.log('  Same table. Same query. Different cleartext.');
+  console.log('  Same table. Different scoped projections.');
   console.log('  The math is the access control.');
   console.log('');
-  console.log('  Every query: signed, hash-chained, append-only.');
+  console.log('  Every successful query: signed audit record, hash-chained, append-only.');
   console.log("  Delete a record? The DB won't let you.");
-  console.log('  Bypass the DB? The hash chain breaks and everyone knows.');
+  console.log('  Tamper with a record in the verified window? The broken link is detectable.');
   console.log('');
   console.log('  The IMF just told every securities regulator they need agent');
   console.log("  accountability and audit trails. Nvidia's 17 ISV partners");

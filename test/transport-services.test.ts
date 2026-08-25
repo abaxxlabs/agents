@@ -1,93 +1,123 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { registerResources, type ResourceServices } from '#mcp/resources.js';
 import { registerTools } from '#mcp/tools.js';
 import {
+  createAgentDirectoryService,
   createAuditService,
   createCredentialService,
   createQueryService,
-  type AgentToolServices,
+  createStatusService,
+  type ServerStatus,
 } from '#services/index.js';
 import { FixedWindowRateLimiter } from '#transport/index.js';
 import type { ServerIdentity } from '#identity/server-identity.js';
-import type { AuditRecord, AuthenticatedSession } from '#types/index.js';
+import type { AuditRecord } from '#types/index.js';
+import { createAgentToolServiceFakes, createMcpSession, createMockMcpServer } from './mocks/mcp.js';
+import { createMockAuditRecord } from './mocks/audit-record.js';
 
-interface RegisteredTool {
+interface RegisteredResource {
   name: string;
-  description: string;
-  schema: Record<string, unknown>;
-  handler: (args: Record<string, unknown>) => Promise<unknown>;
+  handler: (uri: URL, variables: Record<string, string | string[]>) => Promise<unknown>;
 }
 
-function createMockMcpServer() {
-  const tools: RegisteredTool[] = [];
-  return {
-    tool(
+type MockResourceServer = ReturnType<typeof createMockMcpServer> & {
+  _resources: RegisteredResource[];
+};
+
+function createMockResourceServer(): MockResourceServer {
+  const server = createMockMcpServer();
+  const resources: RegisteredResource[] = [];
+  Object.assign(server, {
+    registerResource(
       name: string,
-      description: string,
-      schema: Record<string, unknown>,
-      handler: (args: Record<string, unknown>) => Promise<unknown>,
+      _uriOrTemplate: unknown,
+      _config: unknown,
+      handler: RegisteredResource['handler'],
     ) {
-      tools.push({ name, description, schema, handler });
+      resources.push({ name, handler });
     },
-    _tools: tools,
-  };
+    _resources: resources,
+  });
+  return server as MockResourceServer;
 }
 
-function createSession(): AuthenticatedSession {
+function createResourceServiceFakes(): ResourceServices {
+  const services = createAgentToolServiceFakes();
   return {
-    humanDid: 'did:key:human',
-    parentIssuerDid: 'did:key:org',
-    scopeCeiling: {
-      columns: ['*'],
-      actions: ['*'],
-      source: 'mock-unrestricted',
-      resolvedFrom: [],
-    },
-    issueCredential: vi.fn(),
-    revokeCredential: vi.fn(),
-  };
-}
-
-function createServiceFakes(): AgentToolServices {
-  return {
-    query: {
-      execute: vi.fn().mockResolvedValue({
-        rows: [{ id: 1 }],
-        metadata: {
-          agent: 'did:key:agent',
-          owner: 'did:key:human',
-          columnsDecrypted: [],
-          columnsEncrypted: [],
-          rowCount: 1,
-          queryDurationMs: 1,
-          auditId: 'audit-1',
-        },
-      }),
-    },
+    ...services,
     agents: {
-      createAgent: vi.fn(),
-      listAgents: vi.fn(),
-    },
-    credentials: {
-      issueCredential: vi.fn(),
-      delegateCredential: vi.fn(),
-      listCredentials: vi.fn(),
-      revokeCredential: vi.fn(),
+      ...services.agents,
+      getAgent: vi.fn(),
     },
     audit: {
-      exportAudit: vi.fn(),
-      verifyAudit: vi.fn().mockResolvedValue({
-        verified: true,
-        status: 'VALID',
-        record: { id: 'audit-1', agentDid: 'did:key:agent' },
-        agentDid: 'did:key:agent',
-      }),
-      verifyChain: vi.fn(),
+      ...services.audit,
+      getRecentAudit: vi.fn(),
     },
-  } as unknown as AgentToolServices;
+    status: {
+      getStatus: vi.fn(),
+    },
+  };
 }
 
 describe('transport-neutral services', () => {
+  it('agent directory service owns lookup by DID', async () => {
+    const agent = {
+      did: 'did:key:agent',
+      name: 'Agent',
+      ownerDid: 'did:key:human',
+      createdAt: '2026-04-29T00:00:00.000Z',
+    };
+    const listAgents = vi.fn().mockResolvedValue([agent]);
+    const getAgent = vi.fn().mockResolvedValue(agent);
+    const service = createAgentDirectoryService({
+      agents: { createAgent: vi.fn(), getAgent, listAgents },
+    });
+
+    await expect(service.getAgent({ did: agent.did })).resolves.toEqual(agent);
+    expect(getAgent).toHaveBeenCalledWith(agent.did);
+    expect(listAgents).not.toHaveBeenCalled();
+
+    const fallback = createAgentDirectoryService({
+      agents: { createAgent: vi.fn(), listAgents },
+    });
+    expect(fallback.getAgent).toBeUndefined();
+  });
+
+  it('audit service returns the newest records without changing their order', async () => {
+    const records = Array.from({ length: 55 }, (_, index) =>
+      createMockAuditRecord({ id: `audit-${index}` }),
+    );
+    const auditReader = { export: vi.fn().mockResolvedValue(records) };
+    const service = createAuditService({
+      auditReader,
+      verifier: { verify: vi.fn() },
+    });
+
+    const result = await service.getRecentAudit();
+
+    expect(auditReader.export).toHaveBeenCalledWith();
+    expect(result.records.map((record) => record.id)).toEqual(
+      Array.from({ length: 50 }, (_, index) => `audit-${index + 5}`),
+    );
+    expect(result.count).toBe(50);
+  });
+
+  it('status service delegates status retrieval', async () => {
+    const status = {
+      agentCount: 2,
+      auditRecordCount: 3,
+      encryptedColumns: ['patients.dob'],
+      inMemoryAgents: 2,
+      scopeMode: 'projection' as const,
+    };
+    const getServerStatus = vi.fn().mockResolvedValue(status);
+    const service = createStatusService({ statusReader: { getServerStatus } });
+
+    await expect(service.getStatus()).resolves.toEqual(status);
+    expect(getServerStatus).toHaveBeenCalledOnce();
+  });
+
   it('query service delegates domain execution and owns the shared row cap', async () => {
     const executor = {
       query: vi.fn().mockResolvedValue({
@@ -198,10 +228,10 @@ describe('transport-neutral services', () => {
 
 describe('MCP tools use shared services', () => {
   it('query tool calls the shared query service without parsing SQL locally', async () => {
-    const services = createServiceFakes();
+    const services = createAgentToolServiceFakes();
     const server = createMockMcpServer();
 
-    registerTools(server as unknown as McpServer, { services, session: createSession() });
+    registerTools(server, { services, session: createMcpSession() });
 
     const tool = server._tools.find((candidate) => candidate.name === 'query')!;
     await tool.handler({
@@ -226,10 +256,10 @@ describe('MCP tools use shared services', () => {
   });
 
   it('verify-audit tool calls the shared audit service with session ownership', async () => {
-    const services = createServiceFakes();
+    const services = createAgentToolServiceFakes();
     const server = createMockMcpServer();
 
-    registerTools(server as unknown as McpServer, { services, session: createSession() });
+    registerTools(server, { services, session: createMcpSession() });
 
     const tool = server._tools.find((candidate) => candidate.name === 'verify-audit')!;
     const result = await tool.handler({ auditId: 'audit-1' });
@@ -244,19 +274,18 @@ describe('MCP tools use shared services', () => {
 
   it('sign tool uses shared limiter state across handler reconstruction', async () => {
     const limiter = new FixedWindowRateLimiter();
-    const session = createSession();
+    const session = createMcpSession();
     const serverIdentity = {
       did: 'did:key:server',
       signer: { signJwt: vi.fn(() => 'signed-jwt') },
     };
 
     const serverA = createMockMcpServer();
-    registerTools(serverA as unknown as McpServer, {
-      services: createServiceFakes(),
+    registerTools(serverA, {
+      services: createAgentToolServiceFakes(),
       session,
       serverIdentity: serverIdentity as unknown as ServerIdentity,
       rateLimiter: limiter,
-      rateLimitPrincipal: 'session-1',
     });
     const signA = serverA._tools.find((candidate) => candidate.name === 'sign')!;
     for (let i = 0; i < 100; i++) {
@@ -265,12 +294,11 @@ describe('MCP tools use shared services', () => {
     }
 
     const serverB = createMockMcpServer();
-    registerTools(serverB as unknown as McpServer, {
-      services: createServiceFakes(),
+    registerTools(serverB, {
+      services: createAgentToolServiceFakes(),
       session,
       serverIdentity: serverIdentity as unknown as ServerIdentity,
       rateLimiter: limiter,
-      rateLimitPrincipal: 'session-1',
     });
     const signB = serverB._tools.find((candidate) => candidate.name === 'sign')!;
     const blocked = (await signB.handler({ payload: 'payload-101' })) as {
@@ -284,3 +312,95 @@ describe('MCP tools use shared services', () => {
     });
   });
 });
+
+describe('MCP resources use shared services', () => {
+  it('delegates all data retrieval and preserves resource payloads', async () => {
+    const services = createResourceServiceFakes();
+    const server = createMockResourceServer();
+    const agent = {
+      did: 'did:key:agent',
+      name: 'Agent',
+      ownerDid: 'did:key:human',
+      createdAt: '2026-04-29T00:00:00.000Z',
+    };
+    const record = createMockAuditRecord({ id: 'audit-1', agentDid: agent.did });
+    const status: ServerStatus = {
+      agentCount: 1,
+      auditRecordCount: 1,
+      encryptedColumns: [],
+      inMemoryAgents: 1,
+      scopeMode: 'projection',
+    };
+    vi.mocked(services.agents.getAgent).mockResolvedValue(agent);
+    vi.mocked(services.audit.getRecentAudit).mockResolvedValue({
+      records: [record],
+      count: 1,
+    });
+    vi.mocked(services.audit.verifyAudit).mockResolvedValue({
+      verified: true,
+      status: 'VALID',
+      record,
+      agentDid: agent.did,
+    });
+    vi.mocked(services.status.getStatus).mockResolvedValue(status);
+
+    registerResources(server as unknown as McpServer, { services });
+
+    const agentResult = await resourcePayload(server, 'agent-info', 'agent://resource', {
+      did: agent.did,
+    });
+    const recentResult = await resourcePayload(server, 'audit-recent', 'audit://recent');
+    const auditResult = await resourcePayload(server, 'audit-record', 'audit://audit-1', {
+      id: 'audit-1',
+    });
+    const statusResult = await resourcePayload(server, 'config-status', 'config://status');
+
+    expect(services.agents.getAgent).toHaveBeenCalledWith({ did: agent.did });
+    expect(services.audit.getRecentAudit).toHaveBeenCalledWith({ limit: 50 });
+    expect(services.audit.verifyAudit).toHaveBeenCalledWith({ auditId: 'audit-1' });
+    expect(services.status.getStatus).toHaveBeenCalledOnce();
+    expect(agentResult).toEqual(agent);
+    expect(recentResult).toEqual({ records: [record], count: 1 });
+    expect(auditResult).toEqual({ record, verified: true });
+    expect(statusResult).toEqual(status);
+  });
+
+  it('preserves not-found responses from services', async () => {
+    const services = createResourceServiceFakes();
+    const server = createMockResourceServer();
+    vi.mocked(services.agents.getAgent).mockResolvedValue(null);
+    vi.mocked(services.audit.verifyAudit).mockResolvedValue({
+      error: 'NOT_FOUND',
+      message: 'Audit record audit-missing not found',
+    });
+
+    registerResources(server as unknown as McpServer, { services });
+
+    await expect(
+      resourcePayload(server, 'agent-info', 'agent://resource', {
+        did: 'did:key:missing',
+      }),
+    ).resolves.toEqual({ error: 'NOT_FOUND', message: 'Agent did:key:missing not found' });
+    await expect(
+      resourcePayload(server, 'audit-record', 'audit://audit-missing', {
+        id: 'audit-missing',
+      }),
+    ).resolves.toEqual({
+      error: 'NOT_FOUND',
+      message: 'Audit record audit-missing not found',
+    });
+  });
+});
+
+async function resourcePayload(
+  server: MockResourceServer,
+  name: string,
+  uri: string,
+  variables: Record<string, string | string[]> = {},
+): Promise<unknown> {
+  const resource = server._resources.find((candidate) => candidate.name === name)!;
+  const result = (await resource.handler(new URL(uri), variables)) as {
+    contents: Array<{ text: string }>;
+  };
+  return JSON.parse(result.contents[0].text);
+}

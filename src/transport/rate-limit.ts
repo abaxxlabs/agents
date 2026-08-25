@@ -13,17 +13,23 @@
 // limitations under the License.
 
 /**
- * Shared fixed-window rate limiter for sign and challenge operations.
- * Keyed by a stable principal (e.g. session token) so counters are shared
- * across REST and MCP transports within the same session.
+ * Shared fixed-window rate limiter for sensitive operations.
+ * Keyed by the human DID so counters are shared across REST and MCP
+ * transports and cannot be reset by opening another session.
  */
 
+import { createHash } from 'node:crypto';
 import { RateLimitExceededError } from './errors.js';
 
 export const SIGN_RATE_LIMIT = 100;
 export const SIGN_RATE_WINDOW_MS = 60_000;
 export const CHALLENGE_RATE_LIMIT = 30;
 export const CHALLENGE_RATE_WINDOW_MS = 60_000;
+export const CREDENTIAL_MINT_RATE_LIMIT = 100;
+export const CREDENTIAL_MINT_RATE_WINDOW_MS = 60_000;
+
+/** Issuance and delegation draw on one quota so neither can be used to bypass the other. */
+export const CREDENTIAL_MINT_OPERATION = 'credential-mint';
 
 export interface RateLimitCheck {
   principal: string;
@@ -45,6 +51,20 @@ export interface RateLimiter {
   sweep(maxAgeMs: number): void;
 }
 
+/** Observer for rate-limit decisions. Receives a hashed principal, never the raw value. */
+export interface RateLimitTelemetrySink {
+  rateLimitChecked(event: {
+    operation: string;
+    principalHash: string;
+    allowed: boolean;
+    limit: number;
+    remaining: number;
+    windowMs: number;
+    retryAfterSeconds?: number;
+    resetAt: number;
+  }): void;
+}
+
 interface RateWindow {
   start: number;
   count: number;
@@ -52,6 +72,30 @@ interface RateWindow {
 
 export class FixedWindowRateLimiter implements RateLimiter {
   private readonly buckets = new Map<string, RateWindow>();
+  #telemetry?: RateLimitTelemetrySink;
+
+  /** Observe every decision. Emission is best-effort and never alters the outcome. */
+  setTelemetrySink(sink: RateLimitTelemetrySink | undefined): void {
+    this.#telemetry = sink;
+  }
+
+  protected emitTelemetry(input: RateLimitCheck, decision: RateLimitDecision): void {
+    if (!this.#telemetry) return;
+    try {
+      this.#telemetry.rateLimitChecked({
+        operation: input.operation,
+        principalHash: createHash('sha256').update(input.principal).digest('hex'),
+        allowed: decision.allowed,
+        limit: decision.limit,
+        remaining: decision.remaining,
+        windowMs: input.windowMs,
+        retryAfterSeconds: decision.retryAfterSeconds,
+        resetAt: decision.resetAt,
+      });
+    } catch {
+      // Operational telemetry is best-effort and must not alter rate limits.
+    }
+  }
 
   check(input: RateLimitCheck): RateLimitDecision {
     const now = Date.now();
@@ -65,22 +109,19 @@ export class FixedWindowRateLimiter implements RateLimiter {
     bucket.count++;
     const resetAt = bucket.start + input.windowMs;
     const remaining = Math.max(0, input.limit - bucket.count);
-    if (bucket.count > input.limit) {
-      return {
-        allowed: false,
-        limit: input.limit,
-        remaining: 0,
-        retryAfterSeconds: Math.max(1, Math.ceil((resetAt - now) / 1000)),
-        resetAt,
-      };
-    }
+    const decision: RateLimitDecision =
+      bucket.count > input.limit
+        ? {
+            allowed: false,
+            limit: input.limit,
+            remaining: 0,
+            retryAfterSeconds: Math.max(1, Math.ceil((resetAt - now) / 1000)),
+            resetAt,
+          }
+        : { allowed: true, limit: input.limit, remaining, resetAt };
 
-    return {
-      allowed: true,
-      limit: input.limit,
-      remaining,
-      resetAt,
-    };
+    this.emitTelemetry(input, decision);
+    return decision;
   }
 
   sweep(maxAgeMs: number): void {

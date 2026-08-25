@@ -13,16 +13,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 /**
  * MCP Server Entry Point — parse CLI args, initialize AgentScope, start server.
  *
  * Usage: agents mcp --db <url> [--mock <name>] [--tls-cert <path> --tls-key <path>] [--insecure] [--allow-no-auth] [--single-instance]
  *
- * Boot order: TrustAnchorStore must be loaded before MCP accepts connections.
- * Any incoming request before the store is loaded will be rejected by AgentVerifier (fail-closed),
- * not silently served with an empty trust list. This is enforced by AgentScope.create() awaiting
- * TrustAnchorStore.load() before returning.
+ * Boot order: the HTTP transport installs bearer authentication before the MCP SDK
+ * dispatches a request.
+ * Credential authorization remains in the transport-neutral service and SQL enforcement paths.
  */
 
 import { readFileSync } from 'node:fs';
@@ -32,6 +30,7 @@ import { resolveMasterKeyFromEnv } from '#bootstrap/index.js';
 import type { Logger } from '#observability/logger.js';
 import { getLogger } from '#observability/logger.js';
 import type { StorageBackend } from '#storage/types.js';
+import { FixedWindowRateLimiter } from '#transport/index.js';
 import { createMcpServer, connectStdio } from './server.js';
 import { createMcpBearerAuth, type McpBearerAuth } from './auth.js';
 import { createMcpHttpHandler } from './http-handler.js';
@@ -160,8 +159,8 @@ export async function startMcpServer(options: McpCliOptions): Promise<void> {
         'coherency poll OFF — revocations propagated from peer instances will NOT be visible until ' +
         'next process restart. Acceptable for single-instance MCP; NOT acceptable for multi-instance ' +
         'deployments. To run multi-instance, construct an explicit StorageBackend (with the coherency ' +
-        'poll enabled) and pass it via injections — see docs/support-runbook-v0.9.10.0.md § ' +
-        '"MCP multi-instance revocation coherency".',
+        'poll enabled) and pass it via injections — see docs/migrations/byok.md § ' +
+        '"Revocation-store injection (required for multi-instance)".',
     );
   }
 
@@ -222,11 +221,31 @@ export async function startMcpServer(options: McpCliOptions): Promise<void> {
 
   log(`Session authenticated as ${session.humanDid}`);
 
+  // This process has no operational telemetry pipeline, so rate-limit decisions
+  // would otherwise be invisible. Report rejections through the logger.
+  const rateLimiter = new FixedWindowRateLimiter();
+  rateLimiter.setTelemetrySink({
+    rateLimitChecked(event) {
+      if (event.allowed) return;
+      mcpLogger.warn('[agents] rate limit exceeded', {
+        operation: event.operation,
+        outcome: 'rejected',
+        principalHash: event.principalHash,
+        limit: event.limit,
+        remaining: event.remaining,
+        windowMs: event.windowMs,
+        retryAfterSeconds: event.retryAfterSeconds,
+        resetAt: event.resetAt,
+      });
+    },
+  });
+
   const mcpServer = createMcpServer({
     scope,
     session,
     auditLogger: scope.auditLoggerInstance,
     logger: mcpLogger,
+    rateLimiter,
     credentialMaxTtlMs: scope.credentialMaxTtlMs,
   });
 
@@ -237,9 +256,7 @@ export async function startMcpServer(options: McpCliOptions): Promise<void> {
   } else {
     // bearerResolution was computed and validated by the boot gate above.
     const bearerGuard: McpBearerAuth | null =
-      bearerResolution?.ok && options.bearerAuth
-        ? createMcpBearerAuth(options.bearerAuth)
-        : null;
+      bearerResolution?.ok && options.bearerAuth ? createMcpBearerAuth(options.bearerAuth) : null;
 
     const httpHandler = createMcpHttpHandler({ mcpServer, bearerGuard, log });
     const handler = httpHandler.handle;

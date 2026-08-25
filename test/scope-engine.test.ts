@@ -192,6 +192,32 @@ describe('Scope Enforcement Engine', () => {
   });
 
   describe('credential errors', () => {
+    it('rejects additional credentials without a primary before verification or execution', async () => {
+      const { human, agentA, engine, verifier, pool } = createTestFixtures();
+      const additionalCredential = await issueCredential(human.did, human.privateKey, {
+        agent: agentA.did,
+        columns: ['patients.name'],
+        actions: ['read'],
+        expiresIn: '4h',
+      });
+      const verify = vi.spyOn(verifier, 'verify');
+
+      await expect(
+        engine.query({
+          agent: agentA.did,
+          credentials: [additionalCredential],
+          table: 'patients',
+          sql: 'SELECT name FROM patients',
+        } as Parameters<typeof engine.query>[0]),
+      ).rejects.toMatchObject({
+        code: 'CREDENTIAL_MALFORMED',
+        message:
+          'Credential JWT missing required claim — No credential provided. Expected schema: https://abaxx.tech/schemas/agents-v1',
+      });
+      expect(verify).not.toHaveBeenCalled();
+      expect(pool.query).not.toHaveBeenCalled();
+    });
+
     it('rejects invalid credential signature', async () => {
       const { agentA, engine } = createTestFixtures();
 

@@ -24,7 +24,6 @@
  * must not poison the full credential check. Malformed REQUESTED actions throw (caller bug).
  * Denial reasons name the denied action only — not the full granted set (enumeration oracle).
  *
- * @see docs/specs/CAPABILITY-SPEC.md
  */
 
 import {
@@ -119,7 +118,6 @@ function capabilityKey(cap: Capability): string | null {
  * Stateless engine for capability checks, delegation validation, and role expansion.
  * Instantiate once and reuse. For functional style, use createCapabilityEngine().
  *
- * @see docs/specs/CAPABILITY-SPEC.md
  * @throws {CapabilityParseError} on malformed requested action strings or unknown roles
  * @throws {CapabilitySetTooLargeError} when a set exceeds MAX_CAPABILITY_SET_SIZE
  */
@@ -150,7 +148,6 @@ export class CapabilityEngine {
    * @throws {CapabilityParseError} if the requested action is malformed
    * @throws {CapabilitySetTooLargeError} if capabilitySet.length > MAX_CAPABILITY_SET_SIZE
    *
-   * @see docs/specs/CAPABILITY-SPEC.md §3.1
    */
   checkCapability(
     action: CapabilityAction,
@@ -229,7 +226,6 @@ export class CapabilityEngine {
    *
    * @throws {CapabilitySetTooLargeError} if either set exceeds MAX_CAPABILITY_SET_SIZE
    *
-   * @see docs/specs/CAPABILITY-SPEC.md §3.2
    */
   isSubsetOf(childSet: CapabilitySet, parentSet: CapabilitySet): boolean {
     if (childSet.length > MAX_CAPABILITY_SET_SIZE) {
@@ -251,7 +247,8 @@ export class CapabilityEngine {
 
     for (const child of childSet) {
       const key = capabilityKey(child);
-      if (key === null || !parentKeys.has(key)) { // null = malformed → not in parent → not a subset
+      if (key === null || !parentKeys.has(key)) {
+        // null = malformed → not in parent → not a subset
         return false;
       }
     }
@@ -275,7 +272,6 @@ export class CapabilityEngine {
    * @throws {CapabilityParseError} if role is not found in roleMap
    * @throws {CapabilitySetTooLargeError} if the resolved set exceeds MAX_CAPABILITY_SET_SIZE
    *
-   * @see docs/specs/CAPABILITY-SPEC.md §3.3
    */
   resolveRole(role: string, roleMap: Record<string, CapabilitySet>): CapabilitySet {
     if (!(role in roleMap)) {

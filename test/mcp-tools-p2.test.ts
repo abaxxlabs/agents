@@ -5,7 +5,7 @@ import {
   MAX_DEDUP_CACHE_SIZE,
 } from '#mcp/challenge-store.js';
 import { createMcpServer } from '#mcp/server.js';
-import type { ToolDependencies } from '#mcp/tools.js';
+import type { McpServerOptions } from '#mcp/server.js';
 import type { AgentScope } from '#sql/index.js';
 import type { AuthenticatedSession } from '#types/index.js';
 import type { AuditLogger } from '#audit/index.js';
@@ -36,6 +36,7 @@ function createPhase2Fixtures() {
     query: vi.fn(),
     createAgent: vi.fn(),
     verify: vi.fn(),
+    getAgent: vi.fn(),
     listAgents: vi.fn(),
     getServerStatus: vi.fn(),
     close: vi.fn(),
@@ -50,7 +51,7 @@ function createPhase2Fixtures() {
 
   const auditLogger = { export: vi.fn().mockResolvedValue([]) } as unknown as AuditLogger;
 
-  const deps: ToolDependencies = {
+  const deps: McpServerOptions = {
     scope,
     session,
     auditLogger,
@@ -279,7 +280,8 @@ describe('MCP Identity Tools', () => {
     it('creates server with identity tools when serverIdentity is provided', () => {
       const { deps } = createPhase2Fixtures();
       const server = createMcpServer(deps);
-      const tools = (server as unknown as { _registeredTools: Record<string, unknown> })._registeredTools;
+      const tools = (server as unknown as { _registeredTools: Record<string, unknown> })
+        ._registeredTools;
       expect(tools).toHaveProperty('whoami');
       expect(tools).toHaveProperty('sign');
       expect(tools).toHaveProperty('discover');
@@ -290,19 +292,14 @@ describe('MCP Identity Tools', () => {
       const { deps } = createPhase2Fixtures();
       delete (deps as { serverIdentity?: unknown }).serverIdentity;
       const server = createMcpServer(deps);
-      const tools = (server as unknown as { _registeredTools: Record<string, unknown> })._registeredTools;
+      const tools = (server as unknown as { _registeredTools: Record<string, unknown> })
+        ._registeredTools;
       expect(tools).not.toHaveProperty('whoami');
       expect(tools).not.toHaveProperty('sign');
       expect(tools).not.toHaveProperty('discover');
       expect(tools).not.toHaveProperty('challenge');
     });
   });
-
-  // MCP SDK's server.tool() registers handlers internally. To test the
-  // tool handlers we'd need to invoke them through the MCP protocol layer,
-  // which requires a full transport setup. For now we test the underlying
-  // primitives (ChallengeStore above, ServerIdentity, TrustAnchorStore) and
-  // verify tool registration succeeds.
 
   describe('whoami tool contract', () => {
     it('identity bundle has the expected shape', () => {

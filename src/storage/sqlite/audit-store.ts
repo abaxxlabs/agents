@@ -88,8 +88,9 @@ export class SqliteAuditStore implements AuditStore {
     const stmt = this.db.prepare(
       `INSERT INTO agent_audit
        (id, timestamp, agent_did, owner_did, credential_id, query_hash,
-        columns_accessed, row_count, duration_ms, previous_hash, signature, org_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        columns_accessed, row_count, duration_ms, previous_hash, signature, org_id,
+        version, status, reason, reason_code)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     stmt.run(
       record.id,
@@ -104,6 +105,10 @@ export class SqliteAuditStore implements AuditStore {
       record.previousHash,
       record.signature,
       record.orgId ?? null,
+      record.version ?? 1,
+      record.status ?? 'success',
+      record.reason ?? null,
+      record.reasonCode ?? null,
     );
   }
 
@@ -112,7 +117,7 @@ export class SqliteAuditStore implements AuditStore {
       .prepare(
         `SELECT id, timestamp, agent_did, owner_did, credential_id, query_hash,
               columns_accessed, row_count, duration_ms, previous_hash, signature,
-              org_id
+              org_id, version, status, reason, reason_code
        FROM agent_audit ORDER BY timestamp DESC LIMIT 1`,
       )
       .get() as AuditRow | undefined;

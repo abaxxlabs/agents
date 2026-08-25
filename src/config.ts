@@ -147,7 +147,7 @@ const DURATION_UNIT_MS: Record<string, number> = {
 };
 
 // Cap at ~100 years: without it, huge inputs return Infinity or overflow Number.MAX_SAFE_INTEGER,
-// silently corrupting clockSkew (unbounded skew → expired creds accepted) and setTimeout
+// silently corrupting clockSkew (unbounded skew → expired VPs accepted) and setTimeout
 // (clamped to 1ms at 32-bit overflow per the HTML spec). Any input above this is operator error.
 const MAX_DURATION_MS = 100 * 365 * 86_400_000;
 
@@ -227,10 +227,7 @@ export function expiresInToMs(expiresIn: string | number): number {
  *
  * @throws {TtlExceededError} when the resolved duration exceeds maxTtlMs
  */
-export function assertExpiresInBound(
-  expiresIn: string | number,
-  maxTtlMs: number,
-): void {
+export function assertExpiresInBound(expiresIn: string | number, maxTtlMs: number): void {
   if (expiresInToMs(expiresIn) > maxTtlMs) {
     throw new TtlExceededError(maxTtlMs);
   }

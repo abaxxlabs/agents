@@ -141,6 +141,15 @@ export const queryBodyShape = {
 };
 export const queryBodySchema = strictObject(queryBodyShape);
 
+export const presentBodyShape = {
+  agent: principalString,
+  credential: jwtString,
+  audience: z.union([principalString, z.array(principalString).min(1).max(10)]).optional(),
+  nonce: shortString.optional(),
+  lifetime: expiresInDurationString.optional(),
+};
+export const presentBodySchema = strictObject(presentBodyShape);
+
 export const auditQuerySchema = strictObject({
   agent: principalString.optional(),
   since: optionalIsoDateString,
@@ -188,6 +197,7 @@ export const restValidationSchemas = {
   delegateCredentialBody: delegateCredentialBodySchema,
   listCredentialsQuery: listCredentialsQuerySchema,
   queryBody: queryBodySchema,
+  presentBody: presentBodySchema,
   auditQuery: auditQuerySchema,
   verifyAuditBody: verifyAuditBodySchema,
   verifyChainBody: verifyChainBodySchema,
