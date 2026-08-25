@@ -12,7 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { SignJWT, compactVerify, decodeJwt as joseDecodeJwt, decodeProtectedHeader, importJWK, errors as joseErrors } from 'jose';
+import {
+  SignJWT,
+  compactVerify,
+  decodeJwt as joseDecodeJwt,
+  decodeProtectedHeader,
+  importJWK,
+  errors as joseErrors,
+} from 'jose';
 import { ed25519 } from '@noble/curves/ed25519';
 import { createHash } from 'node:crypto';
 import { CredentialMalformedError } from '#errors/index.js';
@@ -138,6 +145,7 @@ export async function createJwt(payload: JwtPayload, privateKey: Uint8Array): Pr
 
 /**
  * Verify an Ed25519 JWT signature against a public key.
+ * This does not validate claims, credential policy, expiry, issuer, audience, or revocation.
  *
  * @param jwt - Compact JWS string.
  * @param publicKey - Raw 32-byte Ed25519 public key.
@@ -146,14 +154,16 @@ export async function createJwt(payload: JwtPayload, privateKey: Uint8Array): Pr
 export async function verifyJwtSignature(jwt: string, publicKey: Uint8Array): Promise<boolean> {
   const cacheKey = Buffer.from(publicKey).toString('base64url');
   const cachedKey = lruGet(publicKeyCache, cacheKey);
-  const key = cachedKey ?? await importJwkForKey(
-    {
-      kty: 'OKP',
-      crv: 'Ed25519',
-      x: cacheKey,
-    },
-    'EdDSA',
-  );
+  const key =
+    cachedKey ??
+    (await importJwkForKey(
+      {
+        kty: 'OKP',
+        crv: 'Ed25519',
+        x: cacheKey,
+      },
+      'EdDSA',
+    ));
   try {
     await compactVerify(jwt, key, { algorithms: ['EdDSA'] });
     if (cachedKey === undefined) lruSet(publicKeyCache, cacheKey, key);
@@ -164,7 +174,8 @@ export async function verifyJwtSignature(jwt: string, publicKey: Uint8Array): Pr
       err instanceof joseErrors.JWSInvalid ||
       err instanceof joseErrors.JOSEAlgNotAllowed ||
       err instanceof joseErrors.JOSENotSupported
-    ) return false;
+    )
+      return false;
     throw err;
   }
 }

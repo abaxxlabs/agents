@@ -9,11 +9,7 @@ import { generateDidKey, createSigner } from '#auth/index.js';
 import type { AuthenticatedSession } from '#types/index.js';
 import { createMockAuditStore } from './mocks/audit-store.js';
 
-const fixturesDir = join(
-  dirname(fileURLToPath(import.meta.url)),
-  'fixtures',
-  'version-resolution',
-);
+const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'version-resolution');
 const stub = join(fixturesDir, 'stub-package.json');
 const real = join(fixturesDir, 'real-package.json');
 const emptyVersion = join(fixturesDir, 'empty-version-package.json');
@@ -64,8 +60,9 @@ describe('createMcpServer — serverInfo handshake', () => {
     const { scope, session, auditLogger } = makeMinimalDeps();
     const server = createMcpServer({ scope, session, auditLogger });
 
-    const serverInfo = (server.server as unknown as { _serverInfo: { name: string; version: unknown } })
-      ._serverInfo;
+    const serverInfo = (
+      server.server as unknown as { _serverInfo: { name: string; version: unknown } }
+    )._serverInfo;
     expect(typeof serverInfo.version).toBe('string');
     expect(serverInfo.version).not.toBe('');
     expect(serverInfo.name).toBe('agents');
@@ -87,6 +84,7 @@ function makeMinimalDeps() {
     query: vi.fn(),
     createAgent: vi.fn(),
     verify: vi.fn(),
+    getAgent: vi.fn(),
     listAgents: vi.fn(),
     getServerStatus: vi.fn(),
     close: vi.fn(),
@@ -95,6 +93,7 @@ function makeMinimalDeps() {
     query: Mock;
     createAgent: Mock;
     verify: Mock;
+    getAgent: Mock;
     listAgents: Mock;
     getServerStatus: Mock;
     close: Mock;

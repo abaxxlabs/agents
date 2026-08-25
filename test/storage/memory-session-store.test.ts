@@ -72,4 +72,22 @@ describe('InMemorySessionStore', () => {
     entry.envelope.humanDid = 'did:attacker';
     await expect(store.get('tok-dm')).rejects.toThrow('Session envelope integrity check failed');
   });
+
+  it('rejects scope claims modified after persistence', async () => {
+    await store.put(
+      'tok-scope',
+      env({
+        oidcScopeClaims: {
+          scope_columns: ['patients.name'],
+          scope_actions: ['read'],
+        },
+      }),
+      { ttlSeconds: 60 },
+    );
+    const internal = (store as unknown as { store: Map<string, { envelope: SessionEnvelope }> })
+      .store;
+    internal.get('tok-scope')!.envelope.oidcScopeClaims!.scope_columns = ['patients.ssn'];
+
+    await expect(store.get('tok-scope')).rejects.toThrow('Session envelope integrity check failed');
+  });
 });

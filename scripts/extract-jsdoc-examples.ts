@@ -1,17 +1,3 @@
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 /**
  * Extracts every @example block from src/**\/*.ts, synthesizes a scratch
  * TypeScript file, and runs tsc --noEmit to catch field/signature/export drift.
@@ -24,16 +10,16 @@
 import * as ts from 'typescript';
 import * as fs from 'fs';
 import * as path from 'path';
-import { execSync } from 'child_process';
+import { spawnSync } from 'child_process';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface ExtractedExample {
-  sourceFile: string;    // absolute path
-  sourceLine: number;    // 1-based line of the @example tag
-  fnName: string;        // synthesised function name (unique across all files)
-  code: string;          // the example body (without leading/trailing blank lines)
-  hasImports: boolean;   // true if the example uses import declarations
+  sourceFile: string; // absolute path
+  sourceLine: number; // 1-based line of the @example tag
+  fnName: string; // synthesised function name (unique across all files)
+  code: string; // the example body (without leading/trailing blank lines)
+  hasImports: boolean; // true if the example uses import declarations
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -114,13 +100,14 @@ function extractExamplesFromFile(
       const tagLine = sourceFile.getLineAndCharacterOfPosition(tag.getStart()).line + 1;
 
       // The comment text after @example
-      const rawComment = typeof tag.comment === 'string'
-        ? tag.comment
-        : Array.isArray(tag.comment)
-          ? (tag.comment as Array<{ text?: string }>)
-              .map(c => (typeof c.text === 'string' ? c.text : ''))
-              .join('')
-          : '';
+      const rawComment =
+        typeof tag.comment === 'string'
+          ? tag.comment
+          : Array.isArray(tag.comment)
+            ? (tag.comment as Array<{ text?: string }>)
+                .map((c) => (typeof c.text === 'string' ? c.text : ''))
+                .join('')
+            : '';
 
       const counter = globalCounter.n++;
       const fnName = `__jsdoc_example_${baseName}_${counter}`;
@@ -201,7 +188,9 @@ function buildScratchFile(examples: ExtractedExample[]): string {
   // setup context is not shown. They prevent TS2304 ("cannot find name X") noise
   // from drowning out real API-surface errors.
   lines.push('// Ambient stubs for partial snippet context variables');
-  lines.push(`declare const agentVerifier: { verify(opts: { bindingJwt: string; agentDid: string }): Promise<AgentVerifyResult> };`);
+  lines.push(
+    `declare const agentVerifier: { verify(opts: { bindingJwt: string; agentDid: string }): Promise<AgentVerifyResult> };`,
+  );
   lines.push(`declare const backend: StorageBackend;`);
   lines.push(`declare const connectionString: string;`);
   lines.push(`declare const keystore: unknown;`);
@@ -268,8 +257,8 @@ function buildScratchFile(examples: ExtractedExample[]): string {
 
 interface TscResult {
   ok: boolean;
-  signalErrors: string[];   // errors matching SIGNAL_CODES (real drift)
-  suppressedCount: number;  // noise errors that were filtered
+  signalErrors: string[]; // errors matching SIGNAL_CODES (real drift)
+  suppressedCount: number; // noise errors that were filtered
   rawOutput: string;
 }
 
@@ -294,16 +283,17 @@ function runTsc(scratchFile: string): TscResult {
 
   let rawOutput = '';
   try {
-    rawOutput = execSync(
-      `npx tsc --project ${path.basename(tsconfigPath)} 2>&1`,
-      { cwd: REPO_ROOT, encoding: 'utf-8' },
-    );
-  } catch (err: unknown) {
-    rawOutput = err instanceof Error && 'stdout' in err
-      ? String((err as NodeJS.ErrnoException & { stdout?: string }).stdout ?? '')
-      : String(err);
+    const result = spawnSync('npx', ['tsc', '--project', path.basename(tsconfigPath)], {
+      cwd: REPO_ROOT,
+      encoding: 'utf-8',
+    });
+    rawOutput = [result.stdout, result.stderr, result.error ? String(result.error) : '']
+      .filter(Boolean)
+      .join('\n');
   } finally {
-    try { fs.unlinkSync(tsconfigPath); } catch {}
+    try {
+      fs.unlinkSync(tsconfigPath);
+    } catch {}
   }
 
   // Parse tsc output and classify each error line
@@ -368,7 +358,7 @@ function buildLineMap(
     const relPath = headerMatch[1];
     const tagLine = parseInt(headerMatch[2], 10);
     const ex = examples.find(
-      e => path.relative(REPO_ROOT, e.sourceFile) === relPath && e.sourceLine === tagLine,
+      (e) => path.relative(REPO_ROOT, e.sourceFile) === relPath && e.sourceLine === tagLine,
     );
     if (!ex) continue;
 
@@ -388,7 +378,7 @@ function annotateSignalErrors(
   const scratchBasename = path.basename(SCRATCH_FILE).replace('.', '\\.');
   const re = new RegExp(`^${scratchBasename}\\((\\d+),\\d+\\):`);
 
-  return signalErrors.map(block => {
+  return signalErrors.map((block) => {
     const firstLine = block.split('\n')[0];
     const m = firstLine.match(re);
     if (m) {
@@ -423,7 +413,9 @@ async function main(): Promise<void> {
     }
   }
 
-  console.log(`\nextract-jsdoc-examples: ${allExamples.length} total example(s) across ${srcFiles.length} scanned files`);
+  console.log(
+    `\nextract-jsdoc-examples: ${allExamples.length} total example(s) across ${srcFiles.length} scanned files`,
+  );
 
   if (allExamples.length === 0) {
     console.log('  No examples found — nothing to type-check. Exiting 0.');
@@ -433,7 +425,9 @@ async function main(): Promise<void> {
   // Build and write scratch file
   const scratchContent = buildScratchFile(allExamples);
   fs.writeFileSync(SCRATCH_FILE, scratchContent, 'utf-8');
-  console.log(`extract-jsdoc-examples: wrote scratch file (${scratchContent.split('\n').length} lines)`);
+  console.log(
+    `extract-jsdoc-examples: wrote scratch file (${scratchContent.split('\n').length} lines)`,
+  );
 
   // Build line map for error annotation
   const lineMap = buildLineMap(scratchContent, allExamples);
@@ -447,12 +441,14 @@ async function main(): Promise<void> {
 
   if (result.ok) {
     console.log('\nextract-jsdoc-examples: ALL EXAMPLES TYPE-CHECK CLEAN');
-    try { fs.unlinkSync(SCRATCH_FILE); } catch {}
+    try {
+      fs.unlinkSync(SCRATCH_FILE);
+    } catch {}
     process.exit(0);
   } else {
     const annotated = annotateSignalErrors(result.signalErrors, lineMap);
     console.error('\nextract-jsdoc-examples: TYPE ERRORS IN JSDoc @example BLOCKS\n');
-    console.error('=' .repeat(72));
+    console.error('='.repeat(72));
     for (const err of annotated) {
       console.error(err);
       console.error('-'.repeat(72));
@@ -464,7 +460,7 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error('extract-jsdoc-examples: unexpected error:', err);
   process.exit(2);
 });

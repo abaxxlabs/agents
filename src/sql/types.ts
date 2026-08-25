@@ -101,6 +101,14 @@ export interface AgentScopeInjections {
 export interface AgentScopeInstance {
   authenticate(options: AuthOptions): Promise<AuthenticatedSession>;
   createAgent(options: CreateAgentOptions): Promise<RegisteredAgent>;
+  createPresentationForAgent(options: {
+    agentDid: string;
+    credential: string;
+    requesterDid: string;
+    audience?: string | string[];
+    nonce?: string;
+    lifetime?: string;
+  }): Promise<{ presentation: string; jti?: string; exp?: number }>;
   query(options: QueryOptions): Promise<ScopedResult>;
   verify(auditRecord: AuditRecord): Promise<VerificationResult>;
   close(): Promise<void>;
@@ -110,12 +118,13 @@ export interface AgentScopeInstance {
 
 export interface QueryOptions {
   agent: string;
+  /** Required primary credential or presentation; always evaluated. */
   credential: string;
   sql: string;
   params?: unknown[];
   /** Target table name — required for column scope enforcement */
   table: string;
-  /** Pass multiple credentials for scope union */
+  /** Optional additional credentials or presentations used for scope unions. */
   credentials?: string[];
   /**
    * Remote transports set this to require an agent-signed Verifiable

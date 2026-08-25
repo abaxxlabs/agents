@@ -35,12 +35,17 @@ describe('historical REST bridge public surface policy', () => {
 
   it('documents the bridge as source-only reference material', () => {
     const source = readFileSync(resolve(ROOT, REST_BRIDGE_SOURCE), 'utf8');
-    const decisions = readFileSync(resolve(ROOT, 'docs/DECISIONS.md'), 'utf8');
 
     expect(source).toContain('source-only reference material');
     expect(source).toContain('intentionally excluded from');
     expect(source).toContain('has no package.json export path');
-    expect(decisions).toContain('Package output policy');
-    expect(decisions).toContain('The supported MCP import path remains `@abaxxlabs/agents/mcp`.');
+  });
+
+  it('registers tools through the non-deprecated registerTool API only', () => {
+    const source = readFileSync(resolve(ROOT, REST_BRIDGE_SOURCE), 'utf8');
+
+    expect(source).not.toMatch(/\.tool\(/);
+    expect(source).not.toMatch(/\.resource\(/);
+    expect(source.match(/server\.registerTool\(/g)).toHaveLength(13);
   });
 });

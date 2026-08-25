@@ -33,7 +33,20 @@ describe('PendingFlowStore', () => {
     const store = new PendingFlowStore(1000);
     store.register('state-1', 'verifier-1');
     vi.advanceTimersByTime(1000 + 1);
-    expect(() => store.consume('state-1', 'verifier-1')).toThrow(PendingFlowError);
+    expect(() => store.consume('state-1', 'verifier-1')).toThrow(
+      'OAuth authorization flow has expired. Restart the authorization flow.',
+    );
+  });
+
+  it('uses a 10-minute default TTL', () => {
+    const store = new PendingFlowStore();
+    store.register('boundary', 'verifier-1');
+    vi.advanceTimersByTime(10 * 60 * 1000);
+    expect(() => store.consume('boundary', 'verifier-1')).not.toThrow();
+
+    store.register('expired', 'verifier-2');
+    vi.advanceTimersByTime(10 * 60 * 1000 + 1);
+    expect(() => store.consume('expired', 'verifier-2')).toThrow(PendingFlowError);
   });
 
   it('accepts a flow at the exact TTL boundary but rejects one millisecond later', () => {

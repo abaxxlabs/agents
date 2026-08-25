@@ -1,22 +1,9 @@
 #!/usr/bin/env node
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const ROOT_DIR = process.cwd();
 const PUBLIC_REPO_LIST_ENV = 'ABAXXLABS_PUBLIC_REPO_CANDIDATE_LIST';
@@ -738,7 +725,7 @@ function runCli(argv) {
   return results.every(([, result]) => result.ok) ? 0 : 1;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   try {
     process.exitCode = runCli(process.argv.slice(2));
   } catch (error) {

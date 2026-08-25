@@ -31,7 +31,7 @@ export interface StorageBackend {
   readonly context: ContextStore;
   /** JTI revocation store. */
   readonly revocation: RevocationStore;
-  /** Session re-establishment envelope store. */
+  /** Session re-establishment envelopes for server/consumer orchestration; AgentScope does not call it. */
   readonly sessions: SessionStore;
 
   /** Initializes backend-specific schema and lifecycle resources. */

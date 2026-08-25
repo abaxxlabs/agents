@@ -66,7 +66,11 @@ export const SQLITE_SCHEMA_STATEMENTS: string[] = [
     row_count INTEGER NOT NULL,
     duration_ms INTEGER NOT NULL,
     previous_hash TEXT NOT NULL DEFAULT 'GENESIS',
-    signature TEXT NOT NULL
+    signature TEXT NOT NULL,
+    version INTEGER DEFAULT 1,
+    status TEXT DEFAULT 'success',
+    reason TEXT,
+    reason_code TEXT
   )`,
 
   `CREATE TRIGGER IF NOT EXISTS trg_audit_no_update
@@ -146,4 +150,10 @@ export const SQLITE_MIGRATIONS: string[] = [
   // Derived from the verified credential's iss; never accepted from caller input.
   `ALTER TABLE agent_audit ADD COLUMN org_id TEXT`,
   `CREATE INDEX IF NOT EXISTS idx_agent_audit_org_id ON agent_audit(org_id)`,
+  // v3 audit columns — mirror Postgres migration 009. Without these, records lose
+  // version/status/reason on read-back and hash under the wrong hashAuditRecord branch.
+  `ALTER TABLE agent_audit ADD COLUMN version INTEGER DEFAULT 1`,
+  `ALTER TABLE agent_audit ADD COLUMN status TEXT DEFAULT 'success'`,
+  `ALTER TABLE agent_audit ADD COLUMN reason TEXT`,
+  `ALTER TABLE agent_audit ADD COLUMN reason_code TEXT`,
 ];

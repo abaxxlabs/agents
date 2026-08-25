@@ -169,6 +169,16 @@ describe('AbaxxOneOidcProvider', () => {
       expect(discoveryUrl).not.toContain('openid-configuration');
     });
 
+    it('does not generate or return an OIDC nonce', async () => {
+      const provider = new AbaxxOneOidcProvider(TEST_CONFIG);
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockJsonResponse(mockDiscovery()));
+
+      const result = await provider.buildAuthorizationUrl();
+
+      expect(new URL(result.url).searchParams.has('nonce')).toBe(false);
+      expect(result).not.toHaveProperty('nonce');
+    });
+
     it('rejects malformed discovery payloads before using discovered endpoints', async () => {
       const provider = new AbaxxOneOidcProvider(TEST_CONFIG);
 
@@ -206,4 +216,3 @@ function mockDiscovery() {
     code_challenge_methods_supported: ['S256'],
   };
 }
-

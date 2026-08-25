@@ -50,6 +50,7 @@ import {
 } from '#auth/index.js';
 import { AbaxxOneOidcProvider } from '#auth/abaxx-one.js';
 import { createSessionFromDid } from '#auth/session-factory.js';
+import { createPresentation } from './presentation.js';
 import type { ScopeCeiling } from '#auth/ceiling.js';
 import { expiresInToMs } from '#config.js';
 import type {
@@ -87,6 +88,7 @@ export interface AgentIdentityConfig {
   };
   credential?: {
     maxTtl?: string;
+    /** Timestamp tolerance for VP envelopes only. VCs use strict nbf/iat and exp checks. */
     clockSkew?: string;
   };
   did?: {
@@ -468,6 +470,51 @@ export class AgentIdentity {
     );
   }
 
+  /**
+   * Create an agent-signed Verifiable Presentation for a credential.
+   * Enforces that requesterDid owns agentDid.
+   */
+  async createPresentationForAgent(options: {
+    agentDid: string;
+    credential: string;
+    requesterDid: string;
+    audience?: string | string[];
+    nonce?: string;
+    lifetime?: string;
+  }): Promise<{ presentation: string; jti?: string; exp?: number }> {
+    this.assertOpen();
+
+    if (!options.agentDid || !options.credential || !options.requesterDid) {
+      throw new Error('agentDid, credential, and requesterDid are required');
+    }
+
+    const agent = this.agents.get(options.agentDid);
+    if (!agent) {
+      throw new Error(`Agent ${options.agentDid} not found`);
+    }
+
+    if (agent.ownerDid !== options.requesterDid) {
+      throw new Error(
+        `Forbidden: requester ${options.requesterDid} does not own agent ${options.agentDid}`,
+      );
+    }
+
+    const presentation = await createPresentation(
+      options.credential,
+      options.agentDid,
+      agent.signer,
+      {
+        audience: options.audience,
+        nonce: options.nonce,
+        lifetime: options.lifetime,
+      },
+    );
+
+    const decoded = decodeJwt(presentation);
+    const payload = decoded.payload as { jti?: string; exp?: number };
+    return { presentation, jti: payload.jti, exp: payload.exp };
+  }
+
   /** Verify an audit record's signature. */
   async verify(auditRecord: AuditRecord): Promise<VerificationResult> {
     this.assertOpen();
@@ -477,6 +524,21 @@ export class AgentIdentity {
       valid,
       status: valid ? 'VALID' : 'INVALID_SIGNATURE',
       error: valid ? undefined : 'Audit record signature verification failed',
+    };
+  }
+
+  /** Return one registered agent by DID. */
+  async getAgent(
+    did: string,
+  ): Promise<{ did: string; name: string; ownerDid: string; createdAt: string } | null> {
+    this.assertOpen();
+    const record = await this.storage.agents.findByDid(did);
+    if (!record) return null;
+    return {
+      did: record.did,
+      name: record.name,
+      ownerDid: record.ownerDid,
+      createdAt: record.createdAt,
     };
   }
 

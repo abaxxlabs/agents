@@ -1,3 +1,17 @@
+// Copyright 2026 Abaxx Technologies
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 import { VcVerifier } from './vc-verifier.js';
 import { decodeJwt } from '#crypto/jwt.js';
 import type { VerificationResult, VerifyOptions, DecodedCredential } from '#types/index.js';
@@ -108,7 +122,7 @@ export interface AgentVerifierOptions {
 
 /**
  * Layer 2 orchestrator for MCP agent auth. Runs four checks in sequence:
- * 1. VcVerifier.verify(): signature, expiry, subject binding, replay, revocation
+ * 1. VcVerifier.verify(): signature, strict VC timing, subject binding, and revocation
  * 2. TrustAnchorStore.isTrusted(): issuer must be known
  * 3. Org boundary: orgDomain must match expectedOrg
  * 4. CapabilityEngine: action must be in capability set

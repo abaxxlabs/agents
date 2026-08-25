@@ -44,7 +44,7 @@ const factories: Array<{ name: string; factory: Factory }> = [
     name: 'SqliteSessionStore (:memory:)',
     factory: async () => {
       const backend = await SqliteStorageBackend.create(
-        { type: 'sqlite', path: ':memory:' },
+        { type: 'sqlite', path: ':memory:', sessionMacKey: macKey },
         { sessionMacKey: macKey },
       );
       await backend.initialize();
@@ -74,10 +74,15 @@ for (const { name, factory } of factories) {
     });
 
     it('put + get round-trip', async () => {
-      await store.put('t-1', env({ humanDid: 'did:a' }), { ttlSeconds: 60 });
+      const oidcScopeClaims = {
+        scope_columns: ['patients.name'],
+        scope_actions: ['read'],
+      };
+      await store.put('t-1', env({ humanDid: 'did:a', oidcScopeClaims }), { ttlSeconds: 60 });
       const e = await store.get('t-1');
       expect(e).not.toBeNull();
       expect(e!.humanDid).toBe('did:a');
+      expect(e!.oidcScopeClaims).toEqual(oidcScopeClaims);
       expect(e!.expiresAt).toBeGreaterThan(Date.now());
     });
 

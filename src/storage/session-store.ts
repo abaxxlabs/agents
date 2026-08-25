@@ -15,7 +15,8 @@
 /**
  * Minimal metadata required to rebuild a live session across processes.
  * Private keys, OAuth secrets, closures, and derived column keys are never
- * persisted. Authority is re-verified on every re-establishment.
+ * persisted. Authority is reconstructed from MAC-authenticated claims and current local policy;
+ * re-establishment does not contact the OIDC provider.
  *
  * Identity fields are key-equivalent, so an HMAC protects envelope integrity;
  * it does not provide confidentiality. Canonical envelopes are capped at 32KB.
@@ -30,8 +31,23 @@ export interface SessionEnvelope {
   oidcIssuer: string;
   /** OIDC subject (sub claim). */
   oidcSubject: string;
+  /** Issuer used to derive the live session identity when it differs from the token issuer. */
+  oidcIdentityIssuer?: string;
+  /** Subject used to derive the live session identity. */
+  oidcIdentitySubject?: string;
   /** OIDC groups used to re-derive the scope ceiling. */
   oidcGroupClaims?: string[];
+  /** Sanitized OIDC claims used to re-derive the scope ceiling. */
+  oidcScopeClaims?: {
+    scope_columns?: string[];
+    scope_actions?: string[];
+    roles?: string[];
+    customSchemas?: {
+      agent_id?: { scope_columns?: string[]; scope_actions?: string[] };
+      agentId?: { scope_columns?: string[]; scope_actions?: string[] };
+    };
+    'abaxx:scope'?: { columns?: string[]; actions?: string[] };
+  };
   /** Optional tenant URL for Keycloak and AbaxxOne providers. */
   oidcTenantUrl?: string;
 

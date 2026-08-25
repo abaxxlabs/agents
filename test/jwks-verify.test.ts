@@ -43,9 +43,17 @@ function createSignedJwt(
   privateKeyDer: Buffer,
   headerOverrides?: Record<string, unknown>,
 ): string {
+  return createSignedJwtJson(JSON.stringify(payload), privateKeyDer, headerOverrides);
+}
+
+function createSignedJwtJson(
+  payloadJson: string,
+  privateKeyDer: Buffer,
+  headerOverrides?: Record<string, unknown>,
+): string {
   const header = { alg: 'EdDSA', typ: 'JWT', kid: 'test-key-1', ...headerOverrides };
   const headerB64 = base64UrlEncode(Buffer.from(JSON.stringify(header)));
-  const payloadB64 = base64UrlEncode(Buffer.from(JSON.stringify(payload)));
+  const payloadB64 = base64UrlEncode(Buffer.from(payloadJson));
   const signingInput = `${headerB64}.${payloadB64}`;
 
   const sig = ed25519Sign(undefined, Buffer.from(signingInput), {
@@ -153,6 +161,32 @@ describeLoopback('JWKS Verify — security hardening', () => {
 
     await expect(verifyIdTokenSignature(jwt, jwksUri)).rejects.toThrow(
       'id_token is missing required exp claim',
+    );
+  });
+
+  it('rejects JWT at its exact exp second', async () => {
+    const exp = Math.floor(Date.now() / 1000);
+    const jwt = createSignedJwt({ iss: 'test', sub: 'user', exp }, key1.privateKeyDer);
+
+    await expect(verifyIdTokenSignature(jwt, jwksUri)).rejects.toThrow('id_token is expired');
+  });
+
+  it('rejects a non-finite exp claim', async () => {
+    const jwt = createSignedJwtJson('{"iss":"test","sub":"user","exp":1e400}', key1.privateKeyDer);
+
+    await expect(verifyIdTokenSignature(jwt, jwksUri)).rejects.toThrow(
+      'id_token exp claim is not a finite number',
+    );
+  });
+
+  it('rejects a non-finite nbf claim', async () => {
+    const jwt = createSignedJwtJson(
+      `{"iss":"test","sub":"user","exp":${Math.floor(Date.now() / 1000) + 300},"nbf":1e400}`,
+      key1.privateKeyDer,
+    );
+
+    await expect(verifyIdTokenSignature(jwt, jwksUri)).rejects.toThrow(
+      'id_token nbf claim is not a finite number',
     );
   });
 

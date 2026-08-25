@@ -10,7 +10,6 @@ const TEST_CONFIG = {
 };
 
 describe('GenericOidcProvider', () => {
-
   describe('deriveHumanDid', () => {
     it('returns a valid did:key DID', () => {
       const provider = new GenericOidcProvider(TEST_CONFIG);
@@ -75,7 +74,6 @@ describe('GenericOidcProvider', () => {
       );
     });
   });
-
 
   describe('parseIdentityFromToken', () => {
     it('is synchronous and returns Partial<OidcIdentity>', () => {
@@ -221,7 +219,6 @@ describe('GenericOidcProvider', () => {
     });
   });
 
-
   describe('fetchUserInfo', () => {
     afterEach(() => {
       vi.restoreAllMocks();
@@ -343,7 +340,6 @@ describe('GenericOidcProvider', () => {
     });
   });
 
-
   describe('buildAuthorizationUrl', () => {
     afterEach(() => {
       vi.restoreAllMocks();
@@ -366,6 +362,8 @@ describe('GenericOidcProvider', () => {
       expect(result.url).toContain('code_challenge_method=S256');
       expect(result.state).toBeTruthy();
       expect(result.codeVerifier).toBeTruthy();
+      expect(new URL(result.url).searchParams.has('nonce')).toBe(false);
+      expect(result).not.toHaveProperty('nonce');
     });
 
     it('generates unique state on every call', async () => {
@@ -388,18 +386,19 @@ describe('GenericOidcProvider', () => {
     it('rejects malformed discovery payloads before using discovered endpoints', async () => {
       const provider = new GenericOidcProvider(TEST_CONFIG);
 
-      vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockJsonResponse({
-        authorization_endpoint: 123,
-        token_endpoint: 'https://oauth2.googleapis.com/token',
-        jwks_uri: 'https://www.googleapis.com/oauth2/v3/certs',
-      }));
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        mockJsonResponse({
+          authorization_endpoint: 123,
+          token_endpoint: 'https://oauth2.googleapis.com/token',
+          jwks_uri: 'https://www.googleapis.com/oauth2/v3/certs',
+        }),
+      );
 
       await expect(provider.buildAuthorizationUrl()).rejects.toThrow(
         'OIDC discovery missing required field: authorization_endpoint',
       );
     });
   });
-
 
   describe('issuerUrl', () => {
     it('exposes issuerUrl from config', () => {
@@ -416,4 +415,3 @@ function makeIdToken(claims: Record<string, unknown>): string {
     'fakesig',
   ].join('.');
 }
-
