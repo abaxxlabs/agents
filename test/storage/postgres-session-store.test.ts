@@ -79,10 +79,17 @@ describeFn('PostgresSessionStore (live Postgres required)', () => {
   });
 
   it('put + get round-trips', async () => {
-    await store.put('pg-tok-1', env({ humanDid: 'did:alice' }), { ttlSeconds: 60 });
+    const oidcScopeClaims = {
+      scope_columns: ['patients.name'],
+      scope_actions: ['read'],
+    };
+    await store.put('pg-tok-1', env({ humanDid: 'did:alice', oidcScopeClaims }), {
+      ttlSeconds: 60,
+    });
     const read = await store.get('pg-tok-1');
     expect(read).not.toBeNull();
     expect(read!.humanDid).toBe('did:alice');
+    expect(read!.oidcScopeClaims).toEqual(oidcScopeClaims);
     expect(read!.expiresAt).toBeGreaterThan(Date.now());
   });
 

@@ -21,34 +21,34 @@ beforeAll(async () => {
 
 describe('query-policy', () => {
   describe('assertReadOnlyQuery', () => {
-    it('accepts a plain SELECT', async () => {
-      await expect(
-        assertReadOnlyQuery('SELECT ticker, price FROM orders', testDid),
-      ).resolves.toBeUndefined();
+    it('accepts a plain SELECT', () => {
+      expect(
+        assertReadOnlyQuery(parseSync('SELECT ticker, price FROM orders'), testDid),
+      ).toBeUndefined();
     });
 
-    it('rejects INSERT', async () => {
-      await expect(
-        assertReadOnlyQuery("INSERT INTO orders (ticker) VALUES ('BTC')", testDid),
-      ).rejects.toThrow('InsertStmt');
+    it('rejects INSERT', () => {
+      expect(() =>
+        assertReadOnlyQuery(parseSync("INSERT INTO orders (ticker) VALUES ('BTC')"), testDid),
+      ).toThrow('InsertStmt');
     });
 
-    it('rejects UPDATE', async () => {
-      await expect(
-        assertReadOnlyQuery("UPDATE orders SET ticker = 'ETH'", testDid),
-      ).rejects.toThrow('UpdateStmt');
+    it('rejects UPDATE', () => {
+      expect(() =>
+        assertReadOnlyQuery(parseSync("UPDATE orders SET ticker = 'ETH'"), testDid),
+      ).toThrow('UpdateStmt');
     });
 
-    it('rejects DELETE', async () => {
-      await expect(
-        assertReadOnlyQuery('DELETE FROM orders', testDid),
-      ).rejects.toThrow('DeleteStmt');
+    it('rejects DELETE', () => {
+      expect(() => assertReadOnlyQuery(parseSync('DELETE FROM orders'), testDid)).toThrow(
+        'DeleteStmt',
+      );
     });
 
-    it('rejects DROP TABLE', async () => {
-      await expect(
-        assertReadOnlyQuery('DROP TABLE orders', testDid),
-      ).rejects.toThrow('DropStmt');
+    it('rejects DROP TABLE', () => {
+      expect(() => assertReadOnlyQuery(parseSync('DROP TABLE orders'), testDid)).toThrow(
+        'DropStmt',
+      );
     });
   });
 
@@ -110,9 +110,7 @@ describe('query-policy', () => {
     });
 
     it('excludes CTE names from physical refs', () => {
-      const parsed = parseSync(
-        'WITH cte AS (SELECT 1 FROM orders) SELECT * FROM cte',
-      );
+      const parsed = parseSync('WITH cte AS (SELECT 1 FROM orders) SELECT * FROM cte');
       const refs = extractPhysicalTableRefs(parsed.stmts[0].stmt as PgAstNode);
       expect(refs).toContain('orders');
       expect(refs).not.toContain('cte');
@@ -122,16 +120,12 @@ describe('query-policy', () => {
   describe('assertSqlReadsOnlyDeclaredTable', () => {
     it('passes when SQL matches declared table', () => {
       const parsed = parseSync('SELECT ticker FROM orders');
-      expect(() =>
-        assertSqlReadsOnlyDeclaredTable(parsed, testTable, testDid),
-      ).not.toThrow();
+      expect(() => assertSqlReadsOnlyDeclaredTable(parsed, testTable, testDid)).not.toThrow();
     });
 
     it('throws when SQL reads from a different table', () => {
       const parsed = parseSync('SELECT ticker FROM employees');
-      expect(() =>
-        assertSqlReadsOnlyDeclaredTable(parsed, testTable, testDid),
-      ).toThrow();
+      expect(() => assertSqlReadsOnlyDeclaredTable(parsed, testTable, testDid)).toThrow();
     });
   });
 
@@ -159,9 +153,7 @@ describe('query-policy', () => {
             { ResTarget: { val: { ColumnRef: { fields: [{ String: { sval: 'id' } }] } } } },
             { ResTarget: { val: { ColumnRef: { fields: [{ String: { sval: 'name' } }] } } } },
           ],
-          fromClause: [
-            { RangeVar: { relname: 'patients', inh: true, relpersistence: 'p' } },
-          ],
+          fromClause: [{ RangeVar: { relname: 'patients', inh: true, relpersistence: 'p' } }],
           limitOption: 'LIMIT_OPTION_DEFAULT',
           op: 'SETOP_NONE',
         },
@@ -175,12 +167,12 @@ describe('query-policy', () => {
     });
 
     it('writable CTE nesting matches expected shape', () => {
-      const parsed = parseSync(
-        "WITH del AS (DELETE FROM audit RETURNING *) SELECT * FROM del",
-      );
+      const parsed = parseSync('WITH del AS (DELETE FROM audit RETURNING *) SELECT * FROM del');
       const stmt = parsed.stmts[0].stmt as PgAstNode;
       const select = stmt.SelectStmt as PgAstNode;
-      const withClause = select.withClause as { ctes?: Array<{ CommonTableExpr?: { ctequery?: PgAstNode } }> };
+      const withClause = select.withClause as {
+        ctes?: Array<{ CommonTableExpr?: { ctequery?: PgAstNode } }>;
+      };
 
       expect(withClause).toBeDefined();
       expect(withClause.ctes).toHaveLength(1);

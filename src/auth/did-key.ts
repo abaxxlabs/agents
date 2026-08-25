@@ -12,11 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {
-  generateKeyPairSync,
-  createPrivateKey,
-  createPublicKey,
-} from 'node:crypto';
+import { generateKeyPairSync, createPrivateKey, createPublicKey } from 'node:crypto';
 import type { AgentSigner } from '#types/auth.js';
 import { createJwt } from '#crypto/jwt.js';
 import { base58Encode } from '#crypto/base58.js';
@@ -51,7 +47,7 @@ export function generateDidKeyFromSeed(seed: Buffer): {
   return { did, publicKey: rawPublic, privateKey: rawPrivate };
 }
 
-/** Generate a random Ed25519 key pair and return as a did:key DID. */
+/** Generate a fresh Ed25519 key pair with Node.js `generateKeyPairSync()` and return a did:key DID. */
 export function generateDidKey(): { did: string; publicKey: Uint8Array; privateKey: Uint8Array } {
   const { publicKey, privateKey } = generateKeyPairSync('ed25519', {
     publicKeyEncoding: { type: 'spki', format: 'der' },

@@ -10,6 +10,7 @@ import { AgentScope } from '#sql/index.js';
 import { generateDidKey, issueCredential, createSigner } from '#auth/index.js';
 import { encrypt, generateColumnKey } from '#encryption/index.js';
 import type { RegisteredAgent, AuditRecord, AuthenticatedSession } from '#types/index.js';
+import type { AgentToolServices } from '#services/index.js';
 import { createMockAuditStore } from './mocks/audit-store.js';
 
 function createMcpTestFixtures() {
@@ -122,6 +123,7 @@ function createMcpTestFixtures() {
     query: vi.fn(),
     createAgent: vi.fn(),
     verify: vi.fn(),
+    getAgent: vi.fn(),
     listAgents: vi.fn(),
     getServerStatus: vi.fn(),
     close: vi.fn(),
@@ -130,6 +132,7 @@ function createMcpTestFixtures() {
     query: Mock;
     createAgent: Mock;
     verify: Mock;
+    getAgent: Mock;
     listAgents: Mock;
     getServerStatus: Mock;
     close: Mock;
@@ -170,8 +173,37 @@ describe('MCP Server', () => {
       expect(server).toBeInstanceOf(McpServer);
       const tools = (server as unknown as { _registeredTools: Record<string, unknown> })
         ._registeredTools;
+      const resources = (server as unknown as { _registeredResources: Record<string, unknown> })
+        ._registeredResources;
+      const resourceTemplates = (
+        server as unknown as { _registeredResourceTemplates: Record<string, unknown> }
+      )._registeredResourceTemplates;
       expect(Object.keys(tools).length).toBeGreaterThan(0);
       expect(tools).toHaveProperty('query');
+      expect(resources).toHaveProperty('audit://recent');
+      expect(resources).toHaveProperty('config://status');
+      expect(Object.keys(resourceTemplates)).toHaveLength(2);
+    });
+
+    it('builds resource services when injected tool services use the prior contract', () => {
+      const { scope, session, auditLogger } = createMcpTestFixtures();
+      const services = {
+        query: { execute: vi.fn() },
+        agents: { createAgent: vi.fn(), listAgents: vi.fn() },
+        credentials: {
+          issueCredential: vi.fn(),
+          delegateCredential: vi.fn(),
+          listCredentials: vi.fn(),
+          revokeCredential: vi.fn(),
+        },
+        audit: {
+          exportAudit: vi.fn(),
+          verifyAudit: vi.fn(),
+          verifyChain: vi.fn(),
+        },
+      } as unknown as AgentToolServices;
+
+      expect(() => createMcpServer({ scope, session, auditLogger, services })).not.toThrow();
     });
   });
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { VcVerifier } from '#identity/index.js';
 import { createJwt, decodeJwt } from '#crypto/jwt.js';
 import { InMemoryRevocationStore } from '#storage/memory/revocation-store.js';
@@ -165,6 +165,193 @@ describe('VP Verification — VcVerifier', () => {
   // ─── VP Expiry ──────────────────────────────────────────────────
 
   describe('VP expiry', () => {
+    it('accepts a VP expired within the configured clock skew', async () => {
+      const nowMs = Date.now();
+      const dateSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
+      const vc = await issueTestVC();
+      const now = Math.floor(nowMs / 1000);
+      const vp = await createJwt(
+        {
+          iss: agent.did,
+          jti: 'within-exp-skew',
+          iat: now - 60,
+          exp: now - 10,
+          vp: {
+            '@context': ['https://www.w3.org/2018/credentials/v1'],
+            type: [VP_TYPE],
+            verifiableCredential: [vc],
+          },
+        },
+        agent.privateKey,
+      );
+
+      const result = await verifier.verify(vp);
+      expect(result.valid).toBe(true);
+      dateSpy.mockRestore();
+    });
+
+    it('accepts a VP not yet valid within the configured clock skew', async () => {
+      const nowMs = Date.now();
+      const dateSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
+      const vc = await issueTestVC();
+      const now = Math.floor(nowMs / 1000);
+      const vp = await createJwt(
+        {
+          iss: agent.did,
+          jti: 'within-nbf-skew',
+          iat: now,
+          nbf: now + 10,
+          exp: now + 60,
+          vp: {
+            '@context': ['https://www.w3.org/2018/credentials/v1'],
+            type: [VP_TYPE],
+            verifiableCredential: [vc],
+          },
+        },
+        agent.privateKey,
+      );
+
+      const result = await verifier.verify(vp);
+      expect(result.valid).toBe(true);
+      dateSpy.mockRestore();
+    });
+
+    it('rejects a VP not yet valid beyond the configured clock skew', async () => {
+      const vc = await issueTestVC();
+      const now = Math.floor(Date.now() / 1000);
+      const vp = await createJwt(
+        {
+          iss: agent.did,
+          jti: 'beyond-nbf-skew',
+          iat: now,
+          nbf: now + 60,
+          exp: now + 120,
+          vp: {
+            '@context': ['https://www.w3.org/2018/credentials/v1'],
+            type: [VP_TYPE],
+            verifiableCredential: [vc],
+          },
+        },
+        agent.privateKey,
+      );
+
+      const result = await verifier.verify(vp);
+      expect(result.valid).toBe(false);
+      expect(result.status).toBe('MALFORMED');
+      expect(result.error).toContain('VP not valid until');
+    });
+
+    it('rejects a VP at the exact expiration plus skew boundary', async () => {
+      const nowMs = 1_800_000_000_000;
+      const dateSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
+      const vc = await issueTestVC();
+      const vp = await createJwt(
+        {
+          iss: agent.did,
+          jti: 'exact-exp-skew-boundary',
+          iat: nowMs / 1000 - 60,
+          exp: nowMs / 1000 - 30,
+          vp: {
+            '@context': ['https://www.w3.org/2018/credentials/v1'],
+            type: [VP_TYPE],
+            verifiableCredential: [vc],
+          },
+        },
+        agent.privateKey,
+      );
+
+      const result = await verifier.verify(vp);
+      expect(result.valid).toBe(false);
+      expect(result.status).toBe('EXPIRED');
+      dateSpy.mockRestore();
+    });
+
+    it('rejects an out-of-range VP NumericDate without throwing', async () => {
+      const vc = await issueTestVC();
+      const vp = await createJwt(
+        {
+          iss: agent.did,
+          jti: 'out-of-range-nbf',
+          nbf: 1e308,
+          vp: {
+            '@context': ['https://www.w3.org/2018/credentials/v1'],
+            type: [VP_TYPE],
+            verifiableCredential: [vc],
+          },
+        },
+        agent.privateKey,
+      );
+
+      const result = await verifier.verify(vp);
+      expect(result.valid).toBe(false);
+      expect(result.status).toBe('MALFORMED');
+      expect(result.error).toContain('nbf is not a valid NumericDate');
+    });
+
+    it('rejects an invalid iat when nbf is valid', async () => {
+      const now = Math.floor(Date.now() / 1000);
+      const vc = await issueTestVC();
+      const vp = await createJwt(
+        {
+          iss: agent.did,
+          jti: 'invalid-iat-with-valid-nbf',
+          iat: 1e308,
+          nbf: now,
+          exp: now + 60,
+          vp: {
+            '@context': ['https://www.w3.org/2018/credentials/v1'],
+            type: [VP_TYPE],
+            verifiableCredential: [vc],
+          },
+        },
+        agent.privateKey,
+      );
+
+      const result = await verifier.verify(vp);
+      expect(result.valid).toBe(false);
+      expect(result.status).toBe('MALFORMED');
+      expect(result.error).toContain('iat is not a valid NumericDate');
+    });
+
+    it('rejects an expired inner VC even when the outer VP is inside its skew window', async () => {
+      const now = Math.floor(Date.now() / 1000);
+      const expiredVc = await createJwt(
+        {
+          iss: human.did,
+          sub: agent.did,
+          iat: now - 60,
+          exp: now - 10,
+          vc: {
+            '@context': ['https://www.w3.org/2018/credentials/v1'],
+            type: ['VerifiableCredential', 'AgentScopeCredential'],
+            credentialSubject: {
+              id: agent.did,
+              scope: { columns: ['patients.name'], actions: ['read'] },
+            },
+          },
+        },
+        human.privateKey,
+      );
+      const vp = await createJwt(
+        {
+          iss: agent.did,
+          jti: 'strict-inner-vc',
+          iat: now - 60,
+          exp: now - 10,
+          vp: {
+            '@context': ['https://www.w3.org/2018/credentials/v1'],
+            type: [VP_TYPE],
+            verifiableCredential: [expiredVc],
+          },
+        },
+        agent.privateKey,
+      );
+
+      const result = await verifier.verify(vp);
+      expect(result.valid).toBe(false);
+      expect(result.status).toBe('EXPIRED');
+    });
+
     it('rejects an expired VP', async () => {
       const vc = await issueTestVC();
       const now = Math.floor(Date.now() / 1000);
@@ -455,9 +642,9 @@ describe('createPresentation()', () => {
       expiresIn: '4h',
     });
 
-    await expect(createPresentation(vc, agent.did, signer, { lifetime: 'forever' })).rejects.toThrow(
-      /Invalid duration format/,
-    );
+    await expect(
+      createPresentation(vc, agent.did, signer, { lifetime: 'forever' }),
+    ).rejects.toThrow(/Invalid duration format/);
     await expect(createPresentation(vc, agent.did, signer, { lifetime: '30' })).rejects.toThrow(
       /Invalid duration format/,
     );

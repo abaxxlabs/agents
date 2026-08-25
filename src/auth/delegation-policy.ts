@@ -41,10 +41,7 @@ export function validateScope(
  * Clamp the requested expiry to the parent's maximum.
  * @internal Not part of the public API. Consumed by the credential-issuance orchestrator.
  */
-export function validateExpiry(
-  requestedExpSeconds: number,
-  parentMaxExpSeconds?: number,
-): number {
+export function validateExpiry(requestedExpSeconds: number, parentMaxExpSeconds?: number): number {
   if (parentMaxExpSeconds !== undefined) {
     return Math.min(requestedExpSeconds, parentMaxExpSeconds);
   }
@@ -57,14 +54,16 @@ export function validateExpiry(
  */
 export function validateChain(chainLength: number, maxDepth: number): void {
   if (chainLength >= maxDepth) {
-    throw new Error(
-      `Delegation error: chain depth ${chainLength} exceeds maximum ${maxDepth}.`,
-    );
+    throw new Error(`Delegation error: chain depth ${chainLength} exceeds maximum ${maxDepth}.`);
   }
 }
 
 /**
  * Library default — used when a credential lacks an embedded ceiling.
+ * Current behavior: because re-delegation is intentionally blocked by design,
+ * every ceiling above 2 is currently equivalent to 2 in practice — only one
+ * delegation hop is possible. This default is still forward-compatible
+ * infrastructure for a future multi-hop delegation model.
  * @internal Not part of the public API. Consumed by the credential-issuance orchestrator.
  */
 export const DEFAULT_MAX_DELEGATION_DEPTH = 2;

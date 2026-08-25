@@ -17,7 +17,6 @@ import {
 import { asMasterKey } from '#crypto/master-key.js';
 import { KeyRotationFailedError } from '#errors/index.js';
 
-
 type MockClientType = PoolClient & { query: Mock; release: Mock };
 type MockPool = Pool & { query: Mock; connect: Mock };
 
@@ -55,7 +54,6 @@ function makeMockPool(
     });
   return createMockPool({ client, queryImpl: defaultPoolQuery }) as unknown as MockPool;
 }
-
 
 describe('rotateColumnKey', () => {
   const tableName = 'patients';
@@ -408,7 +406,6 @@ describe('rotateColumnKey', () => {
   });
 });
 
-
 describe('rewrapColumnKey', () => {
   const tableName = 'patients';
   const columnName = 'dob';
@@ -582,7 +579,6 @@ describe('rewrapColumnKey', () => {
   });
 });
 
-
 describe('registerColumn — ON CONFLICT tightening', () => {
   it('first registration succeeds and returns keyId + columnKey', async () => {
     const masterKey = asMasterKey(generateColumnKey());
@@ -627,7 +623,6 @@ describe('registerColumn — ON CONFLICT tightening', () => {
   });
 });
 
-
 describe('KeyRotationFailedError', () => {
   it('has correct name and phase field', () => {
     const err = new KeyRotationFailedError('decrypt-row', new Error('GCM auth failed'));
@@ -653,7 +648,6 @@ describe('KeyRotationFailedError', () => {
     expect(err).toBeInstanceOf(Error);
   });
 });
-
 
 describe('concurrent rotation serialization', () => {
   it('SELECT...FOR UPDATE appears in the rotation SQL (serialization mechanism present)', async () => {
@@ -720,7 +714,7 @@ describe('concurrent rotation serialization', () => {
 
 //
 // Consumer-facing diagnostic for the BYOK migration protocol (steps 3 + 5 of
-// the rewrapColumnKey procedure documented in docs/migration-byok.md). The
+// the rewrapColumnKey procedure documented in docs/migrations/byok.md). The
 // helper iterates agent_keys and reports per-row unwrap success/failure under
 // the supplied master key. Tests cover:
 //   1. Empty table → ok=0, failed=[]

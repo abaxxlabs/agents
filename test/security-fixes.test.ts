@@ -8,7 +8,7 @@ import { asMasterKey } from '#crypto/master-key.js';
 import { ScopeEngine } from '#sql/scope-engine.js';
 import { AuditLogger } from '#audit/index.js';
 import { createPresentation } from '#identity/presentation.js';
-import { CredentialInvalidError, QueryRejectedError } from '#errors/index.js';
+import { CredentialInvalidError, QueryRejectedError, ScopeViolationError } from '#errors/index.js';
 import type { AgentStore, AuditStore } from '#storage/types.js';
 import type { Pool } from 'pg';
 
@@ -162,7 +162,7 @@ describe('Explicit table declaration', () => {
         table: 'wrong_table',
         sql: 'SELECT id, name, dob FROM patients',
       }),
-    ).rejects.toThrow(QueryRejectedError);
+    ).rejects.toThrow(ScopeViolationError);
   });
 
   it('rejects attempts to authorize one table while reading another table', async () => {
@@ -1104,17 +1104,19 @@ describe('nbf/iat validation', () => {
   });
 
   it('rejects credential with future iat (VC nbf is authoritative, no clockSkew)', async () => {
+    const nowMs = Date.now();
+    const dateSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     const human = generateDidKey();
     const agent = generateDidKey();
 
     const verifier = new VcVerifier({
-      clockSkew: '5s',
+      clockSkew: '30s',
       revocationStore: new InMemoryRevocationStore(),
     });
     verifier.registerKey(human.did, human.publicKey);
 
-    // VC with iat 10 seconds in the future — no clockSkew tolerance on VC nbf
-    const nearFutureIat = Math.floor(Date.now() / 1000) + 10;
+    // VC with iat inside the configured VP skew still receives no VC tolerance.
+    const nearFutureIat = Math.floor(nowMs / 1000) + 10;
     const jwt = await createJwt(
       {
         iss: human.did,
@@ -1137,6 +1139,7 @@ describe('nbf/iat validation', () => {
     expect(result.valid).toBe(false);
     expect(result.status).toBe('MALFORMED');
     expect(result.error).toContain('not valid until');
+    dateSpy.mockRestore();
   });
 });
 

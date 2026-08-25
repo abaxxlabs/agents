@@ -22,7 +22,7 @@
  *
  * The brand does NOT prevent `console.log(masterKey)` or `JSON.stringify(...)` —
  * those accept `any`. Runtime redaction is handled by toJSON/util.inspect on the
- * holding instances (see docs/DECISIONS.md D-006).
+ * holding instances.
  */
 
 /**

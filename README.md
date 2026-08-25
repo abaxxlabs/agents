@@ -48,15 +48,15 @@ You:   trust the agent didn't go off-script
 
 No proof the agent was authorized. No proof it stayed in scope. No audit trail a third party could verify.
 
-With Agents++, a human authenticates and issues a credential that says exactly what the agent can see. The agent presents that credential when it queries. The ScopeEngine verifies the chain and enforces the boundary:
+With Agents++, a human authenticates and issues a credential that says exactly what the agent can see. The agent presents that credential when it queries. The ScopeEngine verifies the credential and its delegation chain at the query boundary:
 
 ```
 Human:       authenticates via OIDC, creates agent, issues credential
              → "this agent can see orders.instrument and orders.quantity, expires in 4h"
 
 Agent:       presents credential to ScopeEngine
-ScopeEngine: ✓ credential is valid (Ed25519 signature chain)
-             ✓ issuer DID matches authenticated human
+ScopeEngine: ✓ credential signature, expiry, and revocation are valid
+             ✓ issuer-subject-owner bindings hold (delegation chain included)
              ✓ requested columns are within scope
              ✓ SQL doesn't touch unauthorized tables
              → executes query, decrypts only authorized columns
@@ -75,18 +75,18 @@ The credential is the authorization. The ScopeEngine is the enforcer. The audit 
 ## How it works
 
 1. A **human authenticates** (OIDC in production, mock in dev).
-2. They **create an agent** -- the agent gets its own Ed25519 keypair and DID.
-3. They **issue a credential** that says exactly what the agent can see: which columns, which actions, for how long.
+2. They **create an agent** -- the agent gets a freshly generated Ed25519 keypair and DID.
+3. They **issue a credential** that says exactly what the agent can see: which columns, which actions, for how long. Issuance enforces the bounds -- the credential can only ever be as narrow as what the issuer holds.
 4. The agent **presents that credential** when it queries.
-5. The **ScopeEngine** verifies the credential chain, parses the SQL, rejects anything out of scope, decrypts only authorized columns, and signs an audit record.
-6. Every action is **Ed25519-signed and hash-chained** into a tamper-evident audit trail.
+5. The **ScopeEngine** re-verifies the credential and its delegation chain at the query boundary (signatures, revocation, delegation-depth ceiling, issuer-subject-owner bindings), parses the SQL, rejects anything out of scope, decrypts only authorized columns, and signs an audit record. It does not re-run the issuance-time subset and TTL math -- those bounds were enforced when the credential was issued.
+6. When audit is enabled, successful scoped queries are **Ed25519-signed and hash-chained** into a tamper-evident audit trail. Rejections without an available agent signer may be recorded as unsigned.
 
-Delegation works the same way down. A supervisor agent can delegate a strict subset of its scope to a worker -- fewer columns, fewer actions, shorter TTL. The chain only narrows, never widens.
+Delegation works the same way down. A supervisor agent can delegate a strict subset of its scope to a worker -- fewer columns, fewer actions, shorter TTL. The narrowing (subset, TTL, delegation depth) is enforced at issuance time: the delegated credential cannot exceed the source credential, and the depth ceiling is embedded in the root credential. At query time the ScopeEngine verifies the chain's signatures, revocation status, depth ceiling, and issuer-subject-owner bindings; it does not re-derive the subset or TTL narrowing.
 
 ## Install
 
 ```bash
-npm install @abaxxlabs/agents pg libpg-query
+npm install @abaxxlabs/agents@0.11.4 pg@8.20.0 libpg-query@17.7.3
 ```
 
 ## Quick start
@@ -129,11 +129,11 @@ const result = await scope.query({
 
 ## Features
 
-- **Cryptographic agent identity** -- Ed25519 keypair + DID for every agent. Every action is signed. Stolen credentials fail owner-binding checks.
+- **Cryptographic agent identity** -- freshly generated Ed25519 keypair + DID for every created agent. Stolen credentials fail owner-binding checks.
 - **Column-level scope enforcement** -- SQL is parsed through PostgreSQL's native parser. Out-of-scope queries are rejected before execution, not filtered after.
 - **Defense-in-depth encryption** -- AES-256-GCM per column, BYOK master key. Atomic key rotation and master-key rewrap without touching row data.
-- **Agent-to-agent delegation** -- Supervisors delegate subsets of their scope to workers. Columns narrow, TTL shrinks, actions reduce. Every link in the chain is verifiable.
-- **Tamper-evident audit** -- Ed25519-signed, SHA-256 hash-chained records. PostgreSQL triggers block UPDATE/DELETE. Verifiable offline by anyone with the public keys.
+- **Agent-to-agent delegation** -- Supervisors delegate subsets of their scope to workers. Columns narrow, TTL shrinks, actions reduce. The narrowing is enforced at issuance; at query time the ScopeEngine verifies signatures, revocation, depth ceiling, and issuer-subject-owner bindings.
+- **Tamper-evident audit** -- when audit is enabled, successful query records are Ed25519-signed and SHA-256 hash-chained. PostgreSQL triggers reject ordinary UPDATE/DELETE/TRUNCATE operations, but database owners and superusers can bypass or remove them.
 - **MCP + REST surfaces** -- Same enforcement as a library, an MCP server, or a REST API. Master key and DB credentials never cross the wire.
 - **Delegation chain revocation** -- Revoke a parent credential and every downstream worker credential fails verification immediately.
 - **OIDC authentication** -- Google, Microsoft, Keycloak, and AbaxxOne out of the box. Mock auth for development.
@@ -162,6 +162,8 @@ agents mcp --db postgresql://localhost/mydb --transport http --port 8443 \
   --tls-cert cert.pem --tls-key key.pem
 ```
 
+**HTTP transport auth** every `GET /sse` and `POST /messages?sessionId=...` request must carry an `Authorization: Bearer <token>` header ([RFC 6750](https://datatracker.ietf.org/doc/html/rfc6750)). Requests without a valid token receive a `401` before the MCP SDK processes them. Tokens come from the embedder's `getValidTokens()` callback (`startMcpServer({ bearerAuth })`), which is re-read on every request so rotation is managed externally. The `agents mcp` CLI does not configure tokens itself, so running the HTTP transport from the CLI requires `--allow-no-auth` (development/test-only; any other `NODE_ENV` is a startup error). TLS is required for remote transport; `--insecure` (plaintext HTTP) is also development/test-only.
+
 **Claude Desktop** (`claude_desktop_config.json`):
 
 ```json
@@ -181,17 +183,19 @@ agents mcp --db postgresql://localhost/mydb --transport http --port 8443 \
 agents serve --db postgresql://localhost/mydb --port 3100
 ```
 
+The `challenge` MCP tool and `POST /challenge` endpoint are for Verifiable-Presentation freshness and replay protection, not transport authentication. They do not gate `/sse` or `/messages`; route access is controlled by the bearer guard described above.
+
 Enforcement is identical across all three modes. The deployment shape determines where the trust boundary sits, not how enforcement works.
 
 ## Security model
 
-- **Ed25519 only** -- no algorithm agility, no downgrade surface
-- **BYOK master key** -- you pass the key explicitly; `MasterKey` is a branded type that blocks leaks at compile time
+- **Agents++ signatures use Ed25519** -- agent credentials and signed audit records use Ed25519/EdDSA; OIDC ID-token verification accepts an explicit asymmetric allowlist of RSA, RSA-PSS, ECDSA, and EdDSA algorithms
+- **BYOK master key** -- a 64-character hexadecimal string (`[0-9a-fA-F]{64}`); Base64 and other encodings are rejected at bootstrap. You pass the key explicitly; `MasterKey` is a branded type that blocks leaks at compile time
 - **Wrong-key boots fail loud** -- `AgentScope.create` throws immediately if existing column keys can't be decrypted
-- **AES-256-GCM per column** -- `rotateColumnKey()` re-encrypts atomically; `rewrapColumnKey()` migrates master keys without touching rows
-- **Append-only audit** -- PostgreSQL triggers block UPDATE/DELETE at the database level
+- **AES-256-GCM per column** -- each encryption uses a fresh random 96-bit IV; ciphertext length, type metadata, and database access patterns remain visible
+- **Append-only audit for application roles** -- PostgreSQL triggers reject UPDATE/DELETE/TRUNCATE, but privileged database roles can bypass or remove them
 - **VP audience binding** -- credentials can be bound to a specific server DID, preventing replay across instances
-- **PKCE S256** on all OIDC flows; SSRF guards on discovered endpoints
+- **PKCE S256** on all OIDC flows; endpoint allowlists constrain authorization, token, and user-info destinations
 - **Mock auth gated** -- `mockHumanDid` only works in `NODE_ENV=development` or `test`
 
 ## Free tier vs AbaxxOne
@@ -200,7 +204,7 @@ The open-source library is fully functional on its own -- identity, scoping, enc
 
 | | Free (this library) | AbaxxOne |
 |---|---|---|
-| **Agent identity** | `did:key` (deterministic, recoverable) | `did:dht` (HSM-backed, institutional) |
+| **Agent identity** | `did:key` (fresh per created agent, recoverable) | `did:dht` (HSM-backed, institutional) |
 | **Credential issuer** | Human's self-issued DID | Organization's DID |
 | **Trust boundary** | Single server | Cross-org, federated |
 | **Revocation** | Local (durable, cross-instance) | StatusList2021 (global, verifiable) |
@@ -235,9 +239,10 @@ DATABASE_URL=... npm test
 
 | Topic | Link |
 |---|---|
-| Architecture decisions | [docs/DECISIONS.md](docs/DECISIONS.md) |
-| v0.11 migration guide | [docs/migration-v0.11.md](docs/migration-v0.11.md) |
-| BYOK master key migration | [docs/migration-byok.md](docs/migration-byok.md) |
+| Documentation index | [docs/README.md](docs/README.md) |
+| Security and storage boundaries | [docs/guides/security-and-storage-boundaries.md](docs/guides/security-and-storage-boundaries.md) |
+| v0.11 migration guide | [docs/migrations/v0.11.md](docs/migrations/v0.11.md) |
+| BYOK master key migration | [docs/migrations/byok.md](docs/migrations/byok.md) |
 | Security policy | [SECURITY.md](SECURITY.md) |
 | Changelog | [CHANGELOG.md](CHANGELOG.md) |
 | Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |

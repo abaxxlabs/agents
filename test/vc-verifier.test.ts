@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { VcVerifier } from '#identity/index.js';
 import { createJwt, verifyJwtSignature, decodeJwt } from '#crypto/jwt.js';
 import { InMemoryRevocationStore } from '#storage/memory/revocation-store.js';
@@ -14,7 +14,10 @@ describe('VC Verifier', () => {
     let agent: ReturnType<typeof generateDidKey>;
 
     beforeEach(() => {
-      verifier = new VcVerifier({ clockSkew: '30s', revocationStore: new InMemoryRevocationStore() });
+      verifier = new VcVerifier({
+        clockSkew: '30s',
+        revocationStore: new InMemoryRevocationStore(),
+      });
       human = generateDidKey();
       agent = generateDidKey();
       verifier.registerKey(human.did, human.publicKey);
@@ -39,7 +42,10 @@ describe('VC Verifier', () => {
       });
 
       it('decodes JWT payload', async () => {
-        const jwt = await createJwt({ iss: human.did, sub: agent.did, custom: 'data' }, human.privateKey);
+        const jwt = await createJwt(
+          { iss: human.did, sub: agent.did, custom: 'data' },
+          human.privateKey,
+        );
         const { payload } = decodeJwt(jwt);
         expect(payload.iss).toBe(human.did);
         expect(payload.sub).toBe(agent.did);
@@ -95,7 +101,7 @@ describe('VC Verifier', () => {
         expect(result.status).toBe('EXPIRED');
       });
 
-      it('rejects credential expired even by 1 second', async () => {
+      it('rejects a VC expired within the configured VP clock skew', async () => {
         const now = Math.floor(Date.now() / 1000);
         const jwt = await createJwt(
           {
@@ -116,6 +122,103 @@ describe('VC Verifier', () => {
         const result = await verifier.verify(jwt);
         expect(result.valid).toBe(false);
         expect(result.status).toBe('EXPIRED');
+      });
+
+      it('rejects a VC at its exact expiration boundary', async () => {
+        const nowMs = 1_800_000_000_000;
+        const dateSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
+        const jwt = await createJwt(
+          {
+            iss: human.did,
+            sub: agent.did,
+            iat: nowMs / 1000 - 60,
+            exp: nowMs / 1000,
+            vc: {
+              credentialSubject: {
+                id: agent.did,
+                scope: { columns: ['patients.name'], actions: ['read'] },
+              },
+            },
+          },
+          human.privateKey,
+        );
+
+        const result = await verifier.verify(jwt);
+        expect(result.valid).toBe(false);
+        expect(result.status).toBe('EXPIRED');
+        dateSpy.mockRestore();
+      });
+
+      it('rejects a non-numeric VC expiration claim', async () => {
+        const jwt = await createJwt(
+          {
+            iss: human.did,
+            sub: agent.did,
+            exp: 'tomorrow' as unknown as number,
+            vc: {
+              credentialSubject: {
+                id: agent.did,
+                scope: { columns: ['patients.name'], actions: ['read'] },
+              },
+            },
+          },
+          human.privateKey,
+        );
+
+        const result = await verifier.verify(jwt);
+        expect(result.valid).toBe(false);
+        expect(result.status).toBe('MALFORMED');
+        expect(result.error).toContain('exp is not a valid NumericDate');
+      });
+
+      it.each([
+        ['exp', { exp: 1e308 }],
+        ['nbf', { nbf: 1e308 }],
+      ])('rejects an out-of-range VC %s claim', async (_claim, temporalClaims) => {
+        const jwt = await createJwt(
+          {
+            iss: human.did,
+            sub: agent.did,
+            ...temporalClaims,
+            vc: {
+              credentialSubject: {
+                id: agent.did,
+                scope: { columns: ['patients.name'], actions: ['read'] },
+              },
+            },
+          },
+          human.privateKey,
+        );
+
+        const result = await verifier.verify(jwt);
+        expect(result.valid).toBe(false);
+        expect(result.status).toBe('MALFORMED');
+        expect(result.error).toContain('is not a valid NumericDate');
+      });
+
+      it('rejects an invalid iat when nbf is valid', async () => {
+        const now = Math.floor(Date.now() / 1000);
+        const jwt = await createJwt(
+          {
+            iss: human.did,
+            sub: agent.did,
+            iat: 1e308,
+            nbf: now,
+            exp: now + 3600,
+            vc: {
+              credentialSubject: {
+                id: agent.did,
+                scope: { columns: ['patients.name'], actions: ['read'] },
+              },
+            },
+          },
+          human.privateKey,
+        );
+
+        const result = await verifier.verify(jwt);
+        expect(result.valid).toBe(false);
+        expect(result.status).toBe('MALFORMED');
+        expect(result.error).toContain('iat is not a valid NumericDate');
       });
 
       it('rejects credential with invalid signature', async () => {
@@ -214,7 +317,10 @@ describe('VC Verifier', () => {
     let agentB: ReturnType<typeof generateDidKey>;
 
     beforeEach(() => {
-      verifier = new VcVerifier({ clockSkew: '30s', revocationStore: new InMemoryRevocationStore() });
+      verifier = new VcVerifier({
+        clockSkew: '30s',
+        revocationStore: new InMemoryRevocationStore(),
+      });
       issuer = generateDidKey();
       agentA = generateDidKey();
       agentB = generateDidKey();
@@ -451,7 +557,10 @@ describe('VC Verifier', () => {
       tenantAdmin = generateDidKey();
       newIdentity = generateDidKey();
 
-      verifier = new VcVerifier({ clockSkew: '30s', revocationStore: new InMemoryRevocationStore() });
+      verifier = new VcVerifier({
+        clockSkew: '30s',
+        revocationStore: new InMemoryRevocationStore(),
+      });
       verifier.registerKey(tenantAdmin.did, tenantAdmin.publicKey);
       verifier.registerKey(newIdentity.did, newIdentity.publicKey);
     });

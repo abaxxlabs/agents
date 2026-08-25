@@ -160,7 +160,7 @@ export class PostgresStorageBackend implements StorageBackend {
     return this._pool;
   }
 
-  /** Tests connectivity, applies available migrations, and starts revocation coherency. */
+  /** Tests connectivity, applies ordered SQL migrations when a migrations directory is available, and starts revocation coherency. */
   async initialize(): Promise<void> {
     await this._pool.query('SELECT 1');
 
