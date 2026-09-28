@@ -51,7 +51,7 @@ import { loopbackSkipReason, shouldRunLoopbackHttpTests } from './support/integr
 
 // ─── Shared server setup ──────────────────────────────────────────────────────
 
-const describeLoopback: typeof describe = shouldRunLoopbackHttpTests ? describe : describe.skip;
+const describeLoopback = shouldRunLoopbackHttpTests ? describe : describe.skip;
 
 if (!shouldRunLoopbackHttpTests) {
   describe('Loopback HTTP integration gate', () => {
@@ -411,10 +411,7 @@ describeLoopback('GenericOidcProvider + MockOidcServer integration', () => {
   afterAll(() => server.stop());
 
   it('buildAuthorizationUrl() discovers endpoints and returns PKCE URL', async () => {
-    const result = await provider.buildAuthorizationUrl({
-      redirectUri: 'http://localhost:9999/callback',
-      state: 'state-xyz',
-    });
+    const result = await provider.buildAuthorizationUrl();
     expect(result.url).toContain('/auth/authorize');
     expect(result.url).toContain('code_challenge');
     expect(result.url).toContain('S256');
@@ -518,7 +515,7 @@ describeLoopback('AbaxxOneOidcProvider.requestAgentCredential() timeout behavior
   // AbortSignal.timeout(5000) does not interrupt fetch reliably in Bun's full
   // test suite (passes in isolation; times out in the full run). Covered by
   // the Node/Vitest suite. Skip under Bun to keep the Bun suite green.
-  const itOnNode = typeof Bun !== 'undefined' ? it.skip : it;
+  const itOnNode = 'bun' in process.versions ? it.skip : it;
   itOnNode(
     'throws ParentCredentialRequestFailedError when the server hangs',
     async () => {

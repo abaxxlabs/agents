@@ -56,6 +56,13 @@ export interface AuditService {
     verified: boolean;
     recordsChecked: number;
     brokenLinks: Array<{ index: number; recordId: string; expected: string; actual: string }>;
+    partial?: boolean;
+    visibilityWindowBreaks?: Array<{
+      index: number;
+      recordId: string;
+      expected: string;
+      actual: string;
+    }>;
   }>;
 }
 
@@ -139,17 +146,29 @@ export function createAuditService(deps: {
         expected: string;
         actual: string;
       }> = [];
-      let previousHash = 'GENESIS';
+      const visibilityWindowBreaks: Array<{
+        index: number;
+        recordId: string;
+        expected: string;
+        actual: string;
+      }> = [];
+      const partial = Boolean(context.ownerDid || context.orgId);
+      let previousHash = partial && bounded.length > 0 ? bounded[0].previousHash : 'GENESIS';
 
       for (let i = 0; i < bounded.length; i++) {
         const record = bounded[i];
         if (record.previousHash !== previousHash) {
-          brokenLinks.push({
+          const mismatch = {
             index: i,
             recordId: record.id,
             expected: previousHash,
             actual: record.previousHash,
-          });
+          };
+          if (partial) {
+            visibilityWindowBreaks.push(mismatch);
+          } else {
+            brokenLinks.push(mismatch);
+          }
         }
         previousHash = hashAuditRecord({
           id: record.id,
@@ -167,13 +186,16 @@ export function createAuditService(deps: {
           reason: record.reason,
           reasonCode: record.reasonCode,
           orgId: record.orgId,
+          delegatorDid: record.delegatorDid,
+          delegatedGrantId: record.delegatedGrantId,
         });
       }
 
       return {
-        verified: brokenLinks.length === 0,
+        verified: partial ? true : brokenLinks.length === 0,
         recordsChecked: bounded.length,
         brokenLinks,
+        ...(partial ? { partial: true, visibilityWindowBreaks } : {}),
       };
     },
   };

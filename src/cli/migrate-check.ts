@@ -117,7 +117,7 @@ const MAX_WALK_DEPTH = 20;
 
 /**
  * env WRITE — `process.env.AGENTS_MASTER_KEY = ...`. Distinct from read
- * because writes are the demo/showcase control-channel pattern that the
+ * because writes are the runtime control-channel pattern that the
  * migration explicitly removes.
  */
 const ENV_WRITE_RE =
@@ -439,7 +439,7 @@ export function categorize(hits: Hit[]): Categorization {
       envWrites > 0
         ? [
             `Also detected ${envWrites} process.env.AGENTS_MASTER_KEY = ... write site(s) —`,
-            'this is the demo/showcase control-channel pattern. Replace each write',
+            'this is the runtime control-channel pattern. Replace each write',
             'with an explicit Buffer argument to AgentScope.create per § "Case #1".',
           ]
         : [];

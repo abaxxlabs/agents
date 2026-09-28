@@ -39,7 +39,7 @@ describe('SqliteSessionStore', () => {
 
   beforeEach(async () => {
     backend = await SqliteStorageBackend.create(
-      { type: 'sqlite', path: ':memory:' },
+      { type: 'sqlite', path: ':memory:', sessionMacKey: macKey },
       { sessionMacKey: macKey },
     );
     await backend.initialize();
@@ -129,9 +129,7 @@ describe('SqliteSessionStore', () => {
 
     const inner = (backend as unknown as { db: SqliteDb }).db;
     const oversized = JSON.stringify({ ...env(), padding: 'x'.repeat(MAX_ENVELOPE_BYTES + 1) });
-    inner
-      .prepare(`UPDATE sessions SET envelope = ? WHERE token = ?`)
-      .run(oversized, 'tok-big');
+    inner.prepare(`UPDATE sessions SET envelope = ? WHERE token = ?`).run(oversized, 'tok-big');
 
     await expect(backend.sessions.get('tok-big')).rejects.toThrow(EnvelopeTooLargeError);
   });

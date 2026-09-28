@@ -17,7 +17,7 @@ import type { RegisteredAgent, MigrationCredentialClaims } from '#types/index.js
  * OFFICIAL_MIGRATION_ISSUERS constant in migration-trust-anchor.ts (default
  * empty in OSS source). Tests use the public `addFromParentCredentialChain()`
  * method on a fresh `MigrationTrustAnchor` to whitelist this single test DID
- * — the same API a paid-tier consumer would use after verifying an AbaxxOne
+ * — the same API a configured consumer would use after verifying an AbaxxOne
  * parent credential. There is no test-only override path.
  */
 const TEST_MIGRATION_ISSUER = 'did:dht:test-migration-issuer';
@@ -31,7 +31,6 @@ function createTrustedAnchor(): MigrationTrustAnchor {
   anchor.addFromParentCredentialChain(TEST_MIGRATION_ISSUER);
   return anchor;
 }
-
 
 function createMigrationFixtures(
   options: {
@@ -59,14 +58,10 @@ function createMigrationFixtures(
 
     if (sql.includes('SELECT 1 FROM agent_did_aliases'))
       return { rows: aliasExists ? [{ '1': 1 }] : [] };
-    if (sql.includes('SELECT COUNT'))
-      return { rows: [{ cnt: String(agentCount) }] };
-    if (sql.includes('INSERT INTO agent_did_aliases'))
-      return { rowCount: 1 };
-    if (sql.includes('UPDATE agents'))
-      return { rowCount: agentCount };
-    if (sql.includes('UPDATE agent_context'))
-      return { rowCount: 5 };
+    if (sql.includes('SELECT COUNT')) return { rows: [{ cnt: String(agentCount) }] };
+    if (sql.includes('INSERT INTO agent_did_aliases')) return { rowCount: 1 };
+    if (sql.includes('UPDATE agents')) return { rowCount: agentCount };
+    if (sql.includes('UPDATE agent_context')) return { rowCount: 5 };
 
     return { rows: [], rowCount: 0 };
   });
@@ -127,7 +122,6 @@ function makeTestJwt(opts: { iss?: string; nonce?: string } = {}): string {
   return `${b64u(header)}.${b64u(payload)}.fake-signature-not-verified-in-tests`;
 }
 
-
 describe('MigrationExecutor', () => {
   let registry: DidAliasRegistry;
   let agents: Map<string, RegisteredAgent>;
@@ -149,7 +143,6 @@ describe('MigrationExecutor', () => {
       name: 'agent-2',
     } as RegisteredAgent);
   });
-
 
   it('returns alreadyMigrated when credential hash is in the alias registry', async () => {
     const { pool } = createMigrationFixtures();
@@ -184,7 +177,6 @@ describe('MigrationExecutor', () => {
     expect(pool.connect).not.toHaveBeenCalled();
   });
 
-
   it('rejects previousDid that is not did:key', async () => {
     const { pool } = createMigrationFixtures();
     const auditLogger = createMockAuditLogger();
@@ -217,7 +209,6 @@ describe('MigrationExecutor', () => {
     ).rejects.toThrow('must be a did:dht');
   });
 
-
   it('returns alreadyMigrated when credential is found in DB during transaction', async () => {
     const { pool } = createMigrationFixtures({ aliasExists: true });
     const auditLogger = createMockAuditLogger();
@@ -235,7 +226,6 @@ describe('MigrationExecutor', () => {
     expect(result.alreadyMigrated).toBe(true);
   });
 
-
   it('throws when previousDid has no agents registered', async () => {
     const { pool } = createMigrationFixtures({ agentCount: 0 });
     const auditLogger = createMockAuditLogger();
@@ -251,7 +241,6 @@ describe('MigrationExecutor', () => {
       'has no agents registered',
     );
   });
-
 
   it('throws PrecisionLossError when COUNT exceeds MAX_SAFE_INTEGER', async () => {
     const unsafeCount = (BigInt(Number.MAX_SAFE_INTEGER) + 1n).toString();
@@ -276,7 +265,6 @@ describe('MigrationExecutor', () => {
       'exceeds Number.MAX_SAFE_INTEGER',
     );
   });
-
 
   it('executes full migration: DB updates, alias, and in-memory map', async () => {
     const { pool, clientQueries } = createMigrationFixtures({ agentCount: 2 });
@@ -322,7 +310,6 @@ describe('MigrationExecutor', () => {
     );
   });
 
-
   it('uses custom grace period when configured', async () => {
     const { pool } = createMigrationFixtures();
     const auditLogger = createMockAuditLogger();
@@ -343,7 +330,6 @@ describe('MigrationExecutor', () => {
     expect(result.gracePeriodExpiresAt.getTime()).toBeGreaterThan(expectedMin);
     expect(result.gracePeriodExpiresAt.getTime()).toBeLessThan(expectedMax);
   });
-
 
   it('rolls back and throws on INSERT alias failure', async () => {
     const { pool, client } = createMigrationFixtures({ failOnStep: 'insert-alias' });
@@ -392,7 +378,6 @@ describe('MigrationExecutor', () => {
     }
   });
 
-
   it('succeeds even when audit logging fails', async () => {
     const { pool } = createMigrationFixtures();
     const auditLogger = createMockAuditLogger();
@@ -415,7 +400,6 @@ describe('MigrationExecutor', () => {
     expect(result.aliasCreated).toBe(true);
   });
 
-
   it('always releases the database client, even on error', async () => {
     const { pool, client } = createMigrationFixtures({ failOnStep: 'update-context' });
     const auditLogger = createMockAuditLogger();
@@ -432,7 +416,6 @@ describe('MigrationExecutor', () => {
     // The client must be released back to the pool
     expect(client.release).toHaveBeenCalled();
   });
-
 
   it('rolls back and leaves state unchanged on COMMIT failure', async () => {
     const { pool, client } = createMigrationFixtures({ failOnStep: 'commit' });
@@ -458,7 +441,6 @@ describe('MigrationExecutor', () => {
     }
   });
 
-
   it('leaves in-memory state unchanged on context UPDATE failure', async () => {
     const { pool } = createMigrationFixtures({ failOnStep: 'update-context' });
     const auditLogger = createMockAuditLogger();
@@ -482,7 +464,6 @@ describe('MigrationExecutor', () => {
     }
   });
 
-
   it('second concurrent execute for same credential returns alreadyMigrated', async () => {
     const { pool } = createMigrationFixtures();
     const auditLogger = createMockAuditLogger();
@@ -505,7 +486,6 @@ describe('MigrationExecutor', () => {
     expect(result2.alreadyMigrated).toBe(true);
     expect(result2.agentsMigrated).toBe(0);
   });
-
 
   it('second migration for same oldDid with different credential processes in DB', async () => {
     const { pool } = createMigrationFixtures();
@@ -537,7 +517,6 @@ describe('MigrationExecutor', () => {
     // The latest mapping wins
     expect(registry.didsMatch(oldDid, 'did:dht:AnotherNew')).toBe(true);
   });
-
 
   it('rejects claims with empty string previousDid', async () => {
     const { pool } = createMigrationFixtures();
@@ -658,7 +637,7 @@ describe('MigrationExecutor', () => {
     const auditLogger = createMockAuditLogger();
 
     // Construct an empty trust anchor (no baked issuers) and add a runtime
-    // entry the way a paid-tier consumer would after verifying a parent
+    // entry the way a configured consumer would after verifying a parent
     // credential. This is the only runtime path that establishes migration trust.
     const anchor = new MigrationTrustAnchor();
     anchor.addFromParentCredentialChain('did:dht:abaxxone-runtime-derived');

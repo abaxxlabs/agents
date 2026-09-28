@@ -46,6 +46,7 @@ function minimalEngineOpts() {
     loadLastRecord: vi.fn().mockResolvedValue(null),
     loadLastRecordLocked: vi.fn().mockResolvedValue(null),
     query: vi.fn().mockResolvedValue([]),
+    count: vi.fn().mockResolvedValue(0),
   };
   const pool = { query: vi.fn() } as unknown as Pool;
   const auditLogger = new AuditLogger({ auditStore: noopStore, enabled: false });

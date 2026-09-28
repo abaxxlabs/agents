@@ -215,7 +215,7 @@ export class AgentScope implements AgentScopeInstance {
   }
 
   /**
-   * Authenticate a human via OIDC (AbaxxOne or generic provider), or mock for demo/testing.
+   * Authenticate a human via OIDC (AbaxxOne or generic provider), or mock for demo and testing.
    *
    * Three paths:
    *   1. mockHumanDid — dev/test only. Creates a session with a synthetic DID.
@@ -372,7 +372,7 @@ export class AgentScope implements AgentScopeInstance {
     return this.toJSON();
   }
 
-  // ─── Accessors for demo/testing ──────────────────────────────
+  // ─── Accessors for demo and testing ──────────────────────────
 
   get verifierInstance(): VcVerifier {
     return this.identity.verifierInstance;

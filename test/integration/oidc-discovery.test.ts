@@ -40,7 +40,7 @@ async function requireAvailable(): Promise<void> {
   );
 }
 
-const describeAbaxxOneOidc: typeof describe = shouldRunAbaxxOneOidcTests ? describe : describe.skip;
+const describeAbaxxOneOidc = shouldRunAbaxxOneOidcTests ? describe : describe.skip;
 
 if (!shouldRunAbaxxOneOidcTests) {
   describe('Abaxx One OIDC integration gate', () => {

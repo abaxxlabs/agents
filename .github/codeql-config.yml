@@ -1,0 +1,6 @@
+name: agents CodeQL config
+
+paths-ignore:
+  - 'demo/**'
+  - '**/node_modules/**'
+  - '**/dist/**'

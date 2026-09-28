@@ -156,4 +156,9 @@ export const SQLITE_MIGRATIONS: string[] = [
   `ALTER TABLE agent_audit ADD COLUMN status TEXT DEFAULT 'success'`,
   `ALTER TABLE agent_audit ADD COLUMN reason TEXT`,
   `ALTER TABLE agent_audit ADD COLUMN reason_code TEXT`,
+  // Delegation provenance: nullable — only set for queries on a delegated credential.
+  // delegator_did is the credential issuer (the delegating agent); owner_did stays the root human.
+  `ALTER TABLE agent_audit ADD COLUMN delegator_did TEXT`,
+  `ALTER TABLE agent_audit ADD COLUMN delegated_grant_id TEXT`,
+  `CREATE INDEX IF NOT EXISTS idx_agent_audit_delegator_did ON agent_audit(delegator_did)`,
 ];

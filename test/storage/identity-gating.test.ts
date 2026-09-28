@@ -6,7 +6,11 @@ import { deterministicSessionMacKey } from '../support/deterministic-session-mac
 
 async function createBackend(): Promise<StorageBackend> {
   return SqliteStorageBackend.create(
-    { type: 'sqlite', path: ':memory:' },
+    {
+      type: 'sqlite',
+      path: ':memory:',
+      sessionMacKey: deterministicSessionMacKey('identity-gating'),
+    },
     { sessionMacKey: deterministicSessionMacKey('identity-gating') },
   );
 }

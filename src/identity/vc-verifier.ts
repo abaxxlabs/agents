@@ -35,6 +35,7 @@ import { resolveDidKeyFallback } from '#did/resolve.js';
 import { numericDateToMs } from './numeric-date.js';
 import { ReplayGuard, verifyPresentation } from './vp-verification.js';
 import { checkDelegationChainRevocation, checkDelegationDepthCeiling } from './delegation-chain.js';
+import { extractDelegationChain } from '#auth/delegation-policy.js';
 
 export interface RevocationTelemetryEvent {
   source: 'local_store' | 'credential_status';
@@ -410,9 +411,9 @@ export class VcVerifier {
       : typeof rawVcType === 'string'
         ? [rawVcType]
         : undefined;
-    const delegationChain: string[] | undefined = Array.isArray(payload.delegationChain)
-      ? payload.delegationChain
-      : undefined;
+    const delegationChain: string[] | undefined = extractDelegationChain(payload) as
+      | string[]
+      | undefined;
     if (delegationChain !== undefined && delegationChain.length === 0) {
       return {
         valid: false,
@@ -440,7 +441,7 @@ export class VcVerifier {
       };
     }
 
-    const chainResult = await checkDelegationChainRevocation(payload.delegationChain, {
+    const chainResult = await checkDelegationChainRevocation(delegationChain, {
       revocationStore: this.revocationStore,
       knownKeys: this.knownKeys,
       sdk: this.sdk,
@@ -528,6 +529,7 @@ export class VcVerifier {
     const credential: DecodedCredential = {
       issuer: payload.iss,
       subject: payload.sub,
+      jti: payload.jti,
       issuedAt: new Date(iatMs ?? 0),
       expiresAt: new Date(expMs ?? 0),
       scope,

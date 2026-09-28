@@ -25,18 +25,6 @@ export const RELEASE_GATE_COMMAND_STEPS = [
     command: 'bun',
     args: ['install', '--frozen-lockfile'],
   },
-  {
-    label: 'Install server dependencies',
-    command: 'npm',
-    args: ['ci', '--no-audit', '--no-fund'],
-    cwd: 'packages/server',
-  },
-  {
-    label: 'Type-check server',
-    command: 'npx',
-    args: ['tsc', '-p', 'tsconfig.typecheck.json', '--noEmit'],
-    cwd: 'packages/server',
-  },
   { label: 'Type-check source', command: 'npm', args: ['run', 'typecheck'] },
   { label: 'Check public API snapshot', command: 'npm', args: ['run', 'check:public-api'] },
   {

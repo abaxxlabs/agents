@@ -14,5 +14,5 @@
 -- The hash chain is not affected — hashAuditRecord() checks the version
 -- field to determine which fields to include. V3 records include orgId
 -- in the hash; V1/V2 records do not.
-ALTER TABLE agent_audit ADD COLUMN org_id TEXT;
-CREATE INDEX idx_audit_org_id ON agent_audit(org_id);
+ALTER TABLE agent_audit ADD COLUMN IF NOT EXISTS org_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_audit_org_id ON agent_audit(org_id);

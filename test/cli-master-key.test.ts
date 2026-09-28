@@ -3,7 +3,6 @@ import { closeSync, mkdtempSync, openSync, rmSync, writeFileSync } from 'node:fs
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it, expect, vi } from 'vitest';
-import { buildServeChildEnv } from '#cli/serve-env.js';
 import {
   argvContainsDeprecatedMasterKeyFlag,
   MAX_STDIN_MASTER_KEY_BYTES,
@@ -121,22 +120,5 @@ describe('warnIfMasterKeyEnvWasPresentAtProcessStart', () => {
     } finally {
       warn.mockRestore();
     }
-  });
-});
-
-describe('buildServeChildEnv', () => {
-  it('passes an inherited AGENTS_MASTER_KEY through to the server process', () => {
-    const env = buildServeChildEnv(
-      { db: 'postgresql://localhost/agents', port: '3100', columns: 'patients.ssn' },
-      {
-        AGENTS_MASTER_KEY: 'a'.repeat(64),
-        DATABASE_URL: 'postgresql://localhost/old',
-      },
-    );
-
-    expect(env.AGENTS_MASTER_KEY).toBe('a'.repeat(64));
-    expect(env.DATABASE_URL).toBe('postgresql://localhost/agents');
-    expect(env.PORT).toBe('3100');
-    expect(env.ENCRYPTED_COLUMNS).toBe('patients.ssn');
   });
 });

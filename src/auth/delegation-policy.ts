@@ -68,13 +68,83 @@ export function validateChain(chainLength: number, maxDepth: number): void {
  */
 export const DEFAULT_MAX_DELEGATION_DEPTH = 2;
 
+/** `type` value identifying the delegation ceiling inside `vc.termsOfUse`. */
+export const DELEGATION_POLICY_TYPE = 'DelegationPolicy';
+
+/** `type` value identifying the ancestor chain inside `vc.evidence`. */
+export const DELEGATION_CHAIN_TYPE = 'DelegationChain';
+
 /**
- * Read top-level maxDepth from a JWT payload; undefined if absent or malformed.
+ * Credential envelope the delegation readers understand.
+ *
+ * The delegation ceiling and the ancestor chain live inside the `vc` object,
+ * where they are part of the credential rather than of the token carrying it.
+ * Both are also accepted at the JWT top level, which is where they used to sit,
+ * so credentials issued before the move keep verifying.
+ * @internal Not part of the public API.
+ */
+export interface DelegationClaimSource {
+  maxDepth?: unknown;
+  delegationChain?: unknown;
+  vc?: {
+    termsOfUse?: unknown;
+    evidence?: unknown;
+    [key: string]: unknown;
+  };
+}
+
+/** True when a VC sub-object's `type` (string or array) contains `expected`. */
+function hasType(entry: unknown, expected: string): entry is Record<string, unknown> {
+  if (typeof entry !== 'object' || entry === null) return false;
+  const t = (entry as { type?: unknown }).type;
+  return Array.isArray(t) ? t.includes(expected) : t === expected;
+}
+
+/** First entry of a VC property (array or single object) carrying `expected` in its `type`. */
+function findTyped(property: unknown, expected: string): Record<string, unknown> | undefined {
+  const entries = Array.isArray(property) ? property : [property];
+  for (const entry of entries) {
+    if (hasType(entry, expected)) return entry;
+  }
+  return undefined;
+}
+
+function asPositiveInt(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : undefined;
+}
+
+/**
+ * Read the delegation ceiling from a JWT payload; undefined if absent or malformed.
+ *
+ * Reads `vc.termsOfUse` first and falls back to the legacy top-level `maxDepth`
+ * claim, so credentials issued before the claim moved keep verifying. The
+ * fallback is transitional and is removed once no unexpired credential carries
+ * the legacy shape.
+ *
  * @internal Not part of the public API. Consumed by the credential-issuance orchestrator.
  */
-export function extractMaxDepth(payload: { maxDepth?: unknown }): number | undefined {
-  const v = payload.maxDepth;
-  return typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : undefined;
+export function extractMaxDepth(payload: DelegationClaimSource): number | undefined {
+  const terms = findTyped(payload.vc?.termsOfUse, DELEGATION_POLICY_TYPE);
+  const fromTerms = asPositiveInt(terms?.['maxDepth']);
+  if (fromTerms !== undefined) return fromTerms;
+  return asPositiveInt(payload.maxDepth);
+}
+
+/**
+ * Read the ancestor chain from a JWT payload. Returns the array as found —
+ * including an empty one, which callers treat as malformed — or undefined when
+ * the credential carries no chain at all.
+ *
+ * Reads `vc.evidence` first and falls back to the legacy top-level
+ * `delegationChain` claim, on the same transitional basis as `extractMaxDepth`.
+ *
+ * @internal Not part of the public API. Consumed by the credential-issuance orchestrator.
+ */
+export function extractDelegationChain(payload: DelegationClaimSource): unknown[] | undefined {
+  const evidence = findTyped(payload.vc?.evidence, DELEGATION_CHAIN_TYPE);
+  const credentials = evidence?.['credentials'];
+  if (Array.isArray(credentials)) return credentials;
+  return Array.isArray(payload.delegationChain) ? payload.delegationChain : undefined;
 }
 
 /**
@@ -82,8 +152,8 @@ export function extractMaxDepth(payload: { maxDepth?: unknown }): number | undef
  * @internal Not part of the public API. Consumed by the credential-issuance orchestrator.
  */
 export function resolveInheritedMaxDepth(
-  sourcePayload: { maxDepth?: unknown },
-  chainPayloads: ReadonlyArray<{ maxDepth?: unknown }>,
+  sourcePayload: DelegationClaimSource,
+  chainPayloads: ReadonlyArray<DelegationClaimSource>,
 ): number {
   const candidates = [sourcePayload, ...chainPayloads].map(
     (p) => extractMaxDepth(p) ?? DEFAULT_MAX_DELEGATION_DEPTH,

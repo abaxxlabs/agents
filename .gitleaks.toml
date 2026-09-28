@@ -1,7 +1,5 @@
-# Gitleaks configuration — allowlists for known false positives.
-# Demo fixtures, test fixtures, and vendor bundles contain sample
-# JWTs, DIDs, and encoded data that trigger generic secret rules.
-# None of these paths contain active credentials.
+# Gitleaks exclusions for known false-positive fixtures and vendored artifacts.
+# Excluded content must never contain active credentials.
 
 [allowlist]
   description = "Test and demo fixtures"

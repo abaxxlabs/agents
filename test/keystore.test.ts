@@ -216,7 +216,7 @@ describe('JsonFileBackend', () => {
 
 // ─── MacOsKeychainBackend ────────────────────────────────────────────────────
 
-const describeKeychain: typeof describe = shouldRunMacOsKeychainTests ? describe : describe.skip;
+const describeKeychain = shouldRunMacOsKeychainTests ? describe : describe.skip;
 
 if (!shouldRunMacOsKeychainTests) {
   describe('MacOsKeychainBackend integration gate', () => {

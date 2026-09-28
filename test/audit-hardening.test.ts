@@ -28,7 +28,11 @@ describe('concurrent append — SQLite backend', () => {
 
   beforeEach(async () => {
     backend = await SqliteStorageBackend.create(
-      { type: 'sqlite', path: ':memory:' },
+      {
+        type: 'sqlite',
+        path: ':memory:',
+        sessionMacKey: deterministicSessionMacKey('audit-hardening'),
+      },
       { sessionMacKey: deterministicSessionMacKey('audit-hardening') },
     );
     await backend.initialize();
@@ -77,10 +81,7 @@ describe('concurrent append — SQLite backend', () => {
     const loggerA = new AuditLogger({ auditStore: backend.audit, enabled: true });
     const loggerB = new AuditLogger({ auditStore: backend.audit, enabled: true });
 
-    await Promise.all([
-      loggerA.log(entry, signer),
-      loggerB.log(entry, signer),
-    ]);
+    await Promise.all([loggerA.log(entry, signer), loggerB.log(entry, signer)]);
 
     const all = await backend.audit.query();
     expect(all).toHaveLength(2);
@@ -152,16 +153,18 @@ describe('concurrent append — Postgres-style mock store', () => {
 
     return {
       append: vi.fn(delayedWriter),
-      appendWithChainLock: vi.fn(async (
-        buildRecord: (lastRecord: AuditRecord | null) => AuditRecord | Promise<AuditRecord>,
-      ) => {
-        return withAdvisoryLock(async () => {
-          const lastRecord = records.length === 0 ? null : records[records.length - 1];
-          const record = await buildRecord(lastRecord);
-          await delayedWriter(record);
-          return record;
-        });
-      }),
+      appendWithChainLock: vi.fn(
+        async (
+          buildRecord: (lastRecord: AuditRecord | null) => AuditRecord | Promise<AuditRecord>,
+        ) => {
+          return withAdvisoryLock(async () => {
+            const lastRecord = records.length === 0 ? null : records[records.length - 1];
+            const record = await buildRecord(lastRecord);
+            await delayedWriter(record);
+            return record;
+          });
+        },
+      ),
       loadLastRecord: vi.fn(async () =>
         records.length === 0 ? null : records[records.length - 1],
       ),
@@ -200,10 +203,7 @@ describe('concurrent append — Postgres-style mock store', () => {
     const loggerA = new AuditLogger({ auditStore: store, enabled: true });
     const loggerB = new AuditLogger({ auditStore: store, enabled: true });
 
-    await Promise.all([
-      loggerA.log(entry, signer),
-      loggerB.log(entry, signer),
-    ]);
+    await Promise.all([loggerA.log(entry, signer), loggerB.log(entry, signer)]);
 
     expect(store._records).toHaveLength(2);
     expect(store.appendWithChainLock).toHaveBeenCalledTimes(2);

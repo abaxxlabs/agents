@@ -210,7 +210,7 @@ describe('Auth', () => {
         revocationStore: new InMemoryRevocationStore(),
       });
 
-      const mockSdk = createFailingSdk() as unknown as Parameters<typeof createMockSession>[2];
+      const mockSdk = createFailingSdk();
 
       const session = createMockSession(verifier, 'Test User', mockSdk);
       const agent = generateDidKey();
@@ -237,9 +237,10 @@ describe('Auth', () => {
 
       const mockSignedJwt = 'eyJhbGciOiJFZERTQSJ9.eyJpc3MiOiJkaWQ6a2V5Ono2TWtGYWtlIn0.fakesig';
 
-      const mockSdk = createMockSdk({
-        vc: { signCredential: vi.fn().mockResolvedValue(mockSignedJwt) },
-      }) as unknown as Parameters<typeof createMockSession>[2];
+      const mockSdk = createMockSdk();
+      const signCredential = vi
+        .spyOn(mockSdk.vc, 'signCredential')
+        .mockResolvedValue(mockSignedJwt);
 
       const session = createMockSession(verifier, 'Test User', mockSdk);
       const agent = generateDidKey();
@@ -254,10 +255,9 @@ describe('Auth', () => {
       // Should use SDK path
       expect(jwt).toBe(mockSignedJwt);
       expect(mockSdk.vc.createCredential).toHaveBeenCalled();
-      expect(mockSdk.vc.signCredential).toHaveBeenCalled();
+      expect(signCredential).toHaveBeenCalled();
     });
   });
-
 });
 
 describe('issueCredentialFromParent — optional ceiling enforcement', () => {

@@ -153,8 +153,18 @@ describe('loadColumnKeys', () => {
     const mockPool = createMockPool({
       queryImpl: () => ({
         rows: [
-          { table_name: 'patients', column_name: 'dob', encrypted_key: goodWrapped, algorithm: 'aes-256-gcm' },
-          { table_name: 'patients', column_name: 'ssn', encrypted_key: badWrapped, algorithm: 'aes-256-gcm' },
+          {
+            table_name: 'patients',
+            column_name: 'dob',
+            encrypted_key: goodWrapped,
+            algorithm: 'aes-256-gcm',
+          },
+          {
+            table_name: 'patients',
+            column_name: 'ssn',
+            encrypted_key: badWrapped,
+            algorithm: 'aes-256-gcm',
+          },
         ],
       }),
     });
@@ -162,6 +172,7 @@ describe('loadColumnKeys', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const result = await loadColumnKeys(mockPool, correctMaster);
+    if ('schemaMissing' in result) throw new Error('Expected loaded column keys');
 
     expect(result.has('patients.dob')).toBe(true);
     expect(result.get('patients.dob')!.equals(goodColumnKey)).toBe(true);
@@ -179,7 +190,12 @@ describe('loadColumnKeys', () => {
     const mockPool = createMockPool({
       queryImpl: () => ({
         rows: [
-          { table_name: 'patients', column_name: 'dob', encrypted_key: wrappedWithWrongMaster, algorithm: 'aes-256-gcm' },
+          {
+            table_name: 'patients',
+            column_name: 'dob',
+            encrypted_key: wrappedWithWrongMaster,
+            algorithm: 'aes-256-gcm',
+          },
         ],
       }),
     });
@@ -198,6 +214,7 @@ describe('loadColumnKeys', () => {
     const mockPool = createMockPool();
 
     const result = await loadColumnKeys(mockPool, masterKey);
+    if ('schemaMissing' in result) throw new Error('Expected loaded column keys');
     expect(result.size).toBe(0);
   });
 
@@ -209,13 +226,24 @@ describe('loadColumnKeys', () => {
     const mockPool = createMockPool({
       queryImpl: () => ({
         rows: [
-          { table_name: 'orders', column_name: 'amount', encrypted_key: wrapColumnKey(key1, masterKey), algorithm: 'aes-256-gcm' },
-          { table_name: 'orders', column_name: 'counterparty', encrypted_key: wrapColumnKey(key2, masterKey), algorithm: 'aes-256-gcm' },
+          {
+            table_name: 'orders',
+            column_name: 'amount',
+            encrypted_key: wrapColumnKey(key1, masterKey),
+            algorithm: 'aes-256-gcm',
+          },
+          {
+            table_name: 'orders',
+            column_name: 'counterparty',
+            encrypted_key: wrapColumnKey(key2, masterKey),
+            algorithm: 'aes-256-gcm',
+          },
         ],
       }),
     });
 
     const result = await loadColumnKeys(mockPool, masterKey);
+    if ('schemaMissing' in result) throw new Error('Expected loaded column keys');
     expect(result.size).toBe(2);
     expect(result.get('orders.amount')!.equals(key1)).toBe(true);
     expect(result.get('orders.counterparty')!.equals(key2)).toBe(true);

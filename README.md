@@ -1,4 +1,5 @@
-<!-- TODO: hero banner — full-width visual, dark background, Agents++ wordmark + tagline -->
+> [!NOTE]
+> **Public mirror:** This repository is maintained through a private development process. Reviewed updates are published here by the maintainers. Public issues and pull requests are welcome.
 
 <h1 align="center">Agents++</h1>
 <p align="center"><strong>Identity, authorization, and proof for AI agents.</strong></p>
@@ -20,7 +21,7 @@
   <a href="#install">Install</a> &bull;
   <a href="#quick-start">Quick start</a> &bull;
   <a href="#features">Features</a> &bull;
-  <a href="#mcp--rest">MCP + REST</a> &bull;
+  <a href="#mcp">MCP</a> &bull;
   <a href="#security-model">Security</a> &bull;
   <a href="#free-tier-vs-abaxxone">Free vs AbaxxOne</a>
 </p>
@@ -91,41 +92,51 @@ npm install @abaxxlabs/agents@0.11.4 pg@8.20.0 libpg-query@17.7.3
 
 ## Quick start
 
+The example assumes that the Agents++ PostgreSQL migrations and the `orders` table are already prepared, `orders.price` is registered for encryption, and `NODE_ENV=development` is set for the mock identity path. See the [complete SDK-direct quick start](docs/guides/quick-start.md) for database preparation.
+
 ```typescript
 import { AgentScope } from '@abaxxlabs/agents/sql';
-import { resolveMasterKeyFromEnv } from '@abaxxlabs/agents/bootstrap';
+import { asMasterKey, createPresentation } from '@abaxxlabs/agents';
 
-// 1. Set up the scope engine
+const masterKey = asMasterKey(Buffer.from(process.env.AGENTS_MASTER_KEY!, 'hex'));
 const scope = await AgentScope.create(
   {
-    database: { connectionString: process.env.DATABASE_URL },
-    encryption: { columns: ['orders.quantity', 'orders.price'] },
+    database: { connectionString: process.env.DATABASE_URL! },
+    encryption: { columns: ['orders.price'] },
     audit: { enabled: true },
   },
-  { masterKey: resolveMasterKeyFromEnv() },
+  { masterKey },
 );
 
-// 2. Authenticate and create an agent
-const session = await scope.authenticate({ mockHumanDid: 'alice' });
-const agent = await scope.createAgent({ name: 'trading-agent', ownerDid: session.humanDid });
+try {
+  const session = await scope.authenticate({ mockHumanDid: 'alice' });
+  const agent = await scope.createAgent({ name: 'trading-agent', ownerDid: session.humanDid });
 
-// 3. Issue a scoped credential
-const credential = await session.issueCredential({
-  agent: agent.did,
-  columns: ['orders.instrument', 'orders.quantity'],
-  actions: ['read'],
-  expiresIn: '4h',
-});
+  const credential = await session.issueCredential({
+    agent: agent.did,
+    columns: ['orders.instrument', 'orders.quantity', 'orders.price'],
+    actions: ['read'],
+    expiresIn: '4h',
+  });
 
-// 4. Query — only authorized columns are decrypted
-const result = await scope.query({
-  agent: agent.did,
-  credential,
-  table: 'orders',
-  sql: 'SELECT instrument, quantity FROM orders',
-});
-// Requesting 'price' → ScopeViolationError before the query reaches the database
+  const presentation = await createPresentation(credential, agent.did, agent.signer, {
+    audience: scope.verifierDid,
+  });
+
+  const result = await scope.query({
+    agent: agent.did,
+    credential: presentation,
+    table: 'orders',
+    sql: 'SELECT instrument, quantity, price FROM orders',
+    requirePresentation: true,
+  });
+  console.log(result.rows);
+} finally {
+  await scope.close();
+}
 ```
+
+The SDK-direct flow signs a fresh, audience-bound VP in-process before querying. Remote MCP query paths require that VP and reject a raw credential, so users construct the presentation before calling MCP.
 
 ## Features
 
@@ -134,7 +145,7 @@ const result = await scope.query({
 - **Defense-in-depth encryption** -- AES-256-GCM per column, BYOK master key. Atomic key rotation and master-key rewrap without touching row data.
 - **Agent-to-agent delegation** -- Supervisors delegate subsets of their scope to workers. Columns narrow, TTL shrinks, actions reduce. The narrowing is enforced at issuance; at query time the ScopeEngine verifies signatures, revocation, depth ceiling, and issuer-subject-owner bindings.
 - **Tamper-evident audit** -- when audit is enabled, successful query records are Ed25519-signed and SHA-256 hash-chained. PostgreSQL triggers reject ordinary UPDATE/DELETE/TRUNCATE operations, but database owners and superusers can bypass or remove them.
-- **MCP + REST surfaces** -- Same enforcement as a library, an MCP server, or a REST API. Master key and DB credentials never cross the wire.
+- **Library + MCP surfaces** -- The same enforcement is available through the library and MCP server. Master key and DB credentials never cross the wire.
 - **Delegation chain revocation** -- Revoke a parent credential and every downstream worker credential fails verification immediately.
 - **OIDC authentication** -- Google, Microsoft, Keycloak, and AbaxxOne out of the box. Mock auth for development.
 
@@ -149,7 +160,7 @@ const result = await scope.query({
 | `@abaxxlabs/agents/sqlite` | SQLite backend (bun:sqlite / better-sqlite3) |
 | `@abaxxlabs/agents/bootstrap` | `resolveMasterKeyFromEnv()` helper |
 
-## MCP + REST
+## MCP
 
 AI agents connect via the [Model Context Protocol](https://modelcontextprotocol.io). The agent calls tools over stdio or HTTPS; the master key and database credentials stay in the MCP server process.
 
@@ -177,15 +188,9 @@ agents mcp --db postgresql://localhost/mydb --transport http --port 8443 \
 }
 ```
 
-**REST** for web apps and cross-language clients:
+The `challenge` MCP tool is for Verifiable-Presentation freshness and replay protection, not transport authentication. It does not gate `/sse` or `/messages`; route access is controlled by the bearer guard described above.
 
-```bash
-agents serve --db postgresql://localhost/mydb --port 3100
-```
-
-The `challenge` MCP tool and `POST /challenge` endpoint are for Verifiable-Presentation freshness and replay protection, not transport authentication. They do not gate `/sse` or `/messages`; route access is controlled by the bearer guard described above.
-
-Enforcement is identical across all three modes. The deployment shape determines where the trust boundary sits, not how enforcement works.
+Enforcement is identical across both MCP transports. The deployment shape determines where the trust boundary sits, not how enforcement works.
 
 ## Security model
 
@@ -218,7 +223,7 @@ The transition is additive. Existing code, credentials, and query patterns stay 
 Requires Node.js 20.3+ and PostgreSQL 16 for the full test suite (Postgres-gated tests skip gracefully without a live database).
 
 ```bash
-npm install
+bun install
 npm test          # vitest
 npm run build     # TypeScript → dist/
 npm run typecheck

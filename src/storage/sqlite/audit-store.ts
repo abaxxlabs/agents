@@ -34,10 +34,12 @@ interface AuditRow {
   previous_hash: string;
   signature: string;
   org_id?: string | null;
-  version?: 1 | 2 | 3;
+  version?: 1 | 2 | 3 | 4;
   status?: AuditRecord['status'];
   reason?: AuditRecord['reason'];
   reason_code?: AuditRecord['reasonCode'];
+  delegator_did?: string | null;
+  delegated_grant_id?: string | null;
 }
 
 export class SqliteAuditStore implements AuditStore {
@@ -89,8 +91,9 @@ export class SqliteAuditStore implements AuditStore {
       `INSERT INTO agent_audit
        (id, timestamp, agent_did, owner_did, credential_id, query_hash,
         columns_accessed, row_count, duration_ms, previous_hash, signature, org_id,
-        version, status, reason, reason_code)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        version, status, reason, reason_code,
+        delegator_did, delegated_grant_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     stmt.run(
       record.id,
@@ -109,6 +112,8 @@ export class SqliteAuditStore implements AuditStore {
       record.status ?? 'success',
       record.reason ?? null,
       record.reasonCode ?? null,
+      record.delegatorDid ?? null,
+      record.delegatedGrantId ?? null,
     );
   }
 
@@ -117,7 +122,8 @@ export class SqliteAuditStore implements AuditStore {
       .prepare(
         `SELECT id, timestamp, agent_did, owner_did, credential_id, query_hash,
               columns_accessed, row_count, duration_ms, previous_hash, signature,
-              org_id, version, status, reason, reason_code
+              org_id, version, status, reason, reason_code,
+              delegator_did, delegated_grant_id
        FROM agent_audit ORDER BY timestamp DESC LIMIT 1`,
       )
       .get() as AuditRow | undefined;
@@ -166,6 +172,8 @@ export class SqliteAuditStore implements AuditStore {
       reason: row.reason,
       reasonCode: row.reason_code,
       orgId: row.org_id ?? undefined,
+      delegatorDid: row.delegator_did ?? undefined,
+      delegatedGrantId: row.delegated_grant_id ?? undefined,
     };
   }
 
@@ -224,11 +232,13 @@ export class SqliteAuditStore implements AuditStore {
       durationMs: row.duration_ms,
       previousHash: row.previous_hash,
       signature: row.signature,
-      version: row.version ?? (1 as 1 | 2 | 3),
+      version: row.version ?? (1 as 1 | 2 | 3 | 4),
       status: row.status,
       reason: row.reason,
       reasonCode: row.reason_code,
       orgId: row.org_id ?? undefined,
+      delegatorDid: row.delegator_did ?? undefined,
+      delegatedGrantId: row.delegated_grant_id ?? undefined,
     }));
   }
 

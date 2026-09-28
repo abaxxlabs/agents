@@ -13,7 +13,11 @@ describe('SQLite audit append-only enforcement', () => {
 
   beforeEach(async () => {
     backend = await SqliteStorageBackend.create(
-      { type: 'sqlite', path: ':memory:' },
+      {
+        type: 'sqlite',
+        path: ':memory:',
+        sessionMacKey: deterministicSessionMacKey('append-only'),
+      },
       { sessionMacKey: deterministicSessionMacKey('append-only') },
     );
     await backend.initialize();

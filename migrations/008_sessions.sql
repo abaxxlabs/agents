@@ -1,9 +1,9 @@
 -- Migration 008: sessions
 --
--- (Session 5, v0.9.8.0) — makes server session state durable across
+-- Makes server session state durable across
 -- process restart and coherent across instances. Before this release, sessions
 -- lived in a process-local Map<token, {session, createdAt}> in
---index.ts and disappeared on restart / were invisible to
+-- packages/server/src/index.ts and disappeared on restart / were invisible to
 -- peer instances behind a load balancer.
 --
 -- What is stored: a re-establishment envelope (see ISessionStore +
@@ -43,8 +43,7 @@
 -- < NOW(). Recommended cadence (NF-5): hourly for >1k DAU, daily otherwise.
 -- Library does NOT run a background loop; consumer schedules.
 --
--- Rollback: see session-5-release/rollback-008.md.
---   Emergency: DROP TABLE sessions (leaf table, no dependents). All active
+-- Rollback: DROP TABLE sessions (leaf table, no dependents). All active
 --   sessions invalidated; users re-authenticate. Loss of in-flight sessions
 --   is acceptable because session TTL is 4h — no durable business data is
 --   lost.
@@ -53,8 +52,6 @@
 -- GDPR Article 4(1). Active retention = expires_at (default 4h). Post-expiry
 -- grace = prune cadence (default hourly). Aggregate ceiling ~5h.
 -- deleteByHumanDid() is the GDPR Article 17 hook.
--- See session-5-release/data-retention.md.
-
 CREATE TABLE IF NOT EXISTS sessions (
   -- Opaque session token. Caller-generated; typically randomUUID().
   -- NOT used in any query outside token lookup — treat as a secret.

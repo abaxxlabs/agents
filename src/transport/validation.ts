@@ -28,6 +28,7 @@ export type RequestSchema<T> = z.ZodType<T>;
 export const SIGN_PAYLOAD_MAX_BYTES = 64 * 1024;
 export const SQL_MAX_CHARS = 64 * 1024;
 export const JWT_MAX_CHARS = 100 * 1024;
+export const PRESENT_MAX_LIFETIME_MS = 5 * 60 * 1000;
 
 const principalString = z.string().min(1).max(2048);
 const shortString = z.string().min(1).max(512);
@@ -141,12 +142,37 @@ export const queryBodyShape = {
 };
 export const queryBodySchema = strictObject(queryBodyShape);
 
+const presentLifetimeDurationString = z
+  .string()
+  .min(1)
+  .max(32)
+  .superRefine((val, ctx) => {
+    try {
+      const ms = parseDuration(val);
+      if (ms <= 0) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Duration must be positive' });
+        return;
+      }
+      if (ms > PRESENT_MAX_LIFETIME_MS) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Duration must be <= ${Math.floor(PRESENT_MAX_LIFETIME_MS / 1000)}s`,
+        });
+      }
+    } catch {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Invalid duration format. Expected: "4h", "1d", "30m", etc.',
+      });
+    }
+  });
+
 export const presentBodyShape = {
   agent: principalString,
   credential: jwtString,
   audience: z.union([principalString, z.array(principalString).min(1).max(10)]).optional(),
   nonce: shortString.optional(),
-  lifetime: expiresInDurationString.optional(),
+  lifetime: presentLifetimeDurationString.optional(),
 };
 export const presentBodySchema = strictObject(presentBodyShape);
 

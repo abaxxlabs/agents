@@ -74,6 +74,12 @@ export interface JwtPayload {
   iat?: number;
   nbf?: number;
   exp?: number;
+  /**
+   * @deprecated Legacy location. The delegation ceiling now lives in
+   * `vc.termsOfUse`, inside the credential rather than beside it. This claim is
+   * still read so credentials issued before the move keep verifying, and is
+   * removed once none remain unexpired.
+   */
   maxDepth?: number;
   vc?: {
     '@context'?: string[];
@@ -91,6 +97,11 @@ export interface JwtPayload {
       statusListIndex?: string;
       statusListCredential?: string;
     };
+    /** Issuer-imposed constraints on use; carries the delegation ceiling. */
+    termsOfUse?: unknown;
+    /** Provenance; carries the delegation chain of ancestor credentials. */
+    evidence?: unknown;
+    [key: string]: unknown;
   };
   [key: string]: unknown;
 }
