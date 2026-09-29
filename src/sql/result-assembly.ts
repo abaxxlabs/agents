@@ -24,7 +24,12 @@ export interface ResultAssemblerOptions {
 
 export interface ResultAssemblyInput {
   agent: string;
+  /** Root principal (the registered owner) of the querying agent — the audit ownerDid. */
   ownerDid: string;
+  /** Credential issuer — used for ScopedResult metadata.owner. */
+  metadataOwner: string;
+  delegatorDid?: string;
+  delegatedGrantId?: string;
   credentialJwt: string;
   sql: string;
   columnsAccessed: string[];
@@ -68,6 +73,8 @@ export class ResultAssembler {
         rowCount: input.rowCount,
         durationMs: input.durationMs,
         orgId: input.orgId,
+        delegatorDid: input.delegatorDid,
+        delegatedGrantId: input.delegatedGrantId,
       },
       auditAgent.signer,
     );
@@ -76,7 +83,7 @@ export class ResultAssembler {
       rows: input.decryptedRows,
       metadata: {
         agent: input.agent,
-        owner: input.ownerDid,
+        owner: input.metadataOwner,
         columnsDecrypted: input.columnsDecrypted,
         columnsEncrypted: input.columnsEncrypted,
         rowCount: input.rowCount,

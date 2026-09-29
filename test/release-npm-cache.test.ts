@@ -36,7 +36,7 @@ describe('release npm cache guard', () => {
       const cachePath = path.join(tmpRoot, 'cache');
       await mkdir(path.join(cachePath, '_cacache'), { recursive: true });
 
-      const currentUid = process.getuid();
+      const currentUid = process.getuid!();
       const wrongUid = currentUid === 0 ? 1 : currentUid + 1;
       const result = await validateNpmCache(cachePath, {
         expectedUid: wrongUid,

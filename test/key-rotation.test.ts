@@ -256,7 +256,7 @@ describe('rotateColumnKey', () => {
     client.query = vi.fn(async (sql: string, params?: unknown[]) => {
       if (sql.trim() === 'ROLLBACK') rollbackCalled = true;
       return origQuery(sql, params);
-    });
+    }) as unknown as typeof client.query;
 
     const pool = makeMockPool(client);
 

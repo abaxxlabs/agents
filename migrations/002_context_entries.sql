@@ -1,5 +1,5 @@
 -- ID++ AgentID — Context Entries Table
--- Phase 2.5: Identity-gated generic document store for StorageBackend.
+-- Identity-gated generic document store for StorageBackend.
 --
 -- Product decision: Chief (and any future consumer) needs an identity-gated
 -- document store that lives inside agent-id's trust boundary. Without this,

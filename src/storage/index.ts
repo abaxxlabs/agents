@@ -15,7 +15,7 @@
 /**
  * StorageBackend public API barrel.
  *
- * SQLite backend is at `@abaxxlabs/agents/sqlite` so better-sqlite3
+ * SQLite backend is at `@abaxxtech/agents/sqlite` so better-sqlite3
  * remains optional. Importing this module never triggers a better-sqlite3 import.
  */
 

@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# commit-msg hook — shipped by hygiene-kit. Enforces Conventional Commits with a
+# fixed, global type set across all Abaxx repos. Best-effort: bypassable with
+# --no-verify and skipped on squash-rebase, so the CI commit-lint job is the hard
+# gate. Both share .githooks/conventional-commits-check.sh as the single source of
+# truth for the rule. Bypass with: git commit --no-verify
+set -euo pipefail
+
+hook_dir="$(cd "$(dirname "$0")" && pwd)"
+exec "$hook_dir/conventional-commits-check.sh" --file "$1"

@@ -25,7 +25,7 @@ describe('SqliteRuntimeUnavailableError — public export reachability', () => {
   it('does not report the expected better-sqlite3 fallback as an error under Node', async () => {
     const logger = { warn: vi.fn(), error: vi.fn() };
     const backend = await SqliteStorageBackend.create(
-      { type: 'sqlite', path: ':memory:' },
+      { type: 'sqlite', path: ':memory:', sessionMacKey: Buffer.alloc(32) },
       { sessionMacKey: Buffer.alloc(32), logger },
     );
 

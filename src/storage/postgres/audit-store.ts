@@ -60,8 +60,9 @@ export class PostgresAuditStore implements AuditStore {
       `INSERT INTO agent_audit
        (id, timestamp, agent_did, owner_did, credential_id, query_hash,
         columns_accessed, row_count, duration_ms, previous_hash, signature,
-        org_id, version, status, reason, reason_code)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+        org_id, version, status, reason, reason_code,
+        delegator_did, delegated_grant_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
       [
         record.id,
         record.timestamp,
@@ -79,6 +80,8 @@ export class PostgresAuditStore implements AuditStore {
         record.status ?? 'success',
         record.reason ?? null,
         record.reasonCode ?? null,
+        record.delegatorDid ?? null,
+        record.delegatedGrantId ?? null,
       ],
     );
   }
@@ -91,7 +94,8 @@ export class PostgresAuditStore implements AuditStore {
     const result = await executor.query(
       `SELECT id, timestamp, agent_did, owner_did, credential_id, query_hash,
               columns_accessed, row_count, duration_ms, previous_hash, signature,
-              org_id, version, status, reason, reason_code
+              org_id, version, status, reason, reason_code,
+              delegator_did, delegated_grant_id
        FROM agent_audit ORDER BY timestamp DESC LIMIT 1`,
     );
 
@@ -132,11 +136,13 @@ export class PostgresAuditStore implements AuditStore {
       durationMs: row.duration_ms as number,
       previousHash: row.previous_hash as string,
       signature: row.signature as string,
-      version: ((row.version as number) ?? 1) as 1 | 2 | 3,
+      version: ((row.version as number) ?? 1) as 1 | 2 | 3 | 4,
       status: row.status as 'success' | 'rejected',
       reason: row.reason as string | undefined,
       reasonCode: row.reason_code as string | undefined,
       orgId: (row.org_id as string | undefined) ?? undefined,
+      delegatorDid: (row.delegator_did as string | undefined) ?? undefined,
+      delegatedGrantId: (row.delegated_grant_id as string | undefined) ?? undefined,
     };
   }
 
@@ -191,11 +197,13 @@ export class PostgresAuditStore implements AuditStore {
       durationMs: row.duration_ms,
       previousHash: row.previous_hash,
       signature: row.signature,
-      version: row.version ?? (1 as 1 | 2 | 3),
+      version: row.version ?? (1 as 1 | 2 | 3 | 4),
       status: row.status,
       reason: row.reason,
       reasonCode: row.reason_code,
       orgId: row.org_id ?? undefined,
+      delegatorDid: row.delegator_did ?? undefined,
+      delegatedGrantId: row.delegated_grant_id ?? undefined,
     }));
   }
 

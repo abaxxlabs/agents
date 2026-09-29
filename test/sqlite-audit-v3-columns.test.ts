@@ -24,7 +24,11 @@ describe('SQLite audit store — v3 columns round-trip', () => {
 
   beforeEach(async () => {
     backend = await SqliteStorageBackend.create(
-      { type: 'sqlite', path: ':memory:' },
+      {
+        type: 'sqlite',
+        path: ':memory:',
+        sessionMacKey: deterministicSessionMacKey('sqlite-audit-v3'),
+      },
       { sessionMacKey: deterministicSessionMacKey('sqlite-audit-v3') },
     );
     await backend.initialize();

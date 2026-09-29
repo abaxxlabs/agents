@@ -4,8 +4,11 @@ import {
   validateExpiry,
   validateChain,
   extractMaxDepth,
+  extractDelegationChain,
   resolveInheritedMaxDepth,
   DEFAULT_MAX_DELEGATION_DEPTH,
+  DELEGATION_POLICY_TYPE,
+  DELEGATION_CHAIN_TYPE,
 } from '#auth/delegation-policy.js';
 
 describe('delegation-policy', () => {
@@ -110,6 +113,77 @@ describe('delegation-policy', () => {
       expect(extractMaxDepth({ maxDepth: 1.5 })).toBeUndefined();
       expect(extractMaxDepth({ maxDepth: '3' })).toBeUndefined();
       expect(extractMaxDepth({ maxDepth: null })).toBeUndefined();
+    });
+  });
+
+  describe('extractMaxDepth reads the current location first', () => {
+    const terms = (maxDepth: unknown) => ({
+      vc: { termsOfUse: [{ type: DELEGATION_POLICY_TYPE, maxDepth }] },
+    });
+
+    it('reads the ceiling from vc.termsOfUse', () => {
+      expect(extractMaxDepth(terms(3))).toBe(3);
+    });
+
+    it('prefers vc.termsOfUse over the legacy top-level claim', () => {
+      expect(extractMaxDepth({ ...terms(1), maxDepth: 5 })).toBe(1);
+    });
+
+    it('falls back to the legacy claim so older credentials keep verifying', () => {
+      expect(extractMaxDepth({ maxDepth: 2 })).toBe(2);
+    });
+
+    it('falls back when termsOfUse carries no delegation policy', () => {
+      expect(extractMaxDepth({ vc: { termsOfUse: [{ type: 'Other' }] }, maxDepth: 2 })).toBe(2);
+    });
+
+    it('ignores a malformed ceiling in the current location', () => {
+      expect(extractMaxDepth(terms('3'))).toBeUndefined();
+      expect(extractMaxDepth(terms(0))).toBeUndefined();
+    });
+
+    it('accepts a single object as well as an array', () => {
+      expect(
+        extractMaxDepth({ vc: { termsOfUse: { type: DELEGATION_POLICY_TYPE, maxDepth: 4 } } }),
+      ).toBe(4);
+    });
+
+    it('accepts a type array, as VC sub-objects may carry several', () => {
+      expect(
+        extractMaxDepth({
+          vc: { termsOfUse: [{ type: ['Other', DELEGATION_POLICY_TYPE], maxDepth: 2 }] },
+        }),
+      ).toBe(2);
+    });
+  });
+
+  describe('extractDelegationChain reads the current location first', () => {
+    const evidence = (credentials: unknown) => ({
+      vc: { evidence: [{ type: DELEGATION_CHAIN_TYPE, credentials }] },
+    });
+
+    it('reads the chain from vc.evidence', () => {
+      expect(extractDelegationChain(evidence(['a.b.c']))).toEqual(['a.b.c']);
+    });
+
+    it('prefers vc.evidence over the legacy top-level claim', () => {
+      expect(extractDelegationChain({ ...evidence(['new']), delegationChain: ['legacy'] })).toEqual(
+        ['new'],
+      );
+    });
+
+    it('falls back to the legacy claim so older credentials keep verifying', () => {
+      expect(extractDelegationChain({ delegationChain: ['legacy'] })).toEqual(['legacy']);
+    });
+
+    it('preserves an empty chain, which callers reject as malformed', () => {
+      expect(extractDelegationChain(evidence([]))).toEqual([]);
+      expect(extractDelegationChain({ delegationChain: [] })).toEqual([]);
+    });
+
+    it('returns undefined when the credential carries no chain', () => {
+      expect(extractDelegationChain({})).toBeUndefined();
+      expect(extractDelegationChain({ vc: { evidence: [{ type: 'Other' }] } })).toBeUndefined();
     });
   });
 

@@ -15,7 +15,11 @@ interface SqliteDb {
 
 async function createBackend(): Promise<StorageBackend> {
   return SqliteStorageBackend.create(
-    { type: 'sqlite', path: ':memory:' },
+    {
+      type: 'sqlite',
+      path: ':memory:',
+      sessionMacKey: deterministicSessionMacKey('audit-agentdids'),
+    },
     { sessionMacKey: deterministicSessionMacKey('audit-agentdids') },
   );
 }

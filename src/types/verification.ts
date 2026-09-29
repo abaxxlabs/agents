@@ -43,6 +43,7 @@ export interface VerificationResult {
 export interface DecodedCredential {
   issuer: string;
   subject: string;
+  jti?: string;
   issuedAt: Date;
   expiresAt: Date;
   scope?: CredentialScope;

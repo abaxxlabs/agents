@@ -83,7 +83,7 @@ export async function runDemo(options: DemoOptions): Promise<void> {
     await pool.query('SELECT 1');
   } catch {
     console.error(`❌ Cannot connect to PostgreSQL at ${options.db}`);
-    console.error('   Run "docker compose up" in the demo/ directory first.');
+    console.error('   Start PostgreSQL and confirm the connection string before retrying.');
     process.exit(1);
   }
 

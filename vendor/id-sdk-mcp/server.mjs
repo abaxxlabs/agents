@@ -1,8 +1,6 @@
 /**
  * Vendored id-sdk MCP server for Agents++.
  *
- * Source: /Users/john/Projects/dwn/platform/packages/id-sdk-mcp
- *
  * Product decision: Agents++ integrates with the platform identity stack via a
  * local MCP process rather than importing the full id-sdk into the core package.
  * This keeps the package install self-contained while still letting deployments

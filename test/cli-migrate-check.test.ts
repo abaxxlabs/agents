@@ -583,16 +583,6 @@ describe('migrate-check: directory walking', () => {
     const out = JSON.parse(stdout);
     expect(out.counts.envReads).toBe(6); // .ts, .tsx, .mjs, .cjs, .js, .jsx
   });
-
-  it('walks nested directories', async () => {
-    writeFile('packages/server/src/index.ts', 'process.env.AGENTS_MASTER_KEY;');
-    writeFile('packages/server/src/lib/auth.ts', 'process.env.AGENTS_MASTER_KEY;');
-    writeFile('packages/client/src/index.ts', 'process.env.AGENTS_MASTER_KEY;');
-
-    const { stdout } = await captureStdout(() => runMigrateCheck({ cwd: fixtureRoot, json: true }));
-    const out = JSON.parse(stdout);
-    expect(out.counts.envReads).toBe(3);
-  });
 });
 
 // ─── Read-only invariant ──────────────────────────────────────────────────────

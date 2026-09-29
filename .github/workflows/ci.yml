@@ -1,18 +1,4 @@
-# Copyright 2026 Abaxx Technologies
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     https://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-name: CI
+name: Library CI
 
 on:
   push:
@@ -24,7 +10,107 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    name: Lint library and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Lint
+        run: bun run precommit:lint
+
+  format:
+    name: Check changed TypeScript formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Format check
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          PUSH_AFTER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            RANGE="$PR_BASE_SHA...$PR_HEAD_SHA"
+          else
+            RANGE="$PUSH_BEFORE_SHA...$PUSH_AFTER_SHA"
+          fi
+          mapfile -t FILES < <(git diff --name-only --diff-filter=ACMR "$RANGE" -- '*.ts')
+          if [ ${#FILES[@]} -eq 0 ]; then
+            echo "No changed TypeScript files to format-check."
+            exit 0
+          fi
+          bunx prettier --check "${FILES[@]}"
+
+  typecheck:
+    name: Type-check library and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Type-check
+        run: bun run precommit:typecheck
+      - name: Type-check tests
+        if: ${{ github.event.repository.private == false }}
+        run: bun x tsc -p test/tsconfig.json --noEmit
+
+  commit-lint:
+    name: Check PR commit messages
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Commit lint
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          chmod +x .githooks/conventional-commits-check.sh
+          if ! git cat-file -e "$HEAD_SHA^{commit}" 2>/dev/null; then
+            git fetch --quiet origin "refs/pull/${PR_NUMBER}/head"
+          fi
+          fail=0
+          while IFS= read -r sha; do
+            [ -n "$sha" ] || continue
+            subject="$(git log -1 --format=%s "$sha")"
+            if ! .githooks/conventional-commits-check.sh --subject "$subject"; then
+              echo "  ↳ offending commit: $sha" >&2
+              fail=1
+            fi
+          done < <(git rev-list "$BASE_SHA".."$HEAD_SHA")
+          if [ "$fail" -eq 0 ]; then echo "✓ All PR commits follow Conventional Commits."; fi
+          exit $fail
+
   test:
+    name: test (20)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -42,15 +128,13 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
-    strategy:
-      matrix:
-        node-version: [20, 22]
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: '20.3.0'
+          package-manager-cache: false
       - name: Configure npm cache
         run: |
           echo "npm_config_cache=$RUNNER_TEMP/npm-cache" >> "$GITHUB_ENV"
@@ -72,33 +156,3 @@ jobs:
             git ls-files dist/ | head -20
             exit 1
           fi
-
-  bun-test:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-      - name: Set up test database
-        run: bun run scripts/setup-test-db.mjs
-      - name: Type-check
-        run: bun run typecheck
-      - name: Run tests
-        run: bun run vitest run

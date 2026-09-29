@@ -1,6 +1,6 @@
 -- Migration 007: revoked_credentials
 --
--- — makes JTI revocation durable across process restart and coherent
+-- Makes JTI revocation durable across process restart and coherent
 -- across instances. Previously, revocations lived in a process-local Set<string>
 -- inside VcVerifier and disappeared on restart — a security-posture gap.
 --
@@ -13,15 +13,14 @@
 --   The 30-day conservative window ensures cross-instance caches have evicted
 --   the entry before the DB record disappears.
 --
--- Rollback: see demo/hackathon/findings/session-plans/session-3-release/rollback-007.md
---   Emergency: DROP TABLE revoked_credentials (leaf table, no dependents).
+-- Rollback: DROP TABLE revoked_credentials (leaf table, no dependents).
 --   In-flight revocations revert to in-memory-only until process restart.
 --   Row-level locking (D7): migration 007 required for SELECT ... FOR UPDATE on
 --   revoked_credentials. If rolled back, PostgresRevocationStore falls back to
 --   InMemoryRevocationStore with a warning (NOT the default server behavior —
---   seeindex.ts: server fails to start without the table).
+--   the server fails to start without the table).
 --
--- Data retention: 30 days post-expiry. See session-3-release/data-retention.md.
+-- Data retention: 30 days post-expiry.
 -- GDPR Article 5(1)(e) / SOC 2 CC7.1 alignment: data minimization, storage limitation.
 --
 -- Schema decision: expires_at is TIMESTAMPTZ (nullable) not an integer epoch.

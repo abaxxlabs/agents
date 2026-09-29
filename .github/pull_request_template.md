@@ -27,9 +27,9 @@
 - [ ] Every JSDoc `@example` block in changed `src/**` files type-checks against the actual signatures (verified by the JSDoc CI workflow at `.github/workflows/jsdoc-types.yml`)
 - [ ] Ran `/review` skill before declaring ready for review; addressed or documented every CRITICAL finding
 - [ ] An end-to-end test exists for any new injection seam, capturing the "this would have failed pre-change" regression case (template: `test/regression/injection-drift.test.ts`)
-- [ ] Migration guide added at `docs/migration-<feature>.md` if consumers must change their bootstrap or types
-- [ ] Rollback procedure documented at `docs/rollback-<version>.md` if any DB schema, persisted-state, or configuration shape changed
-- [ ] External partners or design-partner integrations notified if they are affected by the change
+- [ ] Migration guide added at `docs/migrations/<feature>.md` if consumers must change their bootstrap or types
+- [ ] Rollback procedure documented at `docs/migrations/<version>-rollback.md` if any DB schema, persisted-state, or configuration shape changed
+- [ ] Pre-ship notification prepared if external partners or design-partner integrations exist
 
 ## Test plan
 

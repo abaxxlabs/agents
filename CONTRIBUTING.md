@@ -2,6 +2,10 @@
 
 Contributions are welcome. This is a security-sensitive identity and cryptography library, so all changes go through review.
 
+## How public contributions are credited
+
+Issues and pull requests are welcome here. Maintainers can bring a reviewed public PR into private review before publishing its changes through a Sync PR. The import records the contributor's GitHub identity and adds a `Co-authored-by` trailer to the private review commit. Sync carries that credit into the public commit when the change is published.
+
 ## Getting Started
 
 1. Fork the repository
@@ -35,7 +39,7 @@ Contributions are welcome. This is a security-sensitive identity and cryptograph
 
 - Node.js >= 20.3.0
 - Bun >= 1.3 (required dev tooling; the canonical lockfile is `bun.lock`)
-- PostgreSQL (for integration tests): `supabase start` or a local Docker instance
+- PostgreSQL (for integration tests)
 - TypeScript -- all source is in `src/`, all tests in `test/`
 
 ## Code Style
@@ -46,6 +50,8 @@ Contributions are welcome. This is a security-sensitive identity and cryptograph
 - **Formatting** -- run `npm run format` before submitting
 
 ## Pull Requests
+
+Commit subjects must follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/), for example `fix: correct a broken import` or `feat: add an export`. CI checks every commit in a pull request.
 
 1. Describe **what** changed and **why**
 2. Include or update tests for any behavioral changes
@@ -61,4 +67,4 @@ Contributions are welcome. This is a security-sensitive identity and cryptograph
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
+Unless explicitly stated otherwise, contributions intentionally submitted for inclusion in this project are licensed under the [Apache License 2.0](LICENSE), Section 5, without additional terms or conditions. This project requires neither a Contributor License Agreement nor Developer Certificate of Origin sign-off.

@@ -39,10 +39,26 @@ export interface AuthorizationInput {
   credential: string;
   credentials?: string[];
   requirePresentation?: boolean;
+  /**
+   * Mutable provenance context filled as authorization progresses so the caller
+   * can attach root-owner / delegator / grant-id to the rejection audit record
+   * when a later step fails.
+   */
+  rejectionContext?: {
+    ownerDid?: string;
+    delegatorDid?: string;
+    delegatedGrantId?: string;
+  };
 }
 
 export interface AuthorizationResult {
   ownerDid: string;
+  /** Root principal (the registered owner) of the querying agent — the audit ownerDid. */
+  rootOwnerDid: string;
+  /** Delegating agent DID — set only for delegated credentials. */
+  delegatorDid?: string;
+  /** JTI of the verified source credential — set only for delegated credentials. */
+  delegatedGrantId?: string;
   readColumns: Set<string>;
   /** Qualified column name to the actions the presented credentials grant on it. */
   columnActions: Map<string, Set<string>>;
@@ -81,7 +97,7 @@ export class QueryAuthorizer {
   }
 
   async authorize(input: AuthorizationInput): Promise<AuthorizationResult> {
-    const { agent, credential, credentials, requirePresentation } = input;
+    const { agent, credential, credentials, requirePresentation, rejectionContext } = input;
 
     if (!credential) {
       throw new CredentialMalformedError('No credential provided');
@@ -101,6 +117,11 @@ export class QueryAuthorizer {
     const agentRec = this.agents.get(agent);
     const columnActions: Map<string, Set<string>> = new Map();
     let ownerDid = '';
+    // Audit provenance: root principal that owns the querying agent, plus the
+    // delegation link when the query runs on a delegated credential.
+    let rootOwnerDid = '';
+    let delegatorDid: string | undefined;
+    let delegatedGrantId: string | undefined;
 
     for (const jwt of allJwts) {
       let jwtToVerify = jwt;
@@ -215,17 +236,29 @@ export class QueryAuthorizer {
       }
       const isThisDelegated =
         result.credential!.vcTypes?.includes('DelegatedAgentScopeCredential') ?? false;
+      // The querying agent's registered owner is the root principal for the
+      // audit trail. This is true for both direct and delegated credentials.
+      rootOwnerDid = ownerAgent.ownerDid;
+      if (rejectionContext) rejectionContext.ownerDid = rootOwnerDid;
 
-      if (!this.didsMatch(result.credential!.issuer, ownerAgent.ownerDid)) {
-        // If this is a delegated credential, walk the delegation chain instead
-        // of rejecting outright. A delegated credential has iss = delegator
-        // agent DID (not the human owner). The chain must prove:
-        // human owner → delegator agent → this credential.
-        const chain = result.credential!.delegationChain;
-        if (!isThisDelegated || !chain || chain.length === 0) {
+      if (isThisDelegated) {
+        // Strict invariant: delegated provenance is only recorded when
+        // delegation is proven at authorization time. Do not infer delegator
+        // from credential shape alone — verify owner→delegator→delegate linkage.
+        // Delegated credentials must be issued by a delegating agent and prove
+        // the owner→delegator source grant via delegationChain.
+        if (this.didsMatch(result.credential!.issuer, ownerAgent.ownerDid)) {
           throw new CredentialInvalidError(
             agent,
-            `Credential issuer ${result.credential!.issuer} is not the registered owner of agent ${agent}`,
+            'Delegated credential issuer cannot be the root owner; delegated credentials must be issued by a delegating agent DID.',
+          );
+        }
+
+        const chain = result.credential!.delegationChain;
+        if (!chain || chain.length === 0) {
+          throw new CredentialInvalidError(
+            agent,
+            'Delegated credential missing delegation chain. Cannot prove delegation provenance.',
           );
         }
 
@@ -253,6 +286,25 @@ export class QueryAuthorizer {
               `(${ownerAgent.ownerDid}) of the delegating agent`,
           );
         }
+        if (!sourceResult.credential!.jti) {
+          throw new CredentialInvalidError(
+            agent,
+            'Delegation chain invalid: source credential is missing jti. Cannot record delegated grant provenance.',
+          );
+        }
+
+        // Re-delegation is blocked at issuance, so the leaf issuer is the sole delegator.
+        delegatorDid = result.credential!.issuer;
+        delegatedGrantId = sourceResult.credential!.jti;
+        if (rejectionContext) {
+          rejectionContext.delegatorDid = delegatorDid;
+          rejectionContext.delegatedGrantId = delegatedGrantId;
+        }
+      } else if (!this.didsMatch(result.credential!.issuer, ownerAgent.ownerDid)) {
+        throw new CredentialInvalidError(
+          agent,
+          `Credential issuer ${result.credential!.issuer} is not the registered owner of agent ${agent}`,
+        );
       }
 
       // Delegated credentials cannot be unioned — combining narrow delegations
@@ -303,6 +355,9 @@ export class QueryAuthorizer {
 
     return {
       ownerDid,
+      rootOwnerDid,
+      delegatorDid,
+      delegatedGrantId,
       readColumns,
       columnActions,
       scopeColumns: Array.from(readColumns),

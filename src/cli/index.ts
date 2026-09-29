@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 /**
  * Agents++ CLI
  *
@@ -33,7 +32,6 @@ import {
   printMasterKeyArgvRejected,
   warnIfMasterKeyEnvWasPresentAtProcessStart,
 } from './master-key-cli.js';
-import { buildServeChildEnv } from './serve-env.js';
 
 const program = new Command();
 
@@ -175,48 +173,6 @@ program
       cwd: options.cwd,
       json: options.json,
     });
-  });
-
-program
-  .command('serve')
-  .description('Start the REST API server (Swagger UI at /docs)')
-  .option(
-    '--db <url>',
-    'PostgreSQL connection string (or set DATABASE_URL env var)',
-    process.env.DATABASE_URL,
-  )
-  .option('--port <number>', 'HTTP port', '3100')
-  .option('--columns <list>', 'Comma-separated encrypted columns (e.g., patients.dob,patients.ssn)')
-  .option(
-    '--master-key-stdin',
-    'Read master key (64 hex chars) from stdin until EOF (see AGENTS_MASTER_KEY)',
-  )
-  .action(async (options) => {
-    if (!options.db) {
-      console.error('Error: --db <url> is required (or set DATABASE_URL env var).');
-      console.error(
-        'Example: agents serve --db postgresql://postgres:postgres@localhost:5432/mydb',
-      );
-      process.exit(1);
-    }
-    const { execSync } = await import('node:child_process');
-    const { resolve, dirname } = await import('node:path');
-    const { fileURLToPath } = await import('node:url');
-
-    const __dirname = dirname(fileURLToPath(import.meta.url));
-    const serverDir = resolve(__dirname, '../../packages/server');
-
-    const env = buildServeChildEnv({
-      db: options.db,
-      port: options.port,
-      columns: options.columns,
-    });
-
-    try {
-      execSync('npx tsx src/index.ts', { cwd: serverDir, env, stdio: 'inherit' });
-    } catch {
-      process.exit(1);
-    }
   });
 
 if (argvContainsDeprecatedMasterKeyFlag(process.argv)) {

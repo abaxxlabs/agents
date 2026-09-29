@@ -320,6 +320,7 @@ describe('ResultAssembler', () => {
     const result = await assembler.assemble({
       agent: agentA.did,
       ownerDid: 'did:key:owner',
+      metadataOwner: 'did:key:owner',
       credentialJwt: 'jwt',
       sql: 'SELECT name FROM patients',
       columnsAccessed: ['patients.name'],
@@ -348,6 +349,7 @@ describe('ResultAssembler', () => {
       assembler.assemble({
         agent: 'did:key:unregistered',
         ownerDid: 'did:key:owner',
+        metadataOwner: 'did:key:owner',
         credentialJwt: 'jwt',
         sql: 'SELECT name FROM patients',
         columnsAccessed: [],

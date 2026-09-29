@@ -110,7 +110,8 @@ export function registerVerifyChainTool(server: McpServer, deps: AuditToolDepend
   server.registerTool(
     'verify-chain',
     {
-      description: 'Verify the integrity of the audit hash chain. Reports any broken links.',
+      description:
+        'Verify integrity within the session-visible audit window. For full root-of-chain proof, use the admin/global verify endpoint.',
       inputSchema: {
         limit: z.number().optional().describe('Max records to verify (default 1000)'),
       },

@@ -354,7 +354,7 @@ Re-wrapping a column key under a new master key is a five-step, write-quiesced p
 
 ## MAC-key co-rotation note (server consumers only)
 
-This concerns deployments that use `packages/server/` and persist sessions via `PostgresSessionStore` or `SqliteSessionStore` (v0.9.8.0+).
+This concerns server deployments that persist sessions via `PostgresSessionStore` or `SqliteSessionStore` (v0.9.8.0+).
 
 The session-envelope MAC key is HKDF-derived from the master key (`HKDF_CONTEXT_SESSION_MAC` context string). Changing the master key changes the MAC key. Any session envelope written under the OLD master key has a MAC tag derived from the OLD MAC key — and will fail integrity verification when re-read under the NEW master key.
 
@@ -383,7 +383,7 @@ This is optional — leaving the rows lets `pruneExpired` clean them up at TTL �
 
 Whether your migration case is #1, #2, #3, or #4, a separate decision applies if you operate **multi-instance** OR rely on **revocation durability across process restarts**: you must inject a durable `RevocationStore`. The default behavior when `injections.storage` is omitted is:
 
-- `packages/server/` consumer: auto-detects a default `PostgresRevocationStore` when `DATABASE_URL` is set and attempts migration 007 on boot when the migration file is available. Single INFO log line on startup names the active store. No code change needed.
+- Server consumer: auto-detects a default `PostgresRevocationStore` when `DATABASE_URL` is set and attempts migration 007 on boot when the migration file is available. Single INFO log line on startup names the active store. No code change needed.
 - Direct library consumer: `AgentScope.create` constructs a default `PostgresStorageBackend` from `config.database.connectionString`, but **does not call `.initialize()` on it**. Three concrete consequences:
   - The revocation cache starts cold (first hits round-trip to Postgres).
   - Cross-instance coherency polling never starts — peer-instance revocations are seen only on cache miss.
@@ -442,12 +442,12 @@ const scope = await AgentScope.create(config, { masterKey, storage });
 
 ---
 
-## Lessons from migrating the showcase (in-repo dry run)
+## Lessons from an in-repo migration dry run
 
-The `demo/showcase/` consumer was used as the migration dry-run for this release. It was the most complex consumer in the repository — six call sites that wrote `process.env.AGENTS_MASTER_KEY` as a control channel for per-session and per-org key switching. Findings that informed this guide:
+The most complex in-repo consumer was used as the migration dry run for this release. Six call sites wrote `process.env.AGENTS_MASTER_KEY` as a control channel for per-session and per-org key switching. Findings that informed this guide:
 
-- **Plan-doc counts can be stale.** The original spec described "9 env-write sites in the showcase" but the actual count at migration time was 6 — Lane B's earlier work had already removed some. **Verify against current code, not plan-doc claims**, before scoping each consumer's migration.
-- **Env-as-control-channel is the worst pattern to migrate.** The showcase used env writes to switch keys mid-process between organizations. Every read site read the env at request time, so the implicit invariant was "whatever the most recent write was." Untangling this required tracing each write to its corresponding read and replacing both with explicit `Buffer` arguments to `AgentScope.create`. If your consumer has any pattern resembling this — env writes after startup, env reads inside hot paths — budget more time.
+- **Plan-doc counts can be stale.** The original spec described nine env-write sites but the actual count at migration time was six because earlier work had already removed some. **Verify against current code, not plan-doc claims**, before scoping each consumer's migration.
+- **Env-as-control-channel is the worst pattern to migrate.** The consumer used env writes to switch keys mid-process between organizations. Every read site read the env at request time, so the implicit invariant was "whatever the most recent write was." Untangling this required tracing each write to its corresponding read and replacing both with explicit `Buffer` arguments to `AgentScope.create`. If your consumer has any pattern resembling this — env writes after startup, env reads inside hot paths — budget more time.
 - **Type errors are your friend.** Once `AgentScopeConfig.encryption.masterKey` is removed at the type level, every stale call site fails to compile. Walk the type errors top-to-bottom; each is a structurally identical fix.
 - **Dev keys with all-zero hex are a smell.** `'00'.repeat(32)` was a fixture pattern. It is technically valid (passes `parseMasterKeyHex`) but it should never appear in any code path that runs against real consumer data. The migration is a good moment to grep for it and either delete or move it explicitly behind a `NODE_ENV !== 'production'` gate.
 
@@ -457,7 +457,7 @@ The `demo/showcase/` consumer was used as the migration dry-run for this release
 
 1. **Verify the application boots cleanly.** The first boot under v0.9.10.0 with the same key value should be silent (no warnings, no errors). A `MasterKeyMismatchError` on first boot means the key value you threaded into `injections.masterKey` does not match what was wrapping your column keys at rest. Recover the correct value (almost always: re-check the env-vs-config audit from above) before continuing.
 2. **Verify revocation enforcement.** If you operate multi-instance, revoke a test JTI on instance A and immediately verify it on instance B. Pre-v0.9.10.0 this would have silently passed verification. Post-v0.9.10.0 with `PostgresRevocationStore` injected, it should reject within `pollIntervalMs` (default 30s). If it does not reject, your revocation store injection is not wired correctly — re-read the [revocation-store injection](#revocation-store-injection-required-for-multi-instance) section.
-3. **Lint cleanup (library scope).** The library ships ESLint trust-boundary rules that fire inside `src/**/*.ts` and `packages/server/src/**/*.ts` only. Consumer projects do NOT inherit these rules automatically — they apply to library development, not your codebase. If you want the same protection in your consumer code, copy the relevant `no-restricted-syntax` selectors from the library's `eslint.config.js` into your own ESLint configuration. The rules are `warn` in v0.9.10.0; they will be promoted to `error` in a future library release.
+3. **Lint cleanup (library scope).** The library ships ESLint trust-boundary rules for library core (`src/**/*.ts`, excluding bootstrap and CLI boundaries). Consumer projects do NOT inherit these rules automatically — they apply to library development, not your codebase. If you want the same protection in your consumer code, copy the relevant `no-restricted-syntax` selectors from the library's `eslint.config.ts` into your own ESLint configuration. The rules shipped as `warn` in v0.9.10.0 and are now enforced as `error`.
 4. **Rotate documentation.** README, `.env.example`, deployment templates, and any internal docs that referenced the old config-field pattern need to point at the new injection pattern.
 
 ---

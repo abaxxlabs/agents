@@ -24,12 +24,16 @@ export interface AuditRecord {
   durationMs: number;
   previousHash: string;
   signature: string;
-  version: 1 | 2 | 3;
+  version: 1 | 2 | 3 | 4;
   status?: 'success' | 'rejected';
   reason?: string;
   reasonCode?: string;
   /** Supplied by the authenticated transport or query context when organizational attribution applies. */
   orgId?: string;
+  /** Delegating agent DID for a delegated query (the credential's issuer). Absent for direct queries. */
+  delegatorDid?: string;
+  /** JTI of the source credential the delegation was granted from. Absent for direct queries. */
+  delegatedGrantId?: string;
 }
 
 export interface AuditEntry {
@@ -41,4 +45,6 @@ export interface AuditEntry {
   rowCount: number;
   durationMs: number;
   orgId?: string;
+  delegatorDid?: string;
+  delegatedGrantId?: string;
 }

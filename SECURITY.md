@@ -2,10 +2,7 @@
 
 ## Supported Versions
 
-| Version | Supported          |
-|---------|--------------------|
-| 0.9.x   | Yes                |
-| < 0.9   | No                 |
+Security updates are provided for the latest published release. Older releases are not supported. The current release is available on the [npm package page](https://www.npmjs.com/package/@abaxxlabs/agents).
 
 ## Reporting a Vulnerability
 
@@ -45,13 +42,35 @@ The following are considered security issues for this library:
 
 ## Scope enforcement
 
-The projection boundary rejects any SQL reference to columns outside the credential scope (CWE-285). `'projection'` is the only supported `scopeMode`. The legacy `encryption-only` mode (which only guarded encrypted columns, leaving plaintext columns unprotected) was removed along with the `AGENTS_ALLOW_LEGACY_SCOPE_MODE` env gate.
+The projection boundary rejects any SQL reference to columns outside the credential scope (CWE-285). `'projection'` is the only supported `scopeMode`.
+
+## Trust controls
+
+DID trust anchors and OIDC endpoint allowlists are separate controls. When consumers route credential verification through `AgentVerifier`, it checks issuer DIDs against the configured trust-anchor store; `VcVerifier` alone does not. OIDC endpoint allowlists constrain authorization, token, and user-info network destinations; they do not establish issuer trust.
+
+## Verification timing
+
+`credential.clockSkew` applies only to VP envelope timestamps (5 seconds by default, maximum 30 seconds). VC `nbf ?? iat` and `exp` checks are strict and receive no skew window, including for a VC inside a VP. OIDC ID-token verification is separate: `exp` is required and optional `nbf` is enforced strictly without leeway.
 
 ## JSON keystore file permissions
 
 On Linux and macOS, the `JsonFileBackend` creates keystore files using `O_CREAT|O_EXCL|O_WRONLY` with mode `0600` (owner read/write only). The exclusive-create flag ensures the file never exists with wider permissions at any observable instant, and prevents symlink-based attacks in the temp-file path. A post-creation `stat` verifies the mode as defense in depth.
 
+On Linux and CI, values in the JSON keystore are plaintext. Mode `0600` is access control, not encryption; the file owner, root, backups, and filesystem snapshots can read the contents. Production consumers can inject a secrets-manager-backed `KeystoreBackend`.
+
 On Windows, Node.js POSIX file-mode arguments are not enforced by the OS. The keystore file inherits the parent directory's default ACL. **Deployment recommendation**: restrict the keystore directory (`%USERPROFILE%\.agents\`) ACL to the service principal running the agent process.
+
+## Session envelope protection
+
+Persisted session envelopes use HMAC-SHA256 over canonical JSON with an HKDF-derived key. This detects tampering but does not encrypt DIDs, email, or sanitized OIDC claims. Pending OAuth flows use a separate process-local `PendingFlowStore`: OAuth `state` is the key, `{ codeVerifier, expiresAt }` is the stored value, the default TTL is 10 minutes, and no OIDC nonce is generated or validated. Durable session storage does not make pending OAuth flows durable across instances.
+
+## Column encryption limits
+
+AES-256-GCM uses a fresh random 96-bit IV for each encryption. Uniqueness is probabilistic and depends on the operating system CSPRNG. Ciphertext length, database access patterns, wire-format fields, and logical type codes remain visible to database observers.
+
+## Audit database privileges
+
+The `agent_audit` triggers reject ordinary `UPDATE`, `DELETE`, and `TRUNCATE` operations by application roles. Database owners, superusers, and roles with sufficient DDL privileges can disable or remove these triggers. Production deployments should use a restricted runtime role separate from the owner or migration role.
 
 ## Out of Scope
 
@@ -63,7 +82,3 @@ On Windows, Node.js POSIX file-mode arguments are not enforced by the OS. The ke
 ## Bug Bounty
 
 There is no bug bounty program at this time. We appreciate responsible disclosure and will credit reporters in release notes (unless you prefer to remain anonymous).
-
-## AbaxxOne OIDC — HIGH-1 closeout
-
-A white-box security audit identified **HIGH-1**: the legacy module-level functions `authenticateWithOidc` and `completeOidcFlow` left CSRF state validation as an unenforced obligation on every consumer (CWE-352, CWE-639; OWASP API4:2023, ASVS V4.2.2 / V13.2.3). These entry points, the `VerifiedAuthState` brand machinery, and `src/auth/legacy-oidc.ts` / `src/auth/verified-auth-state.ts` were **removed in v1.0**. All AbaxxOne OIDC flows now go through `AbaxxOneOidcProvider`, which validates state end-to-end against its internal `PendingFlowStore` before any token exchange.

@@ -9,6 +9,7 @@ import {
 } from '#identity/agent-verifier.js';
 import type { VerificationResult, DecodedCredential } from '#types/index.js';
 import { createMockVcVerifier } from './mocks/vc-verifier.js';
+import type { VcVerifier } from '#identity/vc-verifier.js';
 import { LocalTrustAnchorStore } from '#discovery/trust-anchor.js';
 import { CapabilityEngine } from '#capability/engine.js';
 import {
@@ -22,7 +23,6 @@ import {
   CapabilitySetTooLargeError,
   MAX_CAPABILITY_SET_SIZE,
 } from '#capability/index.js';
-
 
 const TEST_ISSUER_DID = 'did:key:z6MkTestIssuer1234567890';
 const TEST_AGENT_DID = 'did:key:z6MkTestAgent1234567890';
@@ -79,7 +79,6 @@ function makeBindingJwt(subject?: {
   return `${header}.${encodedPayload}.fakesignature`;
 }
 
-
 function validVcResult(credentialOverrides?: Partial<DecodedCredential>): VerificationResult {
   return {
     valid: true,
@@ -97,7 +96,6 @@ async function makeTrustStore(trusted: boolean = true): Promise<LocalTrustAnchor
   }
   return store;
 }
-
 
 describe('AgentVerifier — constructor', () => {
   test('throws TypeError if vcVerifier is missing', () => {
@@ -140,7 +138,6 @@ describe('AgentVerifier — constructor', () => {
     expect(verifier).toBeInstanceOf(AgentVerifier);
   });
 });
-
 
 describe('AgentVerifier — Layer 1 failures (VcVerifier rejects)', () => {
   async function verifyWithResult(result: VerificationResult): Promise<Error> {
@@ -239,7 +236,6 @@ describe('AgentVerifier — Layer 1 failures (VcVerifier rejects)', () => {
   });
 });
 
-
 describe('AgentVerifier — Layer 2a: trust anchor check', () => {
   test('throws UntrustedIssuerError when issuer is not in trust store', async () => {
     const store = await makeTrustStore(false); // untrusted store
@@ -300,7 +296,6 @@ describe('AgentVerifier — Layer 2a: trust anchor check', () => {
     expect(result.issuerDid).toBe(ownDid);
   });
 });
-
 
 describe('AgentVerifier — Layer 2b: org boundary check', () => {
   async function makeVerifier(trusted = true): Promise<AgentVerifier> {
@@ -414,7 +409,6 @@ describe('AgentVerifier — Layer 2b: org boundary check', () => {
     ).rejects.toBeInstanceOf(TypeError);
   });
 });
-
 
 describe('AgentVerifier — Layer 2c: capability check', () => {
   const TEST_CAPS: CapabilitySet = [
@@ -556,7 +550,6 @@ describe('AgentVerifier — Layer 2c: capability check', () => {
   });
 });
 
-
 describe('AgentVerifier — full happy path', () => {
   test('all four checks pass — returns complete result', async () => {
     const caps: CapabilitySet = [
@@ -606,7 +599,6 @@ describe('AgentVerifier — full happy path', () => {
   });
 });
 
-
 describe('AgentVerifier — input validation', () => {
   test('throws TypeError for empty-string agentDid (empty string bypasses TypeScript type)', async () => {
     const store = await makeTrustStore();
@@ -622,7 +614,6 @@ describe('AgentVerifier — input validation', () => {
     ).rejects.toBeInstanceOf(TypeError);
   });
 });
-
 
 describe('AgentVerifier — createAgentVerifier factory', () => {
   test('returns an AgentVerifier instance', async () => {

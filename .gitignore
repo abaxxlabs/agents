@@ -19,13 +19,14 @@ data/
 *.tgz
 *.zip
 package/
-demo/showcase/src/fixtures/*.json
-
-# Demo media
-demo/audio/
 
 # Local Claude Code config (per-developer, not project state)
-.claude/
+# Ignore everything inside .claude/ except team-shared guidance injection
+.claude/*
+!.claude/settings.json
+!.claude/hooks
+.claude/hooks/*
+!.claude/hooks/inject-claude-md.sh
 
 # One-off exports
 competitive-landscape-export.txt
@@ -37,7 +38,7 @@ tsconfig.jsdoc-check.json
 
 # Internal planning docs — canonical copies live in vault (Work/Plans/)
 docs/plan-*.md
-docs/support-runbook-*.md
+docs/internal/support-runbook-*.md
 
 # Generated architecture narrative — source of truth is the code
 docs/narrative/
