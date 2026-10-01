@@ -1,16 +1,16 @@
-# Default owner — all files require review from Ian
-*                       @IanAbaxx
+# Default owner — all files require review
+*                       @IanAbaxx @dan-zieber-abaxx @ryanobjc
 
-# Core library and migrations — also require jdutchak
-/src/                   @IanAbaxx @jdutchak
-/migrations/            @IanAbaxx @jdutchak
+# Core library and migrations
+/src/                   @IanAbaxx @dan-zieber-abaxx @ryanobjc
+/migrations/            @IanAbaxx @dan-zieber-abaxx @ryanobjc
 
-# CI and repo config — Ian only
-/.github/               @IanAbaxx
-/CLAUDE.md              @IanAbaxx
-/AGENTS.md              @IanAbaxx
+# CI and repo config
+/.github/               @IanAbaxx @dan-zieber-abaxx @ryanobjc
+/CLAUDE.md              @IanAbaxx @dan-zieber-abaxx @ryanobjc
+/AGENTS.md              @IanAbaxx @dan-zieber-abaxx @ryanobjc
 
 # Core component review assignments
-/src/auth/              @IanAbaxx @dchrast
-/src/storage/           @IanAbaxx @dchrast
-/src/crypto/            @IanAbaxx @dchrast
+/src/auth/              @IanAbaxx @dchrast @dan-zieber-abaxx @ryanobjc
+/src/storage/           @IanAbaxx @dchrast @dan-zieber-abaxx @ryanobjc
+/src/crypto/            @IanAbaxx @dchrast @dan-zieber-abaxx @ryanobjc
