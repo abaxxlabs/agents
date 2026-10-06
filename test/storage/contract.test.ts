@@ -3,10 +3,9 @@ import type { StorageBackend, IdentityContext } from '#storage/types.js';
 import { deterministicSessionMacKey } from '../support/deterministic-session-mac-key.js';
 import { createMockAuditRecord } from '../mocks/audit-record.js';
 
-
 async function createBackend(): Promise<StorageBackend> {
   return SqliteStorageBackend.create(
-    { type: 'sqlite', path: ':memory:' },
+    { type: 'sqlite', path: ':memory:', sessionMacKey: deterministicSessionMacKey('contract') },
     { sessionMacKey: deterministicSessionMacKey('contract') },
   );
 }
@@ -20,7 +19,6 @@ function agentIdentity(callerDid: string): IdentityContext {
     verifiedAt: Date.now(),
   });
 }
-
 
 describe('AgentStore (SQLite)', () => {
   let backend: StorageBackend;
@@ -181,7 +179,6 @@ describe('AgentStore (SQLite)', () => {
   });
 });
 
-
 describe('AuditStore (SQLite)', () => {
   let backend: StorageBackend;
 
@@ -195,7 +192,13 @@ describe('AuditStore (SQLite)', () => {
   });
 
   const mockRecord = (overrides: Partial<import('../../src/types/audit.js').AuditRecord> = {}) =>
-    createMockAuditRecord({ columnsAccessed: ['col1', 'col2'], rowCount: 10, durationMs: 42, signature: 'jws-signature-xyz', ...overrides });
+    createMockAuditRecord({
+      columnsAccessed: ['col1', 'col2'],
+      rowCount: 10,
+      durationMs: 42,
+      signature: 'jws-signature-xyz',
+      ...overrides,
+    });
 
   it('append() persists a record', async () => {
     await backend.audit.append(mockRecord());
@@ -294,7 +297,6 @@ describe('AuditStore (SQLite)', () => {
     expect(n).toBe(0);
   });
 });
-
 
 describe('ContextStore (SQLite)', () => {
   let backend: StorageBackend;

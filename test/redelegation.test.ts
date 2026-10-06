@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { VcVerifier } from '#identity/index.js';
 import { InMemoryRevocationStore } from '#storage/memory/revocation-store.js';
-import { decodeJwt, createJwt } from '#crypto/jwt.js';
+import { decodeJwt, createJwt, type JwtPayload } from '#crypto/jwt.js';
+import { extractDelegationChain } from '#auth/delegation-policy.js';
 import {
   generateDidKey,
   issueCredential,
@@ -59,8 +60,8 @@ describe('Re-delegation is not permitted', () => {
 
     const decoded = decodeJwt(delegated).payload;
     expect(decoded.vc?.type).toContain('DelegatedAgentScopeCredential');
-    expect(Array.isArray(decoded.delegationChain)).toBe(true);
-    expect(decoded.delegationChain).toHaveLength(1);
+    expect(Array.isArray(extractDelegationChain(decoded))).toBe(true);
+    expect(extractDelegationChain(decoded)).toHaveLength(1);
   });
 
   it('issueDelegatedCredential throws when source is itself a DelegatedAgentScopeCredential', async () => {
@@ -195,7 +196,10 @@ describe('Re-delegation is not permitted', () => {
         },
       },
     };
-    const craftedJwt = await createJwt(craftedPayload, supervisor.privateKey);
+    const craftedJwt = await createJwt(
+      craftedPayload as unknown as JwtPayload,
+      supervisor.privateKey,
+    );
 
     await expect(
       issueDelegatedCredential(
@@ -246,7 +250,10 @@ describe('Re-delegation is not permitted', () => {
         },
       },
     };
-    const craftedAncestorJwt = await createJwt(craftedAncestor, supervisor.privateKey);
+    const craftedAncestorJwt = await createJwt(
+      craftedAncestor as unknown as JwtPayload,
+      supervisor.privateKey,
+    );
 
     // Build a child credential with the crafted ancestor in its chain
     const reDelegatedPayload = {
@@ -313,7 +320,7 @@ describe('Re-delegation is not permitted', () => {
         },
       },
     };
-    const jwt = await createJwt(payload, supervisor.privateKey);
+    const jwt = await createJwt(payload as unknown as JwtPayload, supervisor.privateKey);
 
     const result = await verifier.verify(jwt, { expectedSubject: worker.did });
 
@@ -373,14 +380,8 @@ describe('Re-delegation is not permitted', () => {
       exp: now + 3600,
       delegationChain: [rootCred],
       vc: {
-        '@context': [
-          'https://www.w3.org/2018/credentials/v1',
-          'https://abaxx.tech/vocab/v1',
-        ],
-        type: [
-          'VerifiableCredential',
-          'https://abaxx.tech/vocab#DelegatedAgentScopeCredential',
-        ],
+        '@context': ['https://www.w3.org/2018/credentials/v1', 'https://abaxx.tech/vocab/v1'],
+        type: ['VerifiableCredential', 'https://abaxx.tech/vocab#DelegatedAgentScopeCredential'],
         credentialSubject: {
           id: worker.did,
           scope: { columns: ['patients.name'], actions: ['read'] },
@@ -430,14 +431,8 @@ describe('Re-delegation is not permitted', () => {
       exp: now + 3600,
       delegationChain: [rootCred],
       vc: {
-        '@context': [
-          'https://www.w3.org/2018/credentials/v1',
-          'https://abaxx.tech/vocab/v1',
-        ],
-        type: [
-          'VerifiableCredential',
-          'https://abaxx.tech/vocab#DelegatedAgentScopeCredential',
-        ],
+        '@context': ['https://www.w3.org/2018/credentials/v1', 'https://abaxx.tech/vocab/v1'],
+        type: ['VerifiableCredential', 'https://abaxx.tech/vocab#DelegatedAgentScopeCredential'],
         credentialSubject: {
           id: worker.did,
           scope: { columns: ['patients.name'], actions: ['read'] },

@@ -188,7 +188,7 @@ describe('createSessionFromDid — parent credential fallback', () => {
 
   it('catches ParentCredentialRequestFailedError and falls through to local signing', async () => {
     const provider = makeFailingProvider(
-      new ParentCredentialRequestFailedError(PARENT_DID, 'network timeout'),
+      new ParentCredentialRequestFailedError(PARENT_DID, undefined, 'network timeout'),
     );
 
     const session = createSessionFromDid(
@@ -302,7 +302,7 @@ describe('createSessionFromDid — requireParent', () => {
 
   it('throws when parent provider fails and requireParent is set', async () => {
     const provider = makeFailingProvider(
-      new ParentCredentialRequestFailedError(PARENT_DID, 'network timeout'),
+      new ParentCredentialRequestFailedError(PARENT_DID, undefined, 'network timeout'),
     );
 
     const session = createSessionFromDid(
@@ -357,7 +357,8 @@ describe('createSessionFromDid — requireParent', () => {
 describe('createSessionFromDid — revokeCredential', () => {
   it('writes locally first, returns empty result when no SDK (no throw)', async () => {
     const humanKeys = generateDidKey();
-    const realVerifier = new VcVerifier({ revocationStore: new InMemoryRevocationStore() });
+    const revocationStore = new InMemoryRevocationStore();
+    const realVerifier = new VcVerifier({ revocationStore });
 
     const session = createSessionFromDid(
       humanKeys.did,
@@ -374,12 +375,13 @@ describe('createSessionFromDid — revokeCredential', () => {
     // Local write succeeded, no SDK notification attempted.
     expect(result.sdkNotificationFailed).toBeUndefined();
     // Revocation is durable in the local store.
-    expect(await realVerifier.revocationStore.isRevoked(jti)).toBe(true);
+    expect(await revocationStore.isRevoked(jti)).toBe(true);
   });
 
   it('SDK failure does not fail local revocation — sdkNotificationFailed is set', async () => {
     const humanKeys = generateDidKey();
-    const realVerifier = new VcVerifier({ revocationStore: new InMemoryRevocationStore() });
+    const revocationStore = new InMemoryRevocationStore();
+    const realVerifier = new VcVerifier({ revocationStore });
 
     const failingSdk = {
       vc: {
@@ -404,7 +406,7 @@ describe('createSessionFromDid — revokeCredential', () => {
       expect(result.sdkNotificationFailed).toBeInstanceOf(Error);
       expect(result.sdkNotificationFailed?.message).toContain('SDK network failure');
       // Local revocation succeeded despite SDK failure.
-      expect(await realVerifier.revocationStore.isRevoked(jti)).toBe(true);
+      expect(await revocationStore.isRevoked(jti)).toBe(true);
     } finally {
       warnSpy.mockRestore();
     }
@@ -439,25 +441,25 @@ describe('CapabilityEngine.isSubsetOf — ceiling enforcement', () => {
   const engine = new CapabilityEngine();
 
   it('child subset of parent returns true', () => {
-    const child: CapabilitySet = [{ resource: 'data:patients', action: 'read' }];
+    const child: CapabilitySet = [{ scope: 'data:patients', action: 'read' }];
     const parent: CapabilitySet = [
-      { resource: 'data:patients', action: 'read' },
-      { resource: 'data:billing', action: 'read' },
+      { scope: 'data:patients', action: 'read' },
+      { scope: 'data:billing', action: 'read' },
     ];
     expect(engine.isSubsetOf(child, parent)).toBe(true);
   });
 
   it('child exceeding parent returns false', () => {
     const child: CapabilitySet = [
-      { resource: 'data:patients', action: 'read' },
-      { resource: 'data:secrets', action: 'write' },
+      { scope: 'data:patients', action: 'read' },
+      { scope: 'data:secrets', action: 'write' },
     ];
-    const parent: CapabilitySet = [{ resource: 'data:patients', action: 'read' }];
+    const parent: CapabilitySet = [{ scope: 'data:patients', action: 'read' }];
     expect(engine.isSubsetOf(child, parent)).toBe(false);
   });
 
   it('empty child is always a subset (vacuous truth)', () => {
-    const parent: CapabilitySet = [{ resource: 'data:patients', action: 'read' }];
+    const parent: CapabilitySet = [{ scope: 'data:patients', action: 'read' }];
     expect(engine.isSubsetOf([], parent)).toBe(true);
   });
 
@@ -489,10 +491,10 @@ describe('AgentVerifier — Step 2.5 parentScopeCeiling', () => {
 
   it('passes when capabilities are within ceiling', async () => {
     const verifier = await makeVerifier();
-    const caps: CapabilitySet = [{ resource: 'data:patients', action: 'read' }];
+    const caps: CapabilitySet = [{ scope: 'data:patients', action: 'read' }];
     const ceiling: CapabilitySet = [
-      { resource: 'data:patients', action: 'read' },
-      { resource: 'data:billing', action: 'read' },
+      { scope: 'data:patients', action: 'read' },
+      { scope: 'data:billing', action: 'read' },
     ];
 
     const result = await verifier.verify({
@@ -507,10 +509,10 @@ describe('AgentVerifier — Step 2.5 parentScopeCeiling', () => {
   it('throws ParentScopeExceededError when capabilities exceed ceiling', async () => {
     const verifier = await makeVerifier();
     const caps: CapabilitySet = [
-      { resource: 'data:patients', action: 'read' },
-      { resource: 'data:secrets', action: 'write' },
+      { scope: 'data:patients', action: 'read' },
+      { scope: 'data:secrets', action: 'write' },
     ];
-    const ceiling: CapabilitySet = [{ resource: 'data:patients', action: 'read' }];
+    const ceiling: CapabilitySet = [{ scope: 'data:patients', action: 'read' }];
 
     await expect(
       verifier.verify({
@@ -523,7 +525,7 @@ describe('AgentVerifier — Step 2.5 parentScopeCeiling', () => {
 
   it('empty capabilities pass ceiling check (vacuous truth)', async () => {
     const verifier = await makeVerifier();
-    const ceiling: CapabilitySet = [{ resource: 'data:patients', action: 'read' }];
+    const ceiling: CapabilitySet = [{ scope: 'data:patients', action: 'read' }];
 
     const result = await verifier.verify({
       bindingJwt: makeBindingJwt([]),
@@ -535,7 +537,7 @@ describe('AgentVerifier — Step 2.5 parentScopeCeiling', () => {
   });
 });
 
-describe('Audit Logger — V3 orgId records', () => {
+describe('Audit Logger — orgId records', () => {
   let agent: ReturnType<typeof generateDidKey>;
   let human: ReturnType<typeof generateDidKey>;
 
@@ -544,7 +546,7 @@ describe('Audit Logger — V3 orgId records', () => {
     human = generateDidKey();
   });
 
-  it('version is 3 when orgId is present', async () => {
+  it('records the current schema version when orgId is present', async () => {
     const logger = new AuditLogger({
       auditStore: createMockAuditStore(),
       enabled: true,
@@ -562,11 +564,11 @@ describe('Audit Logger — V3 orgId records', () => {
     };
 
     const record = await logger.log(entry, createSigner(agent.privateKey));
-    expect(record.version).toBe(3);
+    expect(record.version).toBe(4);
     expect(record.orgId).toBe(PARENT_DID);
   });
 
-  it('version is 3 even when orgId is absent', async () => {
+  it('records the current schema version even when orgId is absent', async () => {
     const logger = new AuditLogger({
       auditStore: createMockAuditStore(),
       enabled: true,
@@ -583,7 +585,7 @@ describe('Audit Logger — V3 orgId records', () => {
     };
 
     const record = await logger.log(entry, createSigner(agent.privateKey));
-    expect(record.version).toBe(3);
+    expect(record.version).toBe(4);
     expect(record.orgId).toBeUndefined();
   });
 

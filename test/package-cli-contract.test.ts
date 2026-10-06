@@ -6,30 +6,18 @@ import { join, resolve } from 'node:path';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const NPM_CACHE = join(tmpdir(), 'agents-cli-contract-npm-cache');
-let githubToken: string | undefined;
 
 interface SpawnResult {
   stdout: string;
   stderr: string;
 }
 
-function resolveGithubToken(): string | undefined {
-  if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
-  if (githubToken !== undefined) return githubToken || undefined;
-
-  const result = spawnSync('gh', ['auth', 'token'], { encoding: 'utf8' });
-  githubToken = result.status === 0 ? result.stdout.trim() : '';
-  return githubToken || undefined;
-}
-
 function run(command: string, args: string[], cwd = ROOT): SpawnResult {
-  const token = resolveGithubToken();
   const result = spawnSync(command, args, {
     cwd,
     encoding: 'utf8',
     env: {
       ...process.env,
-      ...(token ? { GITHUB_TOKEN: token } : {}),
       NO_COLOR: '1',
       npm_config_cache: NPM_CACHE,
       npm_config_fetch_retries: '1',
@@ -136,17 +124,7 @@ describe('package CLI contract', () => {
 
     expect(help.stdout).toContain('Usage: agents [options] [command]');
     expect(help.stdout).toContain('migrate-check');
-
-    for (const command of [
-      'init',
-      'demo',
-      'encrypt',
-      'verify',
-      'status',
-      'mcp',
-      'migrate-check',
-      'serve',
-    ]) {
+    for (const command of ['init', 'demo', 'encrypt', 'verify', 'status', 'mcp', 'migrate-check']) {
       const commandHelp = run(
         join(installDir, 'node_modules', '.bin', binName),
         [command, '--help'],

@@ -1,16 +1,34 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { artifactFileStatus, scanFileForContentViolations } from './audit-artifact-content.mjs';
+import {
+  evaluatePublicRepoPath,
+  firstMatchingGlob,
+  loadPublicRepoPolicy,
+  normalizeArtifactPath,
+  normalizeArtifactPaths,
+  parsePublicRepoPolicy,
+} from './assert-package-artifacts.mjs';
+import { corporateEmployeeNames, normalizePrivateUrlPrefixes } from './audit-sensitive-values.mjs';
+import {
+  auditArtifactLicenses,
+  selectOriginalLicenseFiles,
+  readRepositoryFileContents,
+} from './audit-artifact-license.mjs';
+
+export { evaluatePublicRepoPath, loadPublicRepoPolicy, parsePublicRepoPolicy };
+
 const ROOT_DIR = process.cwd();
 const PUBLIC_REPO_LIST_ENV = 'ABAXXLABS_PUBLIC_REPO_CANDIDATE_LIST';
 const PUBLIC_REPO_ROOT_ENV = 'ABAXXLABS_PUBLIC_REPO_ROOT';
-const PUBLIC_REPO_POLICY = JSON.parse(
-  readFileSync(new URL('./public-repo-policy.json', import.meta.url), 'utf8'),
-);
+const PRIVATE_URL_PREFIXES_ENV = 'ABAXXLABS_PRIVATE_URL_PREFIXES';
+const CORPORATE_EMAIL_SUFFIX_ENV = 'ABAXXLABS_CORPORATE_EMAIL_SUFFIX';
+const EMPLOYEE_NAMES_ENV = 'ABAXXLABS_EMPLOYEE_NAMES';
 
 const PACKAGE_ALLOWED_PATHS = [
   'package.json',
@@ -20,467 +38,47 @@ const PACKAGE_ALLOWED_PATHS = [
   'vendor/id-sdk-mcp/**',
 ];
 
-export const PUBLIC_REPO_ALLOWED_PATHS = PUBLIC_REPO_POLICY.publicAllowedPaths;
-const CREDENTIAL_FORBIDDEN_PATHS = PUBLIC_REPO_POLICY.credentialForbiddenPaths;
-const PUBLIC_REPO_FORBIDDEN_PATHS = [
-  ...new Set([...PUBLIC_REPO_POLICY.publicForbiddenPaths, ...CREDENTIAL_FORBIDDEN_PATHS]),
+const PACKAGE_CREDENTIAL_FORBIDDEN_PATHS = [
+  '**/.env',
+  '**/.env.*',
+  '**/.agent-scope-master-key',
+  '**/agent-scope.config.json',
+  '**/client_secret.json',
+  '**/credentials.json',
+  '**/id_ed25519',
+  '**/id_rsa',
+  '**/service-account.json',
+  '**/service_account.json',
+  '**/*.key',
+  '**/*.p12',
+  '**/*.pfx',
+  '**/*.pem',
 ];
 
-const SECRET_CONTENT_PATTERNS = [
-  {
-    name: 'private key block',
-    pattern: /-----BEGIN (?:RSA |DSA |EC |OPENSSH )?PRIVATE KEY-----/,
-  },
-  {
-    name: 'encrypted private key block',
-    pattern: new RegExp('-----BEGIN ENCRYPTED ' + 'PRIVATE KEY-----'),
-  },
-  {
-    name: 'PGP private key block',
-    pattern: new RegExp('-----BEGIN PGP ' + 'PRIVATE KEY BLOCK-----'),
-  },
-  {
-    name: 'SSH2 encrypted private key block',
-    pattern: new RegExp('---- BEGIN SSH2 ENCRYPTED ' + 'PRIVATE KEY ----'),
-  },
-  {
-    name: 'AWS access key id',
-    pattern: /\bAKIA[0-9A-Z]{16}\b/,
-  },
-  {
-    name: 'AWS temporary access key id',
-    pattern: /\bASIA[0-9A-Z]{16}\b/,
-  },
-  {
-    name: 'GCP service account key metadata',
-    pattern: /"private_key_id"\s*:\s*"[A-Za-z0-9_-]{16,}"/,
-  },
-  {
-    name: 'GitHub token',
-    pattern: /\b(?:ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{30,})\b/,
-  },
-  {
-    name: 'OpenAI API key',
-    pattern: /\bsk-(?:proj-)?[A-Za-z0-9_-]{32,}\b/,
-  },
-  {
-    name: 'Anthropic API key',
-    pattern: /\bsk-ant-[A-Za-z0-9_-]{32,}\b/,
-  },
-  {
-    name: 'Slack token',
-    pattern: /\bxox[baprs]-[A-Za-z0-9-]{20,}\b/,
-  },
-];
-
-const MAX_SECRET_SCAN_BYTES = 1024 * 1024;
-
-const BLOCKED_RELEASE_TERMS = [
-  {
-    category: 'ticket/process history',
-    term: 'ABXAGNTS',
-    pattern: /\bABXAGNTS(?:-\d+)?\b/i,
-  },
-  {
-    category: 'ticket/process history',
-    term: 'PR #',
-    pattern: /\bPR\s+#\d+\b/i,
-  },
-  {
-    category: 'ticket/process history',
-    term: 'pre-landing',
-    pattern: /\bpre[- ]landing\b/i,
-  },
-  {
-    category: 'ticket/process history',
-    term: 'adversarial review',
-    pattern: /\badversarial review\b/i,
-  },
-  {
-    category: 'ticket/process history',
-    term: 'agent workflow',
-    pattern: /\bagent workflow\b/i,
-  },
-  {
-    category: 'ticket/process history',
-    term: 'handoff',
-    pattern: /\bhandoff\b/i,
-  },
-  {
-    category: 'temporal/internal delivery history',
-    term: 'Session',
-    pattern: /\b(?:post-)?Sessions?\s*[- ]\s*\d+\b/i,
-  },
-  {
-    category: 'temporal/internal delivery history',
-    term: 'Phase',
-    pattern: /\bPhase\s*[- ]\s*\d+\b/i,
-  },
-  {
-    category: 'temporal/internal delivery history',
-    term: 'hackathon',
-    pattern: /\bhackathon\b/i,
-  },
-  {
-    category: 'temporal/internal delivery history',
-    term: 'post-hackathon',
-    pattern: /\bpost[- ]hackathon\b/i,
-  },
-  {
-    category: 'strategy/commercial positioning',
-    term: 'commercial',
-    pattern: /\bcommercial\b/i,
-  },
-  {
-    category: 'strategy/commercial positioning',
-    term: 'paid',
-    pattern: /\bpaid\b/i,
-  },
-  {
-    category: 'strategy/commercial positioning',
-    term: 'upgrade path',
-    pattern: /\bupgrade path\b/i,
-  },
-  {
-    category: 'strategy/commercial positioning',
-    term: 'open-core',
-    pattern: /\bopen[- ]core\b/i,
-  },
-  {
-    category: 'person-specific presenter context',
-    term: 'Ian',
-    pattern: /\bIan\b/,
-  },
-];
-
-const BLOCKED_RELEASE_TERM_ALLOWLIST = [
-  {
-    path: 'scripts/audit-public-artifacts.mjs',
-    linePattern: String.raw`^\s*(?:category|term|pattern|linePattern):`,
-    reason: 'The release audit source must declare the exact blocked terms it enforces.',
-  },
-  {
-    path: 'scripts/public-repo-policy.json',
-    linePattern: String.raw`^\s*"(?:demo/hackathon|docs/abxagnts-)`,
-    reason: 'The public repository policy must declare forbidden internal-only path globs.',
-  },
-  {
-    path: 'LICENSE',
-    linePattern: String.raw`other commercial damages or losses`,
-    reason:
-      'Standard Apache License 2.0 section 8 boilerplate ("damages or losses"); not project-authored positioning.',
-  },
-];
-
-const TEXT_EXTENSIONS = new Set([
-  '',
-  '.cjs',
-  '.css',
-  '.env',
-  '.html',
-  '.js',
-  '.json',
-  '.lock',
-  '.md',
-  '.mjs',
-  '.sh',
-  '.sql',
-  '.toml',
-  '.ts',
-  '.tsx',
-  '.txt',
-  '.yaml',
-  '.yml',
-]);
-
-function globToRegExp(glob) {
-  let source = '^';
-  for (let i = 0; i < glob.length; i += 1) {
-    const char = glob[i];
-    const next = glob[i + 1];
-
-    if (char === '*' && next === '*') {
-      const after = glob[i + 2];
-      if (after === '/') {
-        source += '(?:.*\\/)?';
-        i += 2;
-      } else {
-        source += '.*';
-        i += 1;
-      }
-    } else if (char === '*') {
-      source += '[^/]*';
-    } else if (char === '?') {
-      source += '[^/]';
-    } else {
-      source += char.replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
-    }
-  }
-  source += '$';
-  return new RegExp(source);
-}
-
-const globCache = new Map();
-
-function matchesGlob(filePath, glob) {
-  let regexp = globCache.get(glob);
-  if (!regexp) {
-    regexp = globToRegExp(glob);
-    globCache.set(glob, regexp);
-  }
-  return regexp.test(filePath);
-}
-
-function firstMatchingGlob(filePath, globs) {
-  return globs.find((glob) => matchesGlob(filePath, glob));
-}
-
-function normalizeArtifactPath(value) {
-  const trimmed = String(value ?? '').trim();
-  if (!trimmed) {
-    return { path: '', error: 'empty artifact path' };
-  }
-
-  const slashPath = trimmed.replace(/\\/g, '/').replace(/^\.\//, '');
-  if (path.posix.isAbsolute(slashPath)) {
-    return { path: slashPath, error: 'artifact paths must be relative' };
-  }
-
-  const normalized = path.posix.normalize(slashPath);
-  if (normalized === '.' || normalized.startsWith('../') || normalized === '..') {
-    return { path: normalized, error: 'artifact path escapes the artifact root' };
-  }
-
-  return { path: normalized };
-}
-
-function normalizeArtifactPaths(paths) {
-  const normalized = [];
-  const violations = [];
-  const seen = new Set();
-
-  for (const input of paths) {
-    const result = normalizeArtifactPath(input);
-    if (result.error) {
-      violations.push({ path: result.path || String(input ?? ''), reason: result.error });
-      continue;
-    }
-    if (!seen.has(result.path)) {
-      seen.add(result.path);
-      normalized.push(result.path);
-    }
-  }
-
-  return { paths: normalized, violations };
-}
-
-function artifactFileStatus(artifactPath, rootDir) {
-  const absolutePath = path.resolve(rootDir, artifactPath);
-  if (
-    !absolutePath.startsWith(path.resolve(rootDir) + path.sep) &&
-    absolutePath !== path.resolve(rootDir)
-  ) {
-    return { withinRoot: false };
-  }
-  if (!existsSync(absolutePath)) {
-    return { withinRoot: true, exists: false };
-  }
-  const stat = statSync(absolutePath);
-  return { withinRoot: true, exists: true, isFile: stat.isFile(), size: stat.size };
-}
-
-function contentScanStatus(artifactPath, rootDir) {
-  const fileStatus = artifactFileStatus(artifactPath, rootDir);
-  if (!fileStatus.withinRoot || !fileStatus.exists || !fileStatus.isFile) {
-    return { scan: false };
-  }
-  if (!TEXT_EXTENSIONS.has(path.extname(artifactPath))) {
-    return { scan: false };
-  }
-  if (fileStatus.size > MAX_SECRET_SCAN_BYTES) {
-    return {
-      scan: false,
-      violation: {
-        path: artifactPath,
-        reason: `exceeds text content scan size limit (${MAX_SECRET_SCAN_BYTES} bytes)`,
-      },
-    };
-  }
-  return { scan: true };
-}
-
-function validateBlockedTermAllowlistEntry(entry, index) {
-  if (!entry || typeof entry !== 'object') {
-    throw new Error(`blocked release term allowlist entry ${index + 1} must be an object`);
-  }
-  if (typeof entry.path !== 'string' || entry.path.trim().length === 0) {
-    throw new Error(`blocked release term allowlist entry ${index + 1} must include a file path`);
-  }
-  if (entry.path.includes('*')) {
-    throw new Error(
-      `blocked release term allowlist entry ${index + 1} must be file-specific, not a glob`,
-    );
-  }
-  if (path.posix.isAbsolute(entry.path) || entry.path.startsWith('../') || entry.path === '..') {
-    throw new Error(
-      `blocked release term allowlist entry ${index + 1} path must be relative to the audit root`,
-    );
-  }
-  if (typeof entry.reason !== 'string' || entry.reason.trim().length < 12) {
-    throw new Error(
-      `blocked release term allowlist entry ${index + 1} must include a narrow reason`,
-    );
-  }
-  if (
-    (typeof entry.term !== 'string' || entry.term.trim().length === 0) &&
-    (typeof entry.linePattern !== 'string' || entry.linePattern.trim().length === 0)
-  ) {
-    throw new Error(
-      `blocked release term allowlist entry ${index + 1} must include a term or linePattern constraint`,
-    );
-  }
-  if (entry.linePattern) {
-    try {
-      new RegExp(entry.linePattern);
-    } catch (error) {
-      throw new Error(
-        `blocked release term allowlist entry ${index + 1} has an invalid linePattern: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
-  }
-}
-
-function normalizeBlockedTermAllowlist(allowlist) {
-  if (!Array.isArray(allowlist)) {
-    throw new Error('blocked release term allowlist must be an array');
-  }
-  return allowlist.map((entry, index) => {
-    validateBlockedTermAllowlistEntry(entry, index);
-    const normalizedPath = normalizeArtifactPath(entry.path);
-    if (normalizedPath.error) {
-      throw new Error(
-        `blocked release term allowlist entry ${index + 1} has an invalid path: ${normalizedPath.error}`,
-      );
-    }
-    return {
-      path: normalizedPath.path,
-      term: entry.term?.trim(),
-      reason: entry.reason.trim(),
-      linePattern: entry.linePattern ? new RegExp(entry.linePattern) : undefined,
-    };
-  });
-}
-
-function isBlockedTermAllowlisted(allowlist, artifactPath, line, term) {
-  return allowlist.some((entry) => {
-    if (entry.path !== artifactPath) return false;
-    if (entry.term && entry.term !== term) return false;
-    if (entry.linePattern && !entry.linePattern.test(line)) return false;
-    return true;
-  });
-}
-
-function databaseCredentialViolations(contents, artifactPath) {
-  const violations = [];
-  const urlPattern = /\b(?:postgres(?:ql)?|mongodb(?:\+srv)?|mysql|redis):\/\/[^\s"'`<>]+/gi;
-  const localHosts = new Set(['localhost', '127.0.0.1', '::1', 'h', 'host', 'example.com']);
-
-  for (const match of contents.matchAll(urlPattern)) {
-    try {
-      const url = new URL(match[0]);
-      if (!url.username || !url.password || localHosts.has(url.hostname.toLowerCase())) {
-        continue;
-      }
-      violations.push({
-        path: artifactPath,
-        reason: 'contains high-confidence secret pattern: database URL with embedded password',
-      });
-      break;
-    } catch {
-      // Ignore malformed example URLs; path allowlists still apply.
-    }
-  }
-
-  return violations;
-}
-
-function secretContentViolations(contents, artifactPath) {
-  const patternViolations = SECRET_CONTENT_PATTERNS.filter(({ pattern }) =>
-    pattern.test(contents),
-  ).map(({ name }) => ({
-    path: artifactPath,
-    reason: `contains high-confidence secret pattern: ${name}`,
-  }));
-  return [...patternViolations, ...databaseCredentialViolations(contents, artifactPath)];
-}
-
-function blockedReleaseTermViolations(contents, artifactPath, allowlist) {
-  const violations = [];
-  const lines = contents.split(/\r?\n/);
-
-  lines.forEach((line, index) => {
-    for (const term of BLOCKED_RELEASE_TERMS) {
-      if (!term.pattern.test(line)) continue;
-      if (isBlockedTermAllowlisted(allowlist, artifactPath, line, term.term)) continue;
-      violations.push({
-        path: artifactPath,
-        line: index + 1,
-        term: term.term,
-        reason: `contains blocked release term "${term.term}" (${term.category})`,
-      });
-    }
-  });
-
-  return violations;
-}
-
-function scanFileForContentViolations(artifactPath, rootDir, options = {}) {
-  const status = contentScanStatus(artifactPath, rootDir);
-  if (status.violation) {
-    return [status.violation];
-  }
-  if (!status.scan) {
-    return [];
-  }
-
-  const absolutePath = path.resolve(rootDir, artifactPath);
-  const contents = readFileSync(absolutePath, 'utf8');
-  return [
-    ...secretContentViolations(contents, artifactPath),
-    ...(options.scanBlockedTerms === false
-      ? []
-      : blockedReleaseTermViolations(contents, artifactPath, options.blockedTermAllowlist)),
-  ];
-}
-
-function auditFiles(paths, policy, options = {}) {
+function auditFiles(paths, pathRules, options = {}) {
   const rootDir = options.rootDir ?? ROOT_DIR;
   const scanContents = options.scanContents ?? true;
   const requireExistingFiles = options.requireExistingFiles ?? false;
   const scanBlockedTerms = options.scanBlockedTerms ?? true;
-  const blockedTermAllowlist = normalizeBlockedTermAllowlist(
-    options.blockedTermAllowlist ?? BLOCKED_RELEASE_TERM_ALLOWLIST,
-  );
   const { paths: normalizedPaths, violations } = normalizeArtifactPaths(paths);
-  const allForbiddenGlobs = policy.forbidden ?? [];
 
   for (const artifactPath of normalizedPaths) {
-    const forbiddenGlob = firstMatchingGlob(artifactPath, allForbiddenGlobs);
+    const forbiddenGlob = pathRules.evaluatePath
+      ? pathRules.evaluatePath(artifactPath).matchedRule
+      : firstMatchingGlob(artifactPath, pathRules.forbiddenPaths ?? []);
     if (forbiddenGlob) {
       violations.push({ path: artifactPath, reason: `forbidden path (${forbiddenGlob})` });
       continue;
     }
 
-    const allowedGlob = firstMatchingGlob(artifactPath, policy.allowed);
-    if (!allowedGlob) {
+    if (pathRules.allowedPaths && !firstMatchingGlob(artifactPath, pathRules.allowedPaths)) {
       violations.push({ path: artifactPath, reason: 'not in artifact allowlist' });
       continue;
     }
 
+    let fileStatus;
     if (requireExistingFiles) {
-      const fileStatus = artifactFileStatus(artifactPath, rootDir);
+      fileStatus = artifactFileStatus(artifactPath, rootDir);
       if (!fileStatus.exists) {
         violations.push({
           path: artifactPath,
@@ -497,8 +95,13 @@ function auditFiles(paths, policy, options = {}) {
     if (scanContents) {
       violations.push(
         ...scanFileForContentViolations(artifactPath, rootDir, {
-          blockedTermAllowlist,
+          blockedContentTerms: options.blockedContentTerms,
           scanBlockedTerms,
+          employeeNames: options.employeeNames,
+          fileStatus,
+          privateUrlPrefixes: options.privateUrlPrefixes,
+          ticketPrefixes: options.ticketPrefixes,
+          publishedPaths: options.validatePublishedLinks ? new Set(normalizedPaths) : undefined,
         }),
       );
     }
@@ -515,25 +118,28 @@ export function auditPackageFiles(paths, options = {}) {
   return auditFiles(
     paths,
     {
-      allowed: PACKAGE_ALLOWED_PATHS,
-      forbidden: CREDENTIAL_FORBIDDEN_PATHS,
+      allowedPaths: PACKAGE_ALLOWED_PATHS,
+      forbiddenPaths: PACKAGE_CREDENTIAL_FORBIDDEN_PATHS,
     },
     options,
   );
 }
 
 export function auditPublicRepoFiles(paths, options = {}) {
+  const policy = options.policy;
   return auditFiles(
     paths,
+    policy ? { evaluatePath: (artifactPath) => evaluatePublicRepoPath(artifactPath, policy) } : {},
     {
-      allowed: PUBLIC_REPO_ALLOWED_PATHS,
-      forbidden: PUBLIC_REPO_FORBIDDEN_PATHS,
+      ...options,
+      blockedContentTerms: policy?.blockedTerms ?? options.blockedContentTerms,
+      ticketPrefixes: policy?.ticketPrefixes ?? options.ticketPrefixes,
+      validatePublishedLinks: true,
     },
-    options,
   );
 }
 
-export function defaultPublicRepoCandidatePaths(rootDir = ROOT_DIR) {
+function defaultPublicRepoCandidatePaths(rootDir = ROOT_DIR) {
   const output = execFileSync(
     'git',
     ['ls-files', '--cached', '--others', '--exclude-standard', '-z'],
@@ -546,6 +152,13 @@ export function defaultPublicRepoCandidatePaths(rootDir = ROOT_DIR) {
     .split('\0')
     .filter(Boolean)
     .map((filePath) => normalizeArtifactPath(filePath).path)
+    .filter(Boolean);
+}
+
+function environmentLines(name) {
+  return (process.env[name] ?? '')
+    .split(/\r?\n/)
+    .map((value) => value.trim())
     .filter(Boolean);
 }
 
@@ -584,13 +197,6 @@ export function npmPackDryRunFiles(rootDir = ROOT_DIR) {
     {
       cwd: rootDir,
       encoding: 'utf8',
-      env: {
-        ...process.env,
-        NPM_CONFIG_CACHE: npmCache,
-        NPM_CONFIG_LOGS_DIR: npmLogs,
-        npm_config_cache: npmCache,
-        npm_config_logs_dir: npmLogs,
-      },
     },
   );
   const jsonStart = output.indexOf('[');
@@ -617,13 +223,17 @@ function printResult(name, result) {
 function usage() {
   return `
 Usage:
-  node scripts/audit-public-artifacts.mjs [all|package|public-repo] [--public-root <path>] [--public-list <path|-|git>] [--security-only]
+  node scripts/audit-public-artifacts.mjs [package|public-repo] [--public-root <path>] [--public-list <path|-|git>]
+  node scripts/audit-public-artifacts.mjs policy-evaluate --policy <path>
 
-  --security-only  Enforce path and secret checks without editorial release-term checks.
+  policy-evaluate  Read a JSON path array from stdin and write policy decisions as JSON.
 
 Environment:
   ${PUBLIC_REPO_ROOT_ENV}=<assembled public repo root>
   ${PUBLIC_REPO_LIST_ENV}=<path|-|git>
+  ${CORPORATE_EMAIL_SUFFIX_ENV}=<corporate email suffix used to derive employee names>
+  ${EMPLOYEE_NAMES_ENV}=<newline-separated employee names>
+  ${PRIVATE_URL_PREFIXES_ENV}=<newline-separated private URL prefixes>
 
 Examples:
   npm run audit:package-files
@@ -635,25 +245,24 @@ Examples:
 
 function parseArgs(argv) {
   const args = [...argv];
-  const command = args[0] && !args[0].startsWith('-') ? args.shift() : 'all';
+  const command = args[0] && !args[0].startsWith('-') ? args.shift() : 'package';
   let publicList = process.env[PUBLIC_REPO_LIST_ENV] ?? 'git';
   let publicRoot = process.env[PUBLIC_REPO_ROOT_ENV];
-  let securityOnly = false;
+  let policyPath;
 
   while (args.length > 0) {
     const arg = args.shift();
     if (arg === '--public-list') {
       publicList = args.shift();
-      if (!publicList) {
-        throw new Error('--public-list requires a path, "-", or "git"');
-      }
+      if (!publicList) throw new Error('--public-list requires a path, "-", or "git"');
     } else if (arg === '--public-root') {
       publicRoot = args.shift();
       if (!publicRoot) {
         throw new Error('--public-root requires the assembled public repository root path');
       }
-    } else if (arg === '--security-only') {
-      securityOnly = true;
+    } else if (arg === '--policy') {
+      policyPath = args.shift();
+      if (!policyPath) throw new Error('--policy requires a JSON policy path');
     } else if (arg === '--help' || arg === '-h') {
       return { help: true };
     } else {
@@ -661,11 +270,32 @@ function parseArgs(argv) {
     }
   }
 
-  if (!['all', 'package', 'public-repo'].includes(command)) {
+  if (!['package', 'public-repo', 'policy-evaluate'].includes(command)) {
     throw new Error(`Unknown audit command: ${command}`);
   }
+  if (policyPath && command === 'package') {
+    throw new Error('--policy is only supported by public-repo and policy-evaluate');
+  }
+  if (command === 'policy-evaluate' && !policyPath) {
+    throw new Error('policy-evaluate requires --policy <path>');
+  }
+  return { command, publicList, publicRoot, policyPath };
+}
 
-  return { command, publicList, publicRoot, securityOnly };
+function evaluatePolicyInput(policyPath) {
+  const policy = loadPublicRepoPolicy(path.resolve(ROOT_DIR, policyPath));
+  let paths;
+  try {
+    paths = JSON.parse(readFileSync(0, 'utf8'));
+  } catch (error) {
+    throw new Error(
+      `policy evaluator input must be JSON: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (!Array.isArray(paths) || paths.some((filePath) => typeof filePath !== 'string')) {
+    throw new Error('policy evaluator input must be an array of path strings');
+  }
+  return paths.map((filePath) => evaluatePublicRepoPath(filePath, policy));
 }
 
 function publicRepoAuditInput(args) {
@@ -674,7 +304,6 @@ function publicRepoAuditInput(args) {
       `public-repo audit requires --public-root <assembled public repository root> or ${PUBLIC_REPO_ROOT_ENV}`,
     );
   }
-
   if (args.publicList === 'default') {
     throw new Error(
       '--public-list default is no longer supported; use --public-list git with --public-root <assembled public repository root>',
@@ -685,12 +314,10 @@ function publicRepoAuditInput(args) {
   if (rootDir === path.resolve(ROOT_DIR)) {
     throw new Error('Refusing to use the internal repository root as the public-repo audit target');
   }
-
   const paths =
     args.publicList === 'git'
       ? defaultPublicRepoCandidatePaths(rootDir)
       : readPublicRepoList(args.publicList);
-
   return { rootDir, paths };
 }
 
@@ -700,28 +327,55 @@ function runCli(argv) {
     console.log(usage());
     return 0;
   }
-  const results = [];
-  if (args.command === 'all' || args.command === 'package') {
-    const packageFiles = npmPackDryRunFiles();
-    results.push(['Package artifact', auditPackageFiles(packageFiles)]);
+  if (args.command === 'policy-evaluate') {
+    console.log(JSON.stringify(evaluatePolicyInput(args.policyPath)));
+    return 0;
   }
 
-  if (args.command === 'all' || args.command === 'public-repo') {
+  const results = [];
+  const sensitiveOptions = {
+    employeeNames: [
+      ...new Set([
+        ...corporateEmployeeNames(ROOT_DIR, process.env[CORPORATE_EMAIL_SUFFIX_ENV]),
+        ...environmentLines(EMPLOYEE_NAMES_ENV),
+      ]),
+    ],
+    privateUrlPrefixes: normalizePrivateUrlPrefixes(environmentLines(PRIVATE_URL_PREFIXES_ENV)),
+  };
+  if (args.command === 'package') {
+    const paths = npmPackDryRunFiles();
+    const result = auditPackageFiles(paths, { ...sensitiveOptions, requireExistingFiles: true });
+    const packageFileContents = new Map(
+      paths.map((filePath) => [filePath, readFileSync(path.resolve(ROOT_DIR, filePath))]),
+    );
+    const sourceFiles = readRepositoryFileContents(ROOT_DIR, ['LICENSE', 'vendor']);
+    sourceFiles.set('package.json', readFileSync(path.resolve(ROOT_DIR, 'package.json')));
+    result.violations.push(
+      ...auditArtifactLicenses(packageFileContents, {
+        isNpmPackage: true,
+        originalLicenseFiles: selectOriginalLicenseFiles(sourceFiles, { isNpmPackage: true }),
+      }),
+    );
+    result.ok = result.violations.length === 0;
+    results.push(['Package artifact', result]);
+  }
+  if (args.command === 'public-repo') {
     const publicRepoInput = publicRepoAuditInput(args);
+    const policy = args.policyPath
+      ? loadPublicRepoPolicy(path.resolve(ROOT_DIR, args.policyPath))
+      : undefined;
     results.push([
       'Public repo artifact',
       auditPublicRepoFiles(publicRepoInput.paths, {
         rootDir: publicRepoInput.rootDir,
         requireExistingFiles: true,
-        scanBlockedTerms: !args.securityOnly,
+        ...sensitiveOptions,
+        policy,
       }),
     ]);
   }
 
-  for (const [name, result] of results) {
-    printResult(name, result);
-  }
-
+  for (const [name, result] of results) printResult(name, result);
   return results.every(([, result]) => result.ok) ? 0 : 1;
 }
 

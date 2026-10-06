@@ -6,6 +6,7 @@ import { generateDidKey, issueCredential, createSigner } from '#auth/index.js';
 import { resolveDidKey, resolveDidKeyFallback } from '#did/resolve.js';
 import { DidResolutionFailedError } from '#errors/index.js';
 import { base58Encode } from '#crypto/base58.js';
+import { asDid } from '#types/domain.js';
 
 describe('VC Verifier', () => {
   describe('core', () => {
@@ -55,13 +56,13 @@ describe('VC Verifier', () => {
 
     describe('did:key resolution', () => {
       it('resolves a did:key to Ed25519 public key', () => {
-        const pk = resolveDidKey(human.did);
+        const pk = resolveDidKey(asDid(human.did));
         expect(pk.length).toBe(32);
         expect(Buffer.from(pk).equals(Buffer.from(human.publicKey))).toBe(true);
       });
 
       it('rejects non-did:key DIDs', () => {
-        expect(() => resolveDidKey('did:ion:abc123')).toThrow('Not a did:key');
+        expect(() => resolveDidKey(asDid('did:ion:abc123'))).toThrow('Not a did:key');
       });
     });
 
@@ -83,7 +84,7 @@ describe('VC Verifier', () => {
         expect(result.status).toBe('VALID');
         expect(result.credential?.issuer).toBe(human.did);
         expect(result.credential?.subject).toBe(agent.did);
-        expect(result.credential?.scope.columns).toEqual(['patients.name', 'patients.dob']);
+        expect(result.credential?.scope?.columns).toEqual(['patients.name', 'patients.dob']);
       });
 
       it('rejects expired credential', async () => {
@@ -814,7 +815,7 @@ describe('VC Verifier', () => {
 
   describe('base58 DID key validation', () => {
     it('resolveDidKeyFallback throws for invalid base58', () => {
-      expect(() => resolveDidKeyFallback('did:key:zINVALIDBASE58OLIO')).toThrow(
+      expect(() => resolveDidKeyFallback(asDid('did:key:zINVALIDBASE58OLIO'))).toThrow(
         DidResolutionFailedError,
       );
     });
@@ -891,23 +892,23 @@ describe('VC Verifier', () => {
       const shortKey = new Uint8Array([0xed, 0x01, ...new Array(16).fill(0x42)]);
       const encoded = 'z' + base58Encode(shortKey);
       const did = `did:key:${encoded}`;
-      expect(() => resolveDidKeyFallback(did)).toThrow(DidResolutionFailedError);
-      expect(() => resolveDidKeyFallback(did)).toThrow(/Expected 34 bytes/);
+      expect(() => resolveDidKeyFallback(asDid(did))).toThrow(DidResolutionFailedError);
+      expect(() => resolveDidKeyFallback(asDid(did))).toThrow(/Expected 34 bytes/);
     });
 
     it('rejects a DID with correct prefix but extra bytes appended', () => {
       const longKey = new Uint8Array([0xed, 0x01, ...new Array(64).fill(0x42)]);
       const encoded = 'z' + base58Encode(longKey);
       const did = `did:key:${encoded}`;
-      expect(() => resolveDidKeyFallback(did)).toThrow(DidResolutionFailedError);
-      expect(() => resolveDidKeyFallback(did)).toThrow(/Expected 34 bytes/);
+      expect(() => resolveDidKeyFallback(asDid(did))).toThrow(DidResolutionFailedError);
+      expect(() => resolveDidKeyFallback(asDid(did))).toThrow(/Expected 34 bytes/);
     });
 
     it('accepts a correctly-sized Ed25519 DID key', () => {
       const validKey = new Uint8Array([0xed, 0x01, ...new Array(32).fill(0x42)]);
       const encoded = 'z' + base58Encode(validKey);
       const did = `did:key:${encoded}`;
-      const result = resolveDidKeyFallback(did);
+      const result = resolveDidKeyFallback(asDid(did));
       expect(result.length).toBe(32);
     });
   });

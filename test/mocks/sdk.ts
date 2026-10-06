@@ -67,7 +67,13 @@ export function createSigningSdk(signingKey: ReturnType<typeof generateDidKey>):
         const data = vc as Record<string, unknown>;
         const now = Math.floor(Date.now() / 1000);
         return createJwt(
-          { iss: signingKey.did, sub: String(data.id), iat: now, exp: now + 3600, maxDepth: data.maxDepth },
+          {
+            iss: signingKey.did,
+            sub: String(data.id),
+            iat: now,
+            exp: now + 3600,
+            maxDepth: data.maxDepth as number | undefined,
+          },
           signingKey.privateKey,
         );
       },
@@ -79,7 +85,9 @@ export function createSigningSdk(signingKey: ReturnType<typeof generateDidKey>):
       checkCredentialStatus: async () => ({ revoked: false, suspended: false }),
       EdDsaSigner: (pk: Uint8Array) => createSigner(pk).signJwt as never,
     },
-    did: { resolve: async () => ({ didDocument: {}, didResolutionMetadata: {} }) } as unknown as IdSdkInstance['did'],
+    did: {
+      resolve: async () => ({ didDocument: {}, didResolutionMetadata: {} }),
+    } as unknown as IdSdkInstance['did'],
     agent: {},
     connectedDid: signingKey.did,
   };

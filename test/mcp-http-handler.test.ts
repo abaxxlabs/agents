@@ -63,7 +63,7 @@ function makeRes(): MockRes {
 }
 
 function makeMcpServer() {
-  return { connect: vi.fn(async () => undefined) };
+  return { connect: vi.fn(async (_transport: unknown) => undefined) };
 }
 
 const noLog = () => undefined;
@@ -248,14 +248,20 @@ describe('createMcpHttpHandler — multi-session routing', () => {
     });
 
     const firstRes = makeRes();
-    handler.handle(makeReq('/sse') as unknown as IncomingMessage, firstRes as unknown as ServerResponse);
+    handler.handle(
+      makeReq('/sse') as unknown as IncomingMessage,
+      firstRes as unknown as ServerResponse,
+    );
     expect(handler.activeSessionCount()).toBe(1);
 
     firstRes.emit('close');
     expect(handler.activeSessionCount()).toBe(0);
 
     const secondRes = makeRes();
-    handler.handle(makeReq('/sse') as unknown as IncomingMessage, secondRes as unknown as ServerResponse);
+    handler.handle(
+      makeReq('/sse') as unknown as IncomingMessage,
+      secondRes as unknown as ServerResponse,
+    );
 
     expect(secondRes.writeHead).not.toHaveBeenCalledWith(409, expect.anything());
     expect(handler.activeSessionCount()).toBe(1);
@@ -297,8 +303,8 @@ describe('createMcpHttpHandler — multi-session routing', () => {
       extractToken: vi.fn(() => undefined),
       validateToken: vi.fn(() => false),
       httpGuard: vi.fn((_req, res) => {
-        (res as unknown as MockRes).writeHead(401);
-        (res as unknown as MockRes).end('unauthorized');
+        res.writeHead(401);
+        res.end('unauthorized');
         return false;
       }),
     };
@@ -349,8 +355,14 @@ describe('createMcpHttpHandler — multi-session routing', () => {
       maxConcurrentSessions: 2,
     });
 
-    handler.handle(makeReq('/sse') as unknown as IncomingMessage, makeRes() as unknown as ServerResponse);
-    handler.handle(makeReq('/sse') as unknown as IncomingMessage, makeRes() as unknown as ServerResponse);
+    handler.handle(
+      makeReq('/sse') as unknown as IncomingMessage,
+      makeRes() as unknown as ServerResponse,
+    );
+    handler.handle(
+      makeReq('/sse') as unknown as IncomingMessage,
+      makeRes() as unknown as ServerResponse,
+    );
     expect(handler.activeSessionCount()).toBe(2);
 
     const overflowRes = makeRes();
@@ -439,7 +451,10 @@ describe('createMcpHttpHandler — multi-session routing', () => {
       });
 
       const res = makeRes();
-      handler.handle(makeReq('/health') as unknown as IncomingMessage, res as unknown as ServerResponse);
+      handler.handle(
+        makeReq('/health') as unknown as IncomingMessage,
+        res as unknown as ServerResponse,
+      );
 
       const headers = headerMap(res);
       for (const [name, value] of EXPECTED_BASELINE) {
@@ -455,7 +470,10 @@ describe('createMcpHttpHandler — multi-session routing', () => {
       });
 
       const res = makeRes();
-      handler.handle(makeReq('/health') as unknown as IncomingMessage, res as unknown as ServerResponse);
+      handler.handle(
+        makeReq('/health') as unknown as IncomingMessage,
+        res as unknown as ServerResponse,
+      );
 
       const headers = headerMap(res);
       expect(headers.has('Strict-Transport-Security')).toBe(false);

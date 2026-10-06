@@ -131,8 +131,14 @@ export class ScopeEngine {
    * authorizes. Out-of-scope references are rejected before execution.
    */
   async query(options: QueryOptions): Promise<ScopedResult> {
+    const rejectionContext: {
+      ownerDid?: string;
+      delegatorDid?: string;
+      delegatedGrantId?: string;
+    } = {};
+
     try {
-      return await this._executeQuery(options);
+      return await this._executeQuery(options, rejectionContext);
     } catch (err) {
       // Log rejection audit from the scope engine (not server catch blocks)
       // so SDK consumers without an HTTP server still get audit trails.
@@ -141,8 +147,11 @@ export class ScopeEngine {
         await this.auditLogger
           .logRejection(err.message, err.code, rejectionAgent?.signer, {
             agentDid: options.agent,
+            ownerDid: rejectionContext.ownerDid,
             sql: options.sql,
             orgId: options.orgId,
+            delegatorDid: rejectionContext.delegatorDid,
+            delegatedGrantId: rejectionContext.delegatedGrantId,
           })
           .catch(() => {
             // Best-effort: don't let rejection audit failure mask the original error
@@ -152,7 +161,14 @@ export class ScopeEngine {
     }
   }
 
-  private async _executeQuery(options: QueryOptions): Promise<ScopedResult> {
+  private async _executeQuery(
+    options: QueryOptions,
+    rejectionContext: {
+      ownerDid?: string;
+      delegatorDid?: string;
+      delegatedGrantId?: string;
+    },
+  ): Promise<ScopedResult> {
     const startTime = Date.now();
 
     const authorization = await this.authorizer.authorize({
@@ -160,6 +176,7 @@ export class ScopeEngine {
       credential: options.credential,
       credentials: options.credentials,
       requirePresentation: options.requirePresentation,
+      rejectionContext,
     });
 
     // Validate table name — must be a safe SQL identifier (letters, digits,
@@ -191,7 +208,10 @@ export class ScopeEngine {
 
     return this.assembler.assemble({
       agent: options.agent,
-      ownerDid: authorization.ownerDid,
+      ownerDid: authorization.rootOwnerDid || authorization.ownerDid,
+      metadataOwner: authorization.ownerDid,
+      delegatorDid: authorization.delegatorDid,
+      delegatedGrantId: authorization.delegatedGrantId,
       credentialJwt: normalizeCredentialForAudit(authorization.allJwts[0]),
       sql: options.sql,
       columnsAccessed: authorization.scopeColumns,

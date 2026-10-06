@@ -314,7 +314,7 @@ describe('MCP Server', () => {
         .catch((e) => e as Error);
 
       expect(result).toBeInstanceOf(CredentialInvalidError);
-      expect(result.message).toContain('replay');
+      expect(result).toHaveProperty('message', expect.stringContaining('replay'));
     });
   });
 
@@ -344,7 +344,7 @@ describe('MCP Server', () => {
       );
 
       const result = await scope.createAgent({ name: 'Duplicate' }).catch((e) => e as Error);
-      expect(result.message).toContain('duplicate key');
+      expect(result).toHaveProperty('message', expect.stringContaining('duplicate key'));
     });
   });
 
@@ -378,7 +378,7 @@ describe('MCP Server', () => {
         })
         .catch((e) => e as Error);
 
-      expect(result.message).toContain('not found');
+      expect(result).toHaveProperty('message', expect.stringContaining('not found'));
     });
   });
 
@@ -397,7 +397,7 @@ describe('MCP Server', () => {
       session.revokeCredential.mockRejectedValueOnce(new Error('Credential not found'));
 
       const result = await session.revokeCredential('unknown-id').catch((e) => e as Error);
-      expect(result.message).toContain('not found');
+      expect(result).toHaveProperty('message', expect.stringContaining('not found'));
     });
   });
 
@@ -523,7 +523,7 @@ describe('MCP Server', () => {
         (a) => a.did === agentA.did,
       );
       expect(agent).toBeDefined();
-      expect(agent.name).toBe('Agent A');
+      expect(agent?.name).toBe('Agent A');
     });
   });
 
@@ -1004,7 +1004,7 @@ describe('MCP Server', () => {
 
     it('maps CredentialRevokedError correctly', async () => {
       const { CredentialRevokedError } = await import('../src/errors/index.js');
-      const err = new CredentialRevokedError('test-agent');
+      const err = new CredentialRevokedError('test-agent', 'did:key:zTestIssuer');
       expect(err.code).toBe('CREDENTIAL_REVOKED');
     });
 
@@ -1022,6 +1022,7 @@ function buildChainedRecords(count: number): AuditRecord[] {
 
   for (let i = 0; i < count; i++) {
     const record: AuditRecord = {
+      version: 1,
       id: `record-${i}`,
       timestamp: new Date(Date.now() + i * 1000).toISOString(),
       agentDid: 'did:key:zTestAgent',
@@ -1036,6 +1037,7 @@ function buildChainedRecords(count: number): AuditRecord[] {
     };
     records.push(record);
     previousHash = hashAuditRecord({
+      version: record.version,
       id: record.id,
       timestamp: record.timestamp,
       agentDid: record.agentDid,
@@ -1070,6 +1072,7 @@ function verifyChain(
       });
     }
     previousHash = hashAuditRecord({
+      version: record.version,
       id: record.id,
       timestamp: record.timestamp,
       agentDid: record.agentDid,

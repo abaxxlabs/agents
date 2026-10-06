@@ -23,7 +23,10 @@ import type { DidAliasRegistry } from '#did/alias.js';
 
 export type { AuditRecord, AuditEntry } from '#types/index.js';
 
-async function signAuditRecord(record: Omit<AuditRecord, 'signature'>, signer: AgentSigner): Promise<string> {
+async function signAuditRecord(
+  record: Omit<AuditRecord, 'signature'>,
+  signer: AgentSigner,
+): Promise<string> {
   const data: Record<string, unknown> = {
     id: record.id,
     timestamp: record.timestamp,
@@ -38,6 +41,12 @@ async function signAuditRecord(record: Omit<AuditRecord, 'signature'>, signer: A
 
   if (record.orgId !== undefined) {
     data.orgId = record.orgId;
+  }
+  if (record.delegatorDid !== undefined) {
+    data.delegatorDid = record.delegatorDid;
+  }
+  if (record.delegatedGrantId !== undefined) {
+    data.delegatedGrantId = record.delegatedGrantId;
   }
 
   const payload = {
@@ -73,7 +82,15 @@ export function hashAuditRecord(record: Omit<AuditRecord, 'signature'>): string 
     previousHash: record.previousHash,
   };
 
-  if (record.version === 3) {
+  if (record.version === 4) {
+    base.version = record.version;
+    base.status = record.status;
+    base.reason = record.reason;
+    base.reasonCode = record.reasonCode;
+    base.orgId = record.orgId;
+    base.delegatorDid = record.delegatorDid;
+    base.delegatedGrantId = record.delegatedGrantId;
+  } else if (record.version === 3) {
     base.version = record.version;
     base.status = record.status;
     base.reason = record.reason;
@@ -103,10 +120,7 @@ export interface AuditLoggerOptions {
 }
 
 export interface AuditLoggerTelemetrySink {
-  auditWriteFailed(event: {
-    operation: 'query' | 'rejection';
-    error: unknown;
-  }): void;
+  auditWriteFailed(event: { operation: 'query' | 'rejection'; error: unknown }): void;
 }
 
 export class AuditLogger {
@@ -162,9 +176,11 @@ export class AuditLogger {
       rowCount: entry.rowCount,
       durationMs: entry.durationMs,
       previousHash: this.lastRecordHash,
-      version: 3,
+      version: 4,
       status: 'success',
       orgId: entry.orgId,
+      delegatorDid: entry.delegatorDid,
+      delegatedGrantId: entry.delegatedGrantId,
     };
 
     return { ...record, signature: await signAuditRecord(record, signer) };
@@ -174,7 +190,14 @@ export class AuditLogger {
     reason: string,
     reasonCode: string,
     signer?: AgentSigner,
-    context?: { agentDid?: string; ownerDid?: string; sql?: string; orgId?: string },
+    context?: {
+      agentDid?: string;
+      ownerDid?: string;
+      sql?: string;
+      orgId?: string;
+      delegatorDid?: string;
+      delegatedGrantId?: string;
+    },
   ): Promise<AuditRecord> {
     const record: Omit<AuditRecord, 'signature'> = {
       id: uuidv4(),
@@ -187,11 +210,13 @@ export class AuditLogger {
       rowCount: 0,
       durationMs: 0,
       previousHash: this.lastRecordHash,
-      version: 3,
+      version: 4,
       status: 'rejected',
       reason,
       reasonCode,
       orgId: context?.orgId,
+      delegatorDid: context?.delegatorDid,
+      delegatedGrantId: context?.delegatedGrantId,
     };
 
     return { ...record, signature: signer ? await signAuditRecord(record, signer) : 'unsigned' };
@@ -299,12 +324,18 @@ export class AuditLogger {
     reason: string,
     reasonCode: string,
     signer?: AgentSigner,
-    context?: { agentDid?: string; ownerDid?: string; sql?: string; orgId?: string },
+    context?: {
+      agentDid?: string;
+      ownerDid?: string;
+      sql?: string;
+      orgId?: string;
+      delegatorDid?: string;
+      delegatedGrantId?: string;
+    },
   ): Promise<AuditRecord> {
     return this.withChainLock(async () => {
-      return this.appendBuiltRecord(
-        'rejection',
-        () => this.buildRejectionRecord(reason, reasonCode, signer, context),
+      return this.appendBuiltRecord('rejection', () =>
+        this.buildRejectionRecord(reason, reasonCode, signer, context),
       );
     });
   }

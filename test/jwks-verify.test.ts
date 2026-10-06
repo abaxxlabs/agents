@@ -68,7 +68,7 @@ function createSignedJwtJson(
 
 // ─── Test JWKS Server ───────────────────────────────────────────────────────
 
-const describeLoopback: typeof describe = shouldRunLoopbackHttpTests ? describe : describe.skip;
+const describeLoopback = shouldRunLoopbackHttpTests ? describe : describe.skip;
 
 if (!shouldRunLoopbackHttpTests) {
   describe('Loopback HTTP integration gate', () => {

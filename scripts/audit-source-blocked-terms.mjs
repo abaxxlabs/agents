@@ -1,114 +1,153 @@
 #!/usr/bin/env node
-// Copyright 2026 Abaxx Technologies
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-const SCAN_DIRS = ['src/', 'test/', 'scripts/', 'packages/server/src/', 'packages/create-agents/src/', 'packages/create-agents/template/src/'];
+import {
+  scanArtifactContentForViolations,
+  scanReleaseContentForViolations,
+} from './audit-artifact-content.mjs';
+import { corporateEmployeeNames, normalizePrivateUrlPrefixes } from './audit-sensitive-values.mjs';
+import { evaluatePublicRepoPath, loadPublicRepoPolicy } from './assert-package-artifacts.mjs';
 
-const BLOCKED_PATTERNS = [
-  { label: 'ABXAGNTS-', pattern: /ABXAGNTS-/i },
-  { label: 'Pre-Session', pattern: /Pre-Session/i },
-  { label: 'Post-Session', pattern: /Post-Session/i },
-  { label: 'pre-v0.', pattern: /pre-v0\./i },
-  { label: 'post-v0.', pattern: /post-v0\./i },
-];
+const PUBLIC_SOURCE_SCAN_PATHS = ['CHANGELOG.md', 'src', 'test', 'scripts'];
 
-const ALLOWLIST = [
-  {
-    file: 'scripts/audit-public-artifacts.mjs',
-    reason: 'Declares the blocked-term patterns it enforces.',
-  },
-  {
-    file: 'scripts/audit-source-blocked-terms.mjs',
-    reason: 'Declares the blocked-term patterns it enforces.',
-  },
-  {
-    file: 'test/public-artifact-audit.test.ts',
-    reason: 'Test fixtures deliberately contain blocked terms to verify the audit.',
-  },
-  {
-    file: 'scripts/public-sync.py',
-    reason: 'Sanitization script that declares the regex rules it scrubs.',
-  },
-];
-
-function allowlisted(filePath) {
-  const normalized = filePath.replace(/\\/g, '/');
-  return ALLOWLIST.some((entry) => normalized === entry.file);
-}
-
-function getTrackedFiles(rootDir) {
-  const output = execFileSync('git', ['ls-files', '--', ...SCAN_DIRS], {
+function getTrackedSourceFiles(rootDir, policy) {
+  const args = policy ? ['ls-files'] : ['ls-files', '--', ...PUBLIC_SOURCE_SCAN_PATHS];
+  const output = execFileSync('git', args, {
     cwd: rootDir,
     encoding: 'utf8',
   });
-  return output.split('\n').filter(Boolean);
+  return output
+    .split('\n')
+    .filter(Boolean)
+    .filter((filePath) => existsSync(path.resolve(rootDir, filePath)))
+    .filter((filePath) => !policy || evaluatePublicRepoPath(filePath, policy).allowed);
 }
 
-export function scanFiles(files, rootDir) {
+export function scanFiles(files, rootDir, options = {}) {
   const violations = [];
-
   for (const filePath of files) {
-    if (allowlisted(filePath)) continue;
-
-    const abs = path.resolve(rootDir, filePath);
     let contents;
     try {
-      contents = readFileSync(abs, 'utf8');
+      contents = readFileSync(path.resolve(rootDir, filePath), 'utf8');
     } catch {
+      violations.push({ path: filePath, reason: 'could not read source file' });
       continue;
     }
-
-    const lines = contents.split(/\r?\n/);
-    for (let i = 0; i < lines.length; i++) {
-      for (const { label, pattern } of BLOCKED_PATTERNS) {
-        if (pattern.test(lines[i])) {
-          violations.push({ file: filePath, line: i + 1, term: label });
-        }
-      }
-    }
+    violations.push(...scanArtifactContentForViolations(contents, filePath, options));
   }
-
   return violations;
 }
 
-export function run(rootDir = process.cwd()) {
-  const files = getTrackedFiles(rootDir);
-  const violations = scanFiles(files, rootDir);
+function printViolations(violations) {
+  for (const violation of violations) {
+    const reason = violation.reason;
+    const artifactPath = violation.path;
+    const location =
+      violation.line === undefined ? artifactPath : `${artifactPath}:${violation.line}`;
+    console.error(`  ${location}  ${reason}`);
+  }
+}
 
+export function run(rootDir = process.cwd(), options = {}) {
+  const files = getTrackedSourceFiles(rootDir, options.policy);
+  const violations = scanFiles(files, rootDir, options);
   if (violations.length === 0) {
     console.log(`Source blocked-term audit passed: ${files.length} files scanned.`);
     return 0;
   }
 
   console.error('Source blocked-term audit FAILED:');
-  for (const v of violations) {
-    console.error(`  ${v.file}:${v.line}  blocked term "${v.term}"`);
-  }
+  printViolations(violations);
   console.error(`\n${violations.length} violation(s) in ${files.length} files.`);
   return 1;
+}
+
+// Semantic-release runs this after changelog generation and before package, commit, tag, or publication.
+export function prepare(pluginConfig, context) {
+  const rootDir = context.cwd ?? process.cwd();
+  const policy = pluginConfig.policyPath
+    ? loadPublicRepoPolicy(path.resolve(rootDir, pluginConfig.policyPath))
+    : undefined;
+  const blockedUrls = normalizePrivateUrlPrefixes([
+    ...(pluginConfig.privateUrlPrefixes ?? []),
+    context.options?.repositoryUrl,
+  ]);
+  let contents;
+  try {
+    contents = readFileSync(path.resolve(rootDir, 'CHANGELOG.md'), 'utf8');
+  } catch {
+    throw new Error('Release changelog audit failed: could not read CHANGELOG.md');
+  }
+  const violations = scanReleaseContentForViolations(contents, 'CHANGELOG.md', {
+    blockedContentTerms: policy?.blockedTerms,
+    employeeNames: corporateEmployeeNames(rootDir, pluginConfig.corporateEmailSuffix),
+    privateUrlPrefixes: blockedUrls,
+    ticketPrefixes: policy?.ticketPrefixes,
+  });
+  if (violations.length > 0) {
+    printViolations(violations);
+    throw new Error('Release changelog audit failed');
+  }
+  console.log('Release changelog audit passed.');
 }
 
 const isMain = process.argv[1]
   ? fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
   : false;
 
+function parseArgs(argv) {
+  const args = [...argv];
+  let policyPath;
+  let rootDir = process.cwd();
+  while (args.length > 0) {
+    const arg = args.shift();
+    if (arg === '--policy') {
+      policyPath = args.shift();
+      if (!policyPath) throw new Error('--policy requires a JSON policy path');
+    } else if (arg === '--root') {
+      const root = args.shift();
+      if (!root) throw new Error('--root requires a repository path');
+      rootDir = path.resolve(process.cwd(), root);
+    } else {
+      throw new Error(`Unknown argument: ${arg}`);
+    }
+  }
+  return { policyPath, rootDir };
+}
+
+function environmentLines(name) {
+  return (process.env[name] ?? '')
+    .split(/\r?\n/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 if (isMain) {
-  process.exitCode = run();
+  try {
+    const args = parseArgs(process.argv.slice(2));
+    const policy = args.policyPath
+      ? loadPublicRepoPolicy(path.resolve(process.cwd(), args.policyPath))
+      : undefined;
+    process.exitCode = run(args.rootDir, {
+      employeeNames: [
+        ...new Set([
+          ...corporateEmployeeNames(args.rootDir, process.env.ABAXXLABS_CORPORATE_EMAIL_SUFFIX),
+          ...environmentLines('ABAXXLABS_EMPLOYEE_NAMES'),
+        ]),
+      ],
+      privateUrlPrefixes: normalizePrivateUrlPrefixes(
+        environmentLines('ABAXXLABS_PRIVATE_URL_PREFIXES'),
+      ),
+      blockedContentTerms: policy?.blockedTerms,
+      ticketPrefixes: policy?.ticketPrefixes,
+      policy,
+    });
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
 }

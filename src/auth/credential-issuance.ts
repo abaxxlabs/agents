@@ -22,14 +22,13 @@ import {
   validateExpiry,
   validateChain,
   resolveInheritedMaxDepth,
+  extractDelegationChain,
   DEFAULT_MAX_DELEGATION_DEPTH,
+  DELEGATION_POLICY_TYPE,
+  DELEGATION_CHAIN_TYPE,
 } from './delegation-policy.js';
 import { expiresInToMs, assertExpiresInBound } from '#config.js';
-import {
-  assertScopeFitsInCeiling,
-  type ScopeCeiling,
-  type IssuanceContext,
-} from './ceiling.js';
+import { assertScopeFitsInCeiling, type ScopeCeiling, type IssuanceContext } from './ceiling.js';
 import type { IdSdkInstance } from '#types/id-sdk.js';
 
 /** Match short-form and JSON-LD namespaced URI forms (`#`/`/` suffix) without full context resolution. */
@@ -107,7 +106,6 @@ export async function issueCredential(
     jti: randomUUID(),
     iat: now,
     exp,
-    maxDepth,
     vc: {
       '@context': ['https://www.w3.org/2018/credentials/v1'],
       type: ['VerifiableCredential', 'AgentScopeCredential'],
@@ -117,9 +115,9 @@ export async function issueCredential(
           columns: options.columns,
           actions: options.actions,
         },
-        owner: humanDid,
         ...(options.metadata ?? {}),
       },
+      termsOfUse: [{ type: DELEGATION_POLICY_TYPE, maxDepth }],
     },
   };
 
@@ -145,7 +143,7 @@ export async function issueDelegatedCredential(
   validateScope(sourceScope, { columns: options.columns, actions: options.actions });
 
   const sourcePayload = decodeJwt(sourceCredentialJwt).payload;
-  const sourceChain = sourcePayload.delegationChain;
+  const sourceChain = extractDelegationChain(sourcePayload);
   if (Array.isArray(sourceChain) && sourceChain.length === 0) {
     throw new Error(
       'Delegation error: source credential has an empty delegationChain. ' +
@@ -155,7 +153,9 @@ export async function issueDelegatedCredential(
   const rawType = sourcePayload.vc?.type;
   const sourceVcType: unknown[] = Array.isArray(rawType)
     ? rawType
-    : typeof rawType === 'string' ? [rawType] : [];
+    : typeof rawType === 'string'
+      ? [rawType]
+      : [];
   if (isDelegatedScopeCredentialType(sourceVcType)) {
     throw new Error(
       'Delegation error: source credential is itself delegated. Re-delegation is not permitted.',
@@ -181,8 +181,6 @@ export async function issueDelegatedCredential(
     jti: randomUUID(),
     iat: now,
     exp,
-    delegationChain: [sourceCredentialJwt],
-    maxDepth: inheritedMaxDepth,
     vc: {
       '@context': ['https://www.w3.org/2018/credentials/v1'],
       type: ['VerifiableCredential', 'DelegatedAgentScopeCredential'],
@@ -195,9 +193,10 @@ export async function issueDelegatedCredential(
         grantedBy: delegatorDid,
         grantedTo: options.targetAgent,
         delegatedGrantId: sourceCredentialJti,
-        delegated: false,
         ...(options.metadata ?? {}),
       },
+      termsOfUse: [{ type: DELEGATION_POLICY_TYPE, maxDepth: inheritedMaxDepth }],
+      evidence: [{ type: DELEGATION_CHAIN_TYPE, credentials: [sourceCredentialJwt] }],
     },
   };
 
@@ -210,7 +209,12 @@ export async function issueCredentialFromParent(
     requestAgentCredential: (
       accessToken: string,
       agentDid: string,
-      options: { columns: string[]; actions: string[]; expiresIn: string | number; maxDepth?: number },
+      options: {
+        columns: string[];
+        actions: string[];
+        expiresIn: string | number;
+        maxDepth?: number;
+      },
     ) => Promise<{ jwt: string; issuerDid: string }>;
   },
   accessToken: string,

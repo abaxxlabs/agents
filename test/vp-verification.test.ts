@@ -516,10 +516,11 @@ describe('createPresentation()', () => {
     expect(vp.split('.').length).toBe(3);
 
     const decoded = decodeJwt(vp);
+    const vpClaim = decoded.payload.vp as { type: string[]; verifiableCredential: string[] };
     expect(decoded.payload.iss).toBe(agent.did);
-    expect(decoded.payload.vp.type).toContain(VP_TYPE);
-    expect(decoded.payload.vp.verifiableCredential).toHaveLength(1);
-    expect(decoded.payload.vp.verifiableCredential[0]).toBe(vc);
+    expect(vpClaim.type).toContain(VP_TYPE);
+    expect(vpClaim.verifiableCredential).toHaveLength(1);
+    expect(vpClaim.verifiableCredential[0]).toBe(vc);
   });
 
   it('sets audience claim when audience option is provided', async () => {

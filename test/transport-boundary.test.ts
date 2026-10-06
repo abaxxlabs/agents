@@ -180,7 +180,7 @@ describe('transport boundary validation schemas', () => {
     {
       name: 'mcpSseQuery',
       schema: restValidationSchemas.mcpSseQuery,
-      valid: { 'x-session': 'session-1' },
+      valid: { 'x-session': 'sid-1' },
       missing: {},
       malformed: { 'x-session': 42 },
       oversized: { 'x-session': 'x'.repeat(2049) },
@@ -188,7 +188,7 @@ describe('transport boundary validation schemas', () => {
     {
       name: 'mcpMessagesQuery',
       schema: restValidationSchemas.mcpMessagesQuery,
-      valid: { sessionId: 'mcp-session-1' },
+      valid: { sessionId: 'mcp-sid-1' },
       missing: {},
       malformed: { sessionId: 42 },
       oversized: { sessionId: 'x'.repeat(513) },
@@ -336,7 +336,7 @@ describe('shared rate limiter', () => {
 
     expect(
       assertWithinRateLimit(limiter, {
-        principal: 'session-1',
+        principal: 'sid-1',
         operation: 'sign',
         limit: 2,
         windowMs: 60_000,
@@ -345,7 +345,7 @@ describe('shared rate limiter', () => {
 
     expect(
       assertWithinRateLimit(limiter, {
-        principal: 'session-1',
+        principal: 'sid-1',
         operation: 'sign',
         limit: 2,
         windowMs: 60_000,
@@ -354,7 +354,7 @@ describe('shared rate limiter', () => {
 
     expect(() =>
       assertWithinRateLimit(limiter, {
-        principal: 'session-1',
+        principal: 'sid-1',
         operation: 'sign',
         limit: 2,
         windowMs: 60_000,
@@ -363,7 +363,7 @@ describe('shared rate limiter', () => {
 
     expect(
       assertWithinRateLimit(limiter, {
-        principal: 'session-1',
+        principal: 'sid-1',
         operation: 'challenge',
         limit: 2,
         windowMs: 60_000,

@@ -27,8 +27,6 @@ The JWT helpers have deliberately narrow responsibilities:
 - `VcVerifier` validates credential claims and policy.
 - `src/auth/jwks-verify.ts` validates OIDC ID-token signatures and claims.
 - Standalone MCP bearer tokens may be opaque values validated by the embedder and are not required to be JWTs.
-- The REST `/auth/session` bearer token is an OIDC ID token verified against the configured JWKS, issuer, and audience. Development mode may use the explicit mock-auth path instead.
-- After authentication, the server issues an opaque session token that clients send in the `x-session` header to authenticated REST and mounted MCP requests. All bearer-style tokens require TLS in transit.
 
 `credential.clockSkew` applies only to the outer VP envelope's `nbf ?? iat` and `exp` checks. The default is 5 seconds and the maximum is 30 seconds. VC timestamps are authoritative and receive no skew window, including when the VC is wrapped in a VP. Temporal claims are currently optional on VC and VP inputs. OIDC ID tokens follow a separate strict path: `exp` is required and numeric, optional `nbf` is enforced without leeway, and no OIDC nonce is generated or validated by the current provider flow.
 
@@ -76,7 +74,7 @@ Session envelopes are authenticated with HMAC-SHA256 over canonical JSON using a
 | `PendingFlowStore` | Uses OAuth `state` as the key and stores `{ codeVerifier, expiresAt }`; no OIDC nonce; rejects CSRF, replay, and stale flows | In-process, single-use, 10-minute default TTL |
 | `SessionStore` | Post-authentication session re-establishment envelopes | Memory, PostgreSQL, or SQLite with TTL and HMAC |
 
-The public `AgentScope` identity and query flows do not call `storage.sessions`. The sessions member belongs to the composed `StorageBackend` so server or consumer orchestration can use it separately. The standalone REST server creates and wires its own session manager.
+The public `AgentScope` identity and query flows do not call `storage.sessions`. The sessions member belongs to the composed `StorageBackend` so consumer orchestration can use it separately.
 
 ## Column Encryption Limits
 

@@ -17,7 +17,11 @@ import type { RevocationStore } from '#storage/types.js';
 import type { VerificationResult, IdSdkInstance } from '#types/index.js';
 import { decodeJwt, verifyJwtSignature } from '#crypto/jwt.js';
 import { isDelegatedScopeCredentialType } from '#auth/credential-issuance.js';
-import { DEFAULT_MAX_DELEGATION_DEPTH, extractMaxDepth } from '#auth/delegation-policy.js';
+import {
+  DEFAULT_MAX_DELEGATION_DEPTH,
+  extractMaxDepth,
+  extractDelegationChain,
+} from '#auth/delegation-policy.js';
 import { base58Decode } from '#crypto/base58.js';
 import type { RevocationTelemetryEvent } from './vc-verifier.js';
 
@@ -73,7 +77,7 @@ export function checkDelegationDepthCeiling(payload: {
   maxDepth?: unknown;
   delegationChain?: unknown;
 }): VerificationResult | undefined {
-  const rootChain = payload.delegationChain;
+  const rootChain = extractDelegationChain(payload);
   if (!Array.isArray(rootChain) || rootChain.length === 0) return undefined;
 
   const cursor: string[] = rootChain.filter((j): j is string => typeof j === 'string');
@@ -120,8 +124,9 @@ export function checkDelegationDepthCeiling(payload: {
       }
       const ancestorCeiling = extractMaxDepth(ancestorPayload) ?? DEFAULT_MAX_DELEGATION_DEPTH;
       if (ancestorCeiling < ceiling) ceiling = ancestorCeiling;
-      if (Array.isArray(ancestorPayload.delegationChain)) {
-        for (const inner of ancestorPayload.delegationChain) {
+      const ancestorChain = extractDelegationChain(ancestorPayload);
+      if (Array.isArray(ancestorChain)) {
+        for (const inner of ancestorChain) {
           if (typeof inner === 'string') next.push(inner);
         }
       }
@@ -265,8 +270,9 @@ export async function checkDelegationChainRevocation(
           error: `Delegation chain credential ${ancestorPayload.jti ?? ancestorAuditCredentialId} has been revoked`,
         };
       }
-      if (Array.isArray(ancestorPayload.delegationChain)) {
-        for (const inner of ancestorPayload.delegationChain) {
+      const ancestorChain = extractDelegationChain(ancestorPayload);
+      if (Array.isArray(ancestorChain)) {
+        for (const inner of ancestorChain) {
           if (typeof inner === 'string') next.push(inner);
         }
       }

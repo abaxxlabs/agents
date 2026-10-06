@@ -40,12 +40,17 @@ const TOOL_DESCRIPTIONS = [
   "Verify an audit record's Ed25519 signature against the agent's public key.",
   'Export filtered audit records for compliance and reporting.',
   'List registered agents and their metadata.',
-  'Verify the integrity of the audit hash chain. Reports any broken links.',
+  'Verify integrity within the session-visible audit window. For full root-of-chain proof, use the admin/global verify endpoint.',
   'Return the current server identity bundle: server DID, human DID, org domain, binding credential, and DID method.',
   "Sign an arbitrary payload with the server's Ed25519 key. Returns a JWT containing the domain-separated payload. Max 64KB payload.",
   'List trusted server DIDs and the current identity topology. Shows the trust boundary this server recognizes.',
   'Issue a time-bound challenge for VP (Verifiable Presentation) requests. The challenge must be included in the VP to prove freshness.',
 ];
+
+function parsedTextResource(content: { text: string } | { blob: string }): unknown {
+  if (!('text' in content)) throw new Error('Expected a text resource');
+  return JSON.parse(content.text);
+}
 
 function serverIdentity(): ServerIdentity {
   return {
@@ -140,11 +145,11 @@ describe('MCP tool registration contract', () => {
       const { tools } = await client.listTools();
       expect(tools.map((tool) => tool.name)).toEqual([...CORE_TOOL_NAMES, ...IDENTITY_TOOL_NAMES]);
       expect(tools.map((tool) => JSON.stringify(tool).length)).toEqual([
-        957, 438, 912, 323, 1052, 336, 445, 362, 329, 287, 369, 284, 430,
+        957, 438, 912, 323, 1052, 336, 445, 362, 383, 287, 369, 284, 430,
       ]);
-      expect(JSON.stringify({ tools }).length).toBe(6548);
+      expect(JSON.stringify({ tools }).length).toBe(6602);
       expect(createHash('sha256').update(JSON.stringify({ tools })).digest('hex')).toBe(
-        'd56822258633b9e34d6622447453c3444703b8c5b5ad63b1fb1978d7c830d6a2',
+        '988f06aef76615311af9c74600305f419eb4b4a767a016751768b966f20a61e6',
       );
     } finally {
       await client.close();
@@ -241,11 +246,11 @@ describe('MCP resource registration contract', () => {
       expect(recent.contents).toHaveLength(1);
       expect(recent.contents[0].uri).toBe('audit://recent');
       expect(recent.contents[0].mimeType).toBe('application/json');
-      expect(JSON.parse(recent.contents[0].text as string)).toEqual({ records: [], count: 0 });
+      expect(parsedTextResource(recent.contents[0])).toEqual({ records: [], count: 0 });
       expect(services.audit.getRecentAudit).toHaveBeenCalledWith({ limit: 50 });
 
       const status = await client.readResource({ uri: 'config://status' });
-      expect(JSON.parse(status.contents[0].text as string)).toEqual({
+      expect(parsedTextResource(status.contents[0])).toEqual({
         agentCount: 0,
         auditRecordCount: 0,
         encryptedColumns: [],
@@ -253,14 +258,14 @@ describe('MCP resource registration contract', () => {
       expect(services.status.getStatus).toHaveBeenCalledOnce();
 
       const agent = await client.readResource({ uri: 'agent://agent-1' });
-      expect(JSON.parse(agent.contents[0].text as string)).toEqual({
+      expect(parsedTextResource(agent.contents[0])).toEqual({
         did: 'agent-1',
         name: 'Agent',
       });
       expect(services.agents.getAgent).toHaveBeenCalledWith({ did: 'agent-1' });
 
       const record = await client.readResource({ uri: 'audit://audit-1' });
-      expect(JSON.parse(record.contents[0].text as string)).toEqual({
+      expect(parsedTextResource(record.contents[0])).toEqual({
         record: { id: 'audit-1' },
         verified: true,
       });

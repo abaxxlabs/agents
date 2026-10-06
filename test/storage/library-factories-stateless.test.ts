@@ -24,7 +24,7 @@ describe('Library factories are stateless', () => {
     expect(s1).not.toBe(s2);
   });
 
-  it('library does NOT hold a session Map — only packages/server/ does', async () => {
+  it('library does not hold a session Map', async () => {
     const { readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
     const authFile = readFileSync(join(process.cwd(), 'src', 'auth', 'agent.ts'), 'utf8');

@@ -74,7 +74,7 @@ describe('transport-neutral services', () => {
       agents: { createAgent: vi.fn(), getAgent, listAgents },
     });
 
-    await expect(service.getAgent({ did: agent.did })).resolves.toEqual(agent);
+    await expect(service.getAgent?.({ did: agent.did })).resolves.toEqual(agent);
     expect(getAgent).toHaveBeenCalledWith(agent.did);
     expect(listAgents).not.toHaveBeenCalled();
 
@@ -94,7 +94,7 @@ describe('transport-neutral services', () => {
       verifier: { verify: vi.fn() },
     });
 
-    const result = await service.getRecentAudit();
+    const result = await service.getRecentAudit!();
 
     expect(auditReader.export).toHaveBeenCalledWith();
     expect(result.records.map((record) => record.id)).toEqual(

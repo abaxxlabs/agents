@@ -11,7 +11,6 @@ import type { AgentStore } from '#storage/types.js';
 import type { Pool } from 'pg';
 import { createMockAuditStore } from './mocks/audit-store.js';
 
-
 function createTestFixtures() {
   const human = generateDidKey();
   const agentA = generateDidKey();
@@ -84,7 +83,6 @@ function createTestFixtures() {
 
   return { human, agentA, engine, pool, auditLogger };
 }
-
 
 describe('Projection Boundary', () => {
   it('rejects SELECT * when encrypted columns are out of scope', async () => {
@@ -233,7 +231,6 @@ describe('Projection Boundary', () => {
     expect(result.rows.length).toBe(1);
   });
 });
-
 
 describe('Projection Mode (scopeMode=projection)', () => {
   function createProjectionFixtures() {
@@ -414,7 +411,6 @@ describe('Projection Mode (scopeMode=projection)', () => {
   });
 });
 
-
 describe('ScopeViolationError.toSafeResponse', () => {
   it('strips column names from the response', () => {
     const err = new ScopeViolationError(
@@ -443,9 +439,8 @@ describe('ScopeViolationError.toSafeResponse', () => {
   });
 });
 
-
 describe('AuditLogger.logRejection', () => {
-  it('creates a V3 rejection record with status and reason', async () => {
+  it('creates a rejection record with status and reason', async () => {
     const logger = new AuditLogger({
       auditStore: createMockAuditStore(),
       enabled: true,
@@ -459,7 +454,7 @@ describe('AuditLogger.logRejection', () => {
       { agentDid: agent.did, ownerDid: 'did:key:owner', sql: 'SELECT ssn FROM patients' },
     );
 
-    expect(record.version).toBe(3);
+    expect(record.version).toBe(4);
     expect(record.status).toBe('rejected');
     expect(record.reason).toBe('Scope violation: queried unauthorized columns');
     expect(record.reasonCode).toBe('SCOPE_VIOLATION');
@@ -551,7 +546,6 @@ describe('AuditLogger.logRejection', () => {
   });
 });
 
-
 describe('Fail-closed DB error on agent lookup', () => {
   it('throws CredentialInvalidError when agent DB lookup fails', async () => {
     const human = generateDidKey();
@@ -607,7 +601,6 @@ describe('Fail-closed DB error on agent lookup', () => {
     ).rejects.toThrow('Agent owner lookup failed');
   });
 });
-
 
 describe('parseDurationSimple via issueCredential', () => {
   it('accepts integer seconds', async () => {
@@ -714,7 +707,6 @@ describe('parseDurationSimple via issueCredential', () => {
   });
 });
 
-
 describe('CapabilityRequiresPaidTierError', () => {
   it('includes capability, namespace, and signup URL', () => {
     const err = new CapabilityRequiresPaidTierError('vc:issue', 'vc');
@@ -738,7 +730,6 @@ describe('CapabilityRequiresPaidTierError', () => {
     expect(err.details?.namespace).toBe('vc');
   });
 });
-
 
 describe('Projection mode defaults and edge cases', () => {
   it('defaults to projection mode when scopeMode is omitted', async () => {
