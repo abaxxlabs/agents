@@ -46,10 +46,6 @@ jobs:
     name: Verify release candidate
     if: github.repository == 'abaxxlabs/agents'
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        ref: ['', v0.12.5, v0.14.9, v0.27.3, v0.38.1]
     services:
       postgres:
         image: postgres:16
@@ -87,7 +83,7 @@ jobs:
       - name: Check out package source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ matrix.ref || inputs.ref || github.sha }}
+          ref: ${{ inputs.ref || github.sha }}
           path: pkg
           persist-credentials: false
 
@@ -95,7 +91,7 @@ jobs:
         id: plan
         env:
           EVENT_NAME: ${{ github.event_name }}
-          INPUT_REF: ${{ matrix.ref || inputs.ref }}
+          INPUT_REF: ${{ inputs.ref }}
           INPUT_DIST_TAG: ${{ inputs.dist_tag || 'next' }}
           INPUT_PROMOTE: ${{ inputs.promote_latest || false }}
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
@@ -260,7 +256,7 @@ jobs:
       - name: Upload release candidate
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-candidate-${{ matrix.ref || 'head' }}
+          name: release-candidate
           path: |
             ${{ runner.temp }}/release/*.tgz
             ${{ runner.temp }}/release/notes.md
