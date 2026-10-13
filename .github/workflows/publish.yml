@@ -1,0 +1,345 @@
+name: Publish
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/publish.yml
+      - scripts/extract-changelog.sh
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Tag to publish, such as v0.27.3. Leave blank for the selected branch head.
+        required: false
+        default: ''
+      dist_tag:
+        description: npm dist-tag for the new version. Use promote_latest to move latest.
+        required: false
+        default: next
+      promote_latest:
+        description: Point the latest dist-tag and the GitHub Latest release at this version.
+        type: boolean
+        default: false
+      notes:
+        description: Curated release notes in Markdown. Leave blank to extract them from CHANGELOG.md.
+        required: false
+        default: ''
+      dry_run:
+        description: Build, test, pack, and audit without publishing.
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+env:
+  PACKAGE_NAME: '@abaxxlabs/agents'
+
+jobs:
+  verify:
+    name: Verify release candidate
+    if: github.repository == 'abaxxlabs/agents'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      ABAXXLABS_PRIVATE_URL_PREFIXES: ${{ secrets.ABAXXLABS_PRIVATE_URL_PREFIXES }}
+      RELEASE_NOTES_BLOCKED_PATTERN: ${{ secrets.RELEASE_NOTES_BLOCKED_PATTERN }}
+    outputs:
+      mode: ${{ steps.plan.outputs.mode }}
+      version: ${{ steps.plan.outputs.version }}
+      sha: ${{ steps.plan.outputs.sha }}
+      dist_tag: ${{ steps.plan.outputs.dist_tag }}
+      is_new: ${{ steps.plan.outputs.is_new }}
+      promote: ${{ steps.plan.outputs.promote }}
+    steps:
+      # Release tooling and the canonical changelog always come from the workflow commit;
+      # the package is built from the requested ref so historical tags can be backfilled.
+      - name: Check out release tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: tooling
+          persist-credentials: false
+
+      - name: Check out package source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          path: pkg
+          persist-credentials: false
+
+      - name: Plan release
+        id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_REF: ${{ inputs.ref }}
+          INPUT_DIST_TAG: ${{ inputs.dist_tag || 'next' }}
+          INPUT_PROMOTE: ${{ inputs.promote_latest || false }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          AUTO_PUBLISH: ${{ vars.NPM_AUTO_PUBLISH }}
+        run: |
+          set -euo pipefail
+          name=$(node -p "require('./pkg/package.json').name")
+          version=$(node -p "require('./pkg/package.json').version")
+          sha=$(git -C pkg rev-parse HEAD)
+
+          if [ "$name" != "$PACKAGE_NAME" ]; then
+            echo "::error::Expected $PACKAGE_NAME at the package root, found $name."
+            exit 1
+          fi
+          if [ -n "$INPUT_REF" ] && [ "$INPUT_REF" != "v$version" ]; then
+            echo "::error::ref $INPUT_REF does not match package version $version; pass the release tag v$version."
+            exit 1
+          fi
+          if [ "$INPUT_DIST_TAG" = latest ]; then
+            echo "::error::latest moves only through promote_latest."
+            exit 1
+          fi
+          if ! printf '%s' "$INPUT_DIST_TAG" | grep -Eq '^[a-z][a-z0-9-]*$'; then
+            echo "::error::Invalid dist-tag: $INPUT_DIST_TAG"
+            exit 1
+          fi
+
+          case "$EVENT_NAME" in
+            pull_request) mode=dry-run ;;
+            push) if [ "$AUTO_PUBLISH" = true ]; then mode=publish; else mode=dry-run; fi ;;
+            workflow_dispatch) if [ "$INPUT_DRY_RUN" = true ]; then mode=dry-run; else mode=publish; fi ;;
+            *) echo "::error::Unsupported event $EVENT_NAME"; exit 1 ;;
+          esac
+
+          published=$(npm view "$PACKAGE_NAME@$version" version 2>/dev/null || true)
+          if [ "$published" = "$version" ]; then is_new=false; else is_new=true; fi
+
+          # Pull requests always build so workflow changes are exercised end to end.
+          if [ "$is_new" = true ] || [ "$EVENT_NAME" = pull_request ]; then build=true; else build=false; fi
+
+          {
+            echo "mode=$mode"
+            echo "version=$version"
+            echo "sha=$sha"
+            echo "dist_tag=$INPUT_DIST_TAG"
+            echo "is_new=$is_new"
+            echo "promote=$INPUT_PROMOTE"
+            echo "build=$build"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### Release plan"
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Version | $version |"
+            echo "| Commit | $sha |"
+            echo "| Mode | $mode |"
+            echo "| Already on npm | $([ "$is_new" = true ] && echo no || echo yes) |"
+            echo "| dist-tag | $INPUT_DIST_TAG |"
+            echo "| Promote to latest | $INPUT_PROMOTE |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        if: steps.plan.outputs.build == 'true'
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.plan.outputs.build == 'true'
+        with:
+          node-version: '20.3.0'
+          package-manager-cache: false
+
+      - name: Configure npm cache
+        if: steps.plan.outputs.build == 'true'
+        run: |
+          echo "npm_config_cache=$RUNNER_TEMP/npm-cache" >> "$GITHUB_ENV"
+          echo "NPM_CONFIG_CACHE=$RUNNER_TEMP/npm-cache" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        if: steps.plan.outputs.build == 'true'
+        working-directory: pkg
+        run: bun install --frozen-lockfile
+
+      - name: Set up test database
+        if: steps.plan.outputs.build == 'true'
+        working-directory: pkg
+        run: node scripts/setup-test-db.mjs
+
+      - name: Build, audit, and test
+        if: steps.plan.outputs.build == 'true'
+        working-directory: pkg
+        run: npm run prepublishOnly
+
+      - name: Pack tarball
+        if: steps.plan.outputs.build == 'true'
+        working-directory: pkg
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release"
+          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/release"
+
+      - name: Prepare release notes
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+          INPUT_NOTES: ${{ inputs.notes }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release"
+          notes="$RUNNER_TEMP/release/notes.md"
+          if [ -n "$INPUT_NOTES" ]; then
+            printf '%s\n' "$INPUT_NOTES" > "$notes"
+            echo "Using curated release notes."
+          else
+            bash tooling/scripts/extract-changelog.sh "$VERSION" tooling/CHANGELOG.md > "$notes"
+            if [ ! -s "$notes" ]; then
+              echo "::warning::No CHANGELOG.md section for $VERSION."
+              echo "See [CHANGELOG.md](CHANGELOG.md) for details." > "$notes"
+            fi
+          fi
+          {
+            echo "### Release notes"
+            cat "$notes"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Audit release content
+        env:
+          MODE: ${{ steps.plan.outputs.mode }}
+          BUILT: ${{ steps.plan.outputs.build }}
+        run: |
+          set -euo pipefail
+          release="$RUNNER_TEMP/release"
+          scan=("$release/notes.md")
+          if [ "$BUILT" = true ]; then
+            mkdir -p "$release/unpacked"
+            tar -xzf "$release"/*.tgz -C "$release/unpacked"
+            scan+=("$release/unpacked/package/README.md")
+          fi
+
+          if [ -z "$RELEASE_NOTES_BLOCKED_PATTERN" ] || [ -z "$ABAXXLABS_PRIVATE_URL_PREFIXES" ]; then
+            if [ "$MODE" = publish ]; then
+              echo "::error::Set the RELEASE_NOTES_BLOCKED_PATTERN and ABAXXLABS_PRIVATE_URL_PREFIXES repository secrets before publishing."
+              exit 1
+            fi
+            echo "::warning::Release content audit secrets are unavailable; skipping in dry run."
+            exit 0
+          fi
+
+          failed=0
+          if grep -lEi -- "$RELEASE_NOTES_BLOCKED_PATTERN" "${scan[@]}"; then
+            echo "::error::Release notes or README contain blocked terms."
+            failed=1
+          fi
+          if [ "$BUILT" = true ]; then
+            while IFS= read -r prefix; do
+              [ -n "$prefix" ] || continue
+              if grep -rlF -- "$prefix" "$release/unpacked" "$release/notes.md"; then
+                echo "::error::Release content references a private URL prefix."
+                failed=1
+              fi
+            done <<< "$ABAXXLABS_PRIVATE_URL_PREFIXES"
+          fi
+          exit "$failed"
+
+      - name: Upload release candidate
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-candidate
+          path: |
+            ${{ runner.temp }}/release/*.tgz
+            ${{ runner.temp }}/release/notes.md
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish to npm and GitHub
+    needs: verify
+    if: >-
+      needs.verify.outputs.mode == 'publish' &&
+      (needs.verify.outputs.is_new == 'true' || needs.verify.outputs.promote == 'true')
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+      SHA: ${{ needs.verify.outputs.sha }}
+      DIST_TAG: ${{ needs.verify.outputs.dist_tag }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-candidate
+          path: release
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      # Trusted publishing (OIDC) requires npm 11.5.1 or later.
+      - name: Install npm 11
+        run: npm install -g npm@11.19.1
+
+      - name: Publish to npm
+        if: needs.verify.outputs.is_new == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          published=$(npm view "$PACKAGE_NAME@$VERSION" version 2>/dev/null || true)
+          if [ "$published" = "$VERSION" ]; then
+            echo "$PACKAGE_NAME@$VERSION is already published. Skipping."
+            exit 0
+          fi
+          tarball=$(ls ./release/*.tgz)
+          npm publish "$tarball" --access public --provenance --tag "$DIST_TAG"
+
+      - name: Promote to latest
+        if: needs.verify.outputs.promote == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::Trusted publishing cannot move dist-tags. Add an NPM_TOKEN secret or run: npm dist-tag add $PACKAGE_NAME@$VERSION latest"
+            exit 1
+          fi
+          npm dist-tag add "$PACKAGE_NAME@$VERSION" latest
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROMOTE: ${{ needs.verify.outputs.promote }}
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "GitHub release $tag already exists. Leaving its notes unchanged."
+          else
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$SHA" \
+              --title "$tag" --notes-file release/notes.md --latest=false
+          fi
+          if [ "$PROMOTE" = true ]; then
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --latest
+          fi
+
+      - name: Summarize
+        run: |
+          {
+            echo "### Published"
+            npm view "$PACKAGE_NAME" dist-tags --json
+          } >> "$GITHUB_STEP_SUMMARY"
