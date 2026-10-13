@@ -27,12 +27,8 @@ export class SqliteRuntimeUnavailableError extends AgentScopeError {
 }
 
 export class DbConnectionFailedError extends AgentScopeError {
-  constructor(host: string, reason?: string) {
-    super(
-      'DB_CONNECTION_FAILED',
-      `Cannot connect to PostgreSQL at ${host}${reason ? ` — ${reason}` : ''}`,
-      { host },
-    );
+  constructor(..._details: string[]) {
+    super('DB_CONNECTION_FAILED', 'Cannot connect to PostgreSQL.');
     this.name = 'DbConnectionFailedError';
   }
 }

@@ -12,25 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import type {
-  CreateAgentOptions,
-  RegisteredAgent,
-} from '#types/auth.js';
+import type { CreateAgentOptions, RegisteredAgent } from '#types/auth.js';
 import type { AgentStore, AgentRecord } from '#storage/types.js';
 import { VcVerifier } from '#identity/index.js';
 import { generateDidKey, createSigner } from './did-key.js';
 import { wrapColumnKey, unwrapColumnKey, isUndefinedTableError } from '#encryption/index.js';
 import type { MasterKey } from '#crypto/master-key.js';
-import {
-  DecryptionFailedError,
-  MasterKeyMismatchError,
-} from '#errors/index.js';
+import { DecryptionFailedError, MasterKeyMismatchError } from '#errors/index.js';
 import type { IdSdkInstance } from '#types/id-sdk.js';
 import type { Logger } from '#observability/logger.js';
 import { getLogger } from '#observability/logger.js';
 
 /** Create a new agent identity (DID + key pair), persist it, and register the public key. */
-export async function createAgent(
+export async function createAgentIdentity(
   agents: AgentStore,
   options: CreateAgentOptions & { ownerDid: string },
   verifier: VcVerifier,
@@ -123,7 +117,9 @@ export async function restoreAgents(
     } catch (err) {
       if (err instanceof DecryptionFailedError) {
         decryptFailures++;
-        logger.error(`[agents] Failed to decrypt agent ${r.did} — wrong master key for this row`, { agentDid: r.did });
+        logger.error(`[agents] Failed to decrypt agent ${r.did} — wrong master key for this row`, {
+          agentDid: r.did,
+        });
       } else {
         throw err;
       }
@@ -140,7 +136,9 @@ export async function restoreAgents(
     if (decryptFailures > 0) skipParts.push(`${decryptFailures} decrypt-failed`);
     const skipNote = skipParts.length > 0 ? ` (skipped: ${skipParts.join(', ')})` : '';
     logger.error(`[agents] Restored ${restored} agents from database${skipNote}`, {
-      restored, nullKeySkipped, decryptFailures,
+      restored,
+      nullKeySkipped,
+      decryptFailures,
     });
   }
 

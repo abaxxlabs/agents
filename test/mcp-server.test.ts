@@ -121,7 +121,7 @@ function createMcpTestFixtures() {
   // Build a minimal AgentScope-like object for tools
   const scope = {
     query: vi.fn(),
-    createAgent: vi.fn(),
+    createAgentIdentity: vi.fn(),
     verify: vi.fn(),
     getAgent: vi.fn(),
     listAgents: vi.fn(),
@@ -130,7 +130,7 @@ function createMcpTestFixtures() {
     auditLoggerInstance: auditLogger,
   } as unknown as AgentScope & {
     query: Mock;
-    createAgent: Mock;
+    createAgentIdentity: Mock;
     verify: Mock;
     getAgent: Mock;
     listAgents: Mock;
@@ -189,7 +189,7 @@ describe('MCP Server', () => {
       const { scope, session, auditLogger } = createMcpTestFixtures();
       const services = {
         query: { execute: vi.fn() },
-        agents: { createAgent: vi.fn(), listAgents: vi.fn() },
+        agents: { createAgentIdentity: vi.fn(), listAgents: vi.fn() },
         credentials: {
           issueCredential: vi.fn(),
           delegateCredential: vi.fn(),
@@ -318,11 +318,11 @@ describe('MCP Server', () => {
     });
   });
 
-  describe('Tool: create-agent', () => {
+  describe('Tool: create-agent-identity', () => {
     it('happy path — creates agent and returns DID + public key', async () => {
       const { scope, human, agentA } = createMcpTestFixtures();
 
-      scope.createAgent.mockResolvedValueOnce({
+      scope.createAgentIdentity.mockResolvedValueOnce({
         did: agentA.did,
         name: 'Test Agent',
         ownerDid: human.did,
@@ -330,7 +330,7 @@ describe('MCP Server', () => {
         signer: createSigner(agentA.privateKey),
       });
 
-      const result = await scope.createAgent({ name: 'Test Agent', ownerDid: human.did });
+      const result = await scope.createAgentIdentity({ name: 'Test Agent', ownerDid: human.did });
       expect(result.did).toBe(agentA.did);
       expect(result.name).toBe('Test Agent');
       expect(result.publicKey).toBeDefined();
@@ -339,11 +339,13 @@ describe('MCP Server', () => {
     it('handles duplicate agent name', async () => {
       const { scope } = createMcpTestFixtures();
 
-      scope.createAgent.mockRejectedValueOnce(
+      scope.createAgentIdentity.mockRejectedValueOnce(
         new Error('duplicate key value violates unique constraint'),
       );
 
-      const result = await scope.createAgent({ name: 'Duplicate' }).catch((e) => e as Error);
+      const result = await scope
+        .createAgentIdentity({ name: 'Duplicate' })
+        .catch((e) => e as Error);
       expect(result).toHaveProperty('message', expect.stringContaining('duplicate key'));
     });
   });
@@ -889,14 +891,17 @@ describe('MCP Server', () => {
       const { scope, human, agentA } = fixtures;
 
       // 1. Create agent
-      scope.createAgent.mockResolvedValueOnce({
+      scope.createAgentIdentity.mockResolvedValueOnce({
         did: agentA.did,
         name: 'Integration Agent',
         ownerDid: human.did,
         publicKey: agentA.publicKey,
       });
 
-      const agent = await scope.createAgent({ name: 'Integration Agent', ownerDid: human.did });
+      const agent = await scope.createAgentIdentity({
+        name: 'Integration Agent',
+        ownerDid: human.did,
+      });
       expect(agent.did).toBe(agentA.did);
 
       // 2. Issue credential

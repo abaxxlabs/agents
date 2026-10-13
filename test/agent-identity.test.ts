@@ -212,14 +212,17 @@ describe('AgentIdentity', () => {
     identity.close();
   });
 
-  it('createAgent + listAgents round-trip', async () => {
+  it('createAgentIdentity + listAgents round-trip', async () => {
     const storage = buildTestStorage();
     const identity = await AgentIdentity.create(
       { audit: { enabled: true }, devMode: true },
       { storage, masterKey: asMasterKey(Buffer.alloc(32, 0x66)) },
     );
     const session = await identity.authenticate({ mockHumanDid: 'did:key:z6MkOwner' });
-    const agent = await identity.createAgent({ name: 'test-agent', ownerDid: session.humanDid });
+    const agent = await identity.createAgentIdentity({
+      name: 'test-agent',
+      ownerDid: session.humanDid,
+    });
     expect(agent.did).toMatch(/^did:key:/);
     expect(agent.name).toBe('test-agent');
     expect(agent.ownerDid).toBe(session.humanDid);
@@ -230,22 +233,22 @@ describe('AgentIdentity', () => {
     identity.close();
   });
 
-  it('createAgent rejects missing or empty name with a clear validation error', async () => {
+  it('createAgentIdentity rejects missing or empty name with a clear validation error', async () => {
     const storage = buildTestStorage();
     const identity = await AgentIdentity.create(
       { audit: { enabled: true }, devMode: true },
       { storage, masterKey: asMasterKey(Buffer.alloc(32, 0x55)) },
     );
     const session = await identity.authenticate({ mockHumanDid: 'did:key:z6MkOwner' });
-    await expect(identity.createAgent({ ownerDid: session.humanDid } as never)).rejects.toThrow(
-      /createAgent\(\) requires name/,
-    );
-    await expect(identity.createAgent({ name: '', ownerDid: session.humanDid })).rejects.toThrow(
-      /createAgent\(\) requires name/,
-    );
-    await expect(identity.createAgent({ name: '   ', ownerDid: session.humanDid })).rejects.toThrow(
-      /createAgent\(\) requires name/,
-    );
+    await expect(
+      identity.createAgentIdentity({ ownerDid: session.humanDid } as never),
+    ).rejects.toThrow(/createAgentIdentity\(\) requires name/);
+    await expect(
+      identity.createAgentIdentity({ name: '', ownerDid: session.humanDid }),
+    ).rejects.toThrow(/createAgentIdentity\(\) requires name/);
+    await expect(
+      identity.createAgentIdentity({ name: '   ', ownerDid: session.humanDid }),
+    ).rejects.toThrow(/createAgentIdentity\(\) requires name/);
     identity.close();
   });
 
@@ -256,7 +259,10 @@ describe('AgentIdentity', () => {
       { storage, masterKey: asMasterKey(Buffer.alloc(32, 0x56)) },
     );
     const session = await identity.authenticate({ mockHumanDid: 'did:key:z6MkPresenter' });
-    const agent = await identity.createAgent({ name: 'presenter', ownerDid: session.humanDid });
+    const agent = await identity.createAgentIdentity({
+      name: 'presenter',
+      ownerDid: session.humanDid,
+    });
     const credential = await session.issueCredential({
       agent: agent.did,
       columns: ['patients.name'],
@@ -295,7 +301,7 @@ describe('AgentIdentity', () => {
     );
     const ownerSession = await identity.authenticate({ mockHumanDid: 'did:key:z6MkOwner' });
     const otherSession = await identity.authenticate({ mockHumanDid: 'did:key:z6MkOther' });
-    const agent = await identity.createAgent({
+    const agent = await identity.createAgentIdentity({
       name: 'presenter',
       ownerDid: ownerSession.humanDid,
     });
@@ -325,11 +331,14 @@ describe('AgentIdentity', () => {
     );
     const session = await identity.authenticate({ mockHumanDid: 'did:key:z6MkDelegator' });
 
-    const supervisor = await identity.createAgent({
+    const supervisor = await identity.createAgentIdentity({
       name: 'supervisor',
       ownerDid: session.humanDid,
     });
-    const worker = await identity.createAgent({ name: 'worker', ownerDid: session.humanDid });
+    const worker = await identity.createAgentIdentity({
+      name: 'worker',
+      ownerDid: session.humanDid,
+    });
 
     const cred = await session.issueCredential({
       agent: supervisor.did,
@@ -386,9 +395,9 @@ describe('AgentIdentity', () => {
     identity.close();
 
     await expect(identity.authenticate()).rejects.toThrow('AgentIdentity has been closed');
-    await expect(identity.createAgent({ name: 'x', ownerDid: 'did:key:z6Mk1' })).rejects.toThrow(
-      'AgentIdentity has been closed',
-    );
+    await expect(
+      identity.createAgentIdentity({ name: 'x', ownerDid: 'did:key:z6Mk1' }),
+    ).rejects.toThrow('AgentIdentity has been closed');
     await expect(identity.listAgents()).rejects.toThrow('AgentIdentity has been closed');
     await expect(identity.getStatus()).rejects.toThrow('AgentIdentity has been closed');
   });

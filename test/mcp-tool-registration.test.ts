@@ -19,7 +19,7 @@ import {
 
 const CORE_TOOL_NAMES = [
   'query',
-  'create-agent',
+  'create-agent-identity',
   'issue-credential',
   'revoke-credential',
   'delegate-credential',
@@ -103,7 +103,7 @@ describe('MCP tool registration contract', () => {
     const server = createMockMcpServer();
     const scope = {
       query: vi.fn(async () => ({ rows: [], metadata: { rowCount: 0 } })),
-      createAgent: vi.fn(),
+      createAgentIdentity: vi.fn(),
       listAgents: vi.fn(),
       delegateCredential: vi.fn(),
       verify: vi.fn(),
@@ -145,11 +145,11 @@ describe('MCP tool registration contract', () => {
       const { tools } = await client.listTools();
       expect(tools.map((tool) => tool.name)).toEqual([...CORE_TOOL_NAMES, ...IDENTITY_TOOL_NAMES]);
       expect(tools.map((tool) => JSON.stringify(tool).length)).toEqual([
-        957, 438, 912, 323, 1052, 336, 445, 362, 383, 287, 369, 284, 430,
+        957, 447, 912, 323, 1052, 336, 445, 362, 383, 287, 369, 284, 430,
       ]);
-      expect(JSON.stringify({ tools }).length).toBe(6602);
+      expect(JSON.stringify({ tools }).length).toBe(6611);
       expect(createHash('sha256').update(JSON.stringify({ tools })).digest('hex')).toBe(
-        '988f06aef76615311af9c74600305f419eb4b4a767a016751768b966f20a61e6',
+        'bbe12eeebd62adde323e4bcc9b5875c354493dbe069e7850365fa9d6053ab486',
       );
     } finally {
       await client.close();

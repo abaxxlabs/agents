@@ -108,14 +108,6 @@ export class AgentScope implements AgentScopeInstance {
    * owned by AgentScope but NOT `.initialize()`d — migrations are a deployment concern.
    * Caller-supplied `pool` and `storage` are not closed by `AgentScope.close()`.
    */
-  private static maskConnectionCredentials(cs: string): string {
-    const proto = cs.indexOf('//');
-    if (proto === -1) return cs;
-    const at = cs.indexOf('@', proto + 2);
-    if (at === -1) return cs;
-    return cs.slice(0, proto + 2) + '***' + cs.slice(at);
-  }
-
   static async create(
     configInput: AgentScopeConfig | string,
     injections: AgentScopeInjections,
@@ -133,12 +125,8 @@ export class AgentScope implements AgentScopeInstance {
 
     try {
       await pool.query('SELECT 1');
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      throw new DbConnectionFailedError(
-        AgentScope.maskConnectionCredentials(config.database.connectionString),
-        message,
-      );
+    } catch {
+      throw new DbConnectionFailedError();
     }
 
     const masterKey = injections.masterKey;
@@ -248,8 +236,8 @@ export class AgentScope implements AgentScopeInstance {
    *
    * `ownerDid` is required — pass the authenticated human's DID. See DECISIONS.md D-009.
    */
-  async createAgent(options: CreateAgentOptions): Promise<RegisteredAgent> {
-    return this.identity.createAgent(options);
+  async createAgentIdentity(options: CreateAgentOptions): Promise<RegisteredAgent> {
+    return this.identity.createAgentIdentity(options);
   }
 
   /**

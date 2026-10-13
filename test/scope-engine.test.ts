@@ -146,7 +146,7 @@ describe('Scope Enforcement Engine', () => {
     });
 
     it('rejects queries for encrypted columns outside scope', async () => {
-      const { human, agentB, engine } = createTestFixtures();
+      const { human, agentB, engine, pool } = createTestFixtures();
 
       const credential = await issueCredential(human.did, human.privateKey, {
         agent: agentB.did,
@@ -163,6 +163,7 @@ describe('Scope Enforcement Engine', () => {
           sql: 'SELECT name, dob, diagnosis, ssn FROM patients',
         }),
       ).rejects.toThrow(ScopeViolationError);
+      expect(pool.query).not.toHaveBeenCalled();
     });
 
     it('tracks metadata correctly', async () => {
@@ -358,7 +359,7 @@ describe('Scope Enforcement Engine', () => {
 
   describe('unencrypted columns', () => {
     it('rejects unscoped unencrypted columns under projection mode', async () => {
-      const { human, agentB, engine } = createTestFixtures();
+      const { human, agentB, engine, pool } = createTestFixtures();
 
       const credential = await issueCredential(human.did, human.privateKey, {
         agent: agentB.did,
@@ -375,6 +376,7 @@ describe('Scope Enforcement Engine', () => {
           sql: 'SELECT id, name FROM patients',
         }),
       ).rejects.toThrow(/scope/i);
+      expect(pool.query).not.toHaveBeenCalled();
     });
 
     it('allows unencrypted columns when explicitly in scope', async () => {

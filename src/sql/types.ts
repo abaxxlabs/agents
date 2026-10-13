@@ -100,7 +100,7 @@ export interface AgentScopeInjections {
 
 export interface AgentScopeInstance {
   authenticate(options: AuthOptions): Promise<AuthenticatedSession>;
-  createAgent(options: CreateAgentOptions): Promise<RegisteredAgent>;
+  createAgentIdentity(options: CreateAgentOptions): Promise<RegisteredAgent>;
   createPresentationForAgent(options: {
     agentDid: string;
     credential: string;

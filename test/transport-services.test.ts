@@ -71,7 +71,7 @@ describe('transport-neutral services', () => {
     const listAgents = vi.fn().mockResolvedValue([agent]);
     const getAgent = vi.fn().mockResolvedValue(agent);
     const service = createAgentDirectoryService({
-      agents: { createAgent: vi.fn(), getAgent, listAgents },
+      agents: { createAgentIdentity: vi.fn(), getAgent, listAgents },
     });
 
     await expect(service.getAgent?.({ did: agent.did })).resolves.toEqual(agent);
@@ -79,7 +79,7 @@ describe('transport-neutral services', () => {
     expect(listAgents).not.toHaveBeenCalled();
 
     const fallback = createAgentDirectoryService({
-      agents: { createAgent: vi.fn(), listAgents },
+      agents: { createAgentIdentity: vi.fn(), listAgents },
     });
     expect(fallback.getAgent).toBeUndefined();
   });

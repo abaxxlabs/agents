@@ -128,9 +128,9 @@ function mcpError(data: unknown) {
  * enforcement, and audit logging. The MCP layer is pure plumbing.
  */
 export function registerRestBridgeTools(server: McpServer, config: RestBridgeConfig): void {
-  // ─── create-agent ────────────────────────────────────────────────
+  // ─── create-agent-identity ────────────────────────────────────────────────
   server.registerTool(
-    'create-agent',
+    'create-agent-identity',
     {
       description: 'Create a new agent identity (DID + keypair). Returns DID and public key.',
       inputSchema: {

@@ -82,7 +82,7 @@ function makeMinimalDeps() {
 
   const scope = {
     query: vi.fn(),
-    createAgent: vi.fn(),
+    createAgentIdentity: vi.fn(),
     verify: vi.fn(),
     getAgent: vi.fn(),
     listAgents: vi.fn(),
@@ -91,7 +91,7 @@ function makeMinimalDeps() {
     auditLoggerInstance: auditLogger,
   } as unknown as AgentScope & {
     query: Mock;
-    createAgent: Mock;
+    createAgentIdentity: Mock;
     verify: Mock;
     getAgent: Mock;
     listAgents: Mock;
