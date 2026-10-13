@@ -66,8 +66,8 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
-      ABAXXLABS_PRIVATE_URL_PREFIXES: ${{ vars.ABAXXLABS_PRIVATE_URL_PREFIXES }}
-      RELEASE_NOTES_BLOCKED_PATTERN: ${{ vars.RELEASE_NOTES_BLOCKED_PATTERN }}
+      ABAXXLABS_PRIVATE_URL_PREFIXES: ${{ secrets.ABAXXLABS_PRIVATE_URL_PREFIXES }}
+      RELEASE_NOTES_BLOCKED_PATTERN: ${{ secrets.RELEASE_NOTES_BLOCKED_PATTERN }}
     outputs:
       mode: ${{ steps.plan.outputs.mode }}
       version: ${{ steps.plan.outputs.version }}
@@ -234,15 +234,15 @@ jobs:
 
           if [ -z "$RELEASE_NOTES_BLOCKED_PATTERN" ] || [ -z "$ABAXXLABS_PRIVATE_URL_PREFIXES" ]; then
             if [ "$MODE" = publish ]; then
-              echo "::error::Set the RELEASE_NOTES_BLOCKED_PATTERN and ABAXXLABS_PRIVATE_URL_PREFIXES repository variables before publishing."
+              echo "::error::Set the RELEASE_NOTES_BLOCKED_PATTERN and ABAXXLABS_PRIVATE_URL_PREFIXES repository secrets before publishing."
               exit 1
             fi
-            echo "::warning::Release content audit variables are not set; skipping in dry run."
+            echo "::warning::Release content audit secrets are unavailable; skipping in dry run."
             exit 0
           fi
 
           failed=0
-          if grep -nEi -- "$RELEASE_NOTES_BLOCKED_PATTERN" "${scan[@]}"; then
+          if grep -lEi -- "$RELEASE_NOTES_BLOCKED_PATTERN" "${scan[@]}"; then
             echo "::error::Release notes or README contain blocked terms."
             failed=1
           fi
