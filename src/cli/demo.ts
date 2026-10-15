@@ -250,8 +250,14 @@ export async function runDemo(options: DemoOptions): Promise<void> {
 
   // ─── Step 3: Create agents ───────────────────────────────────
 
-  const agentA = await scope.createAgent({ name: 'claims-processor', ownerDid: session.humanDid });
-  const agentB = await scope.createAgent({ name: 'scheduling-bot', ownerDid: session.humanDid });
+  const agentA = await scope.createAgentIdentity({
+    name: 'claims-processor',
+    ownerDid: session.humanDid,
+  });
+  const agentB = await scope.createAgentIdentity({
+    name: 'scheduling-bot',
+    ownerDid: session.humanDid,
+  });
 
   console.log(`🤖 Agent A (claims-processor): ${agentA.did}`);
   console.log(`🤖 Agent B (scheduling-bot):   ${agentB.did}`);

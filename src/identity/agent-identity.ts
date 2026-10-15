@@ -41,7 +41,7 @@ import { AuditLogger } from '#audit/index.js';
 import type { Logger } from '#observability/logger.js';
 import { getLogger } from '#observability/logger.js';
 import {
-  createAgent,
+  createAgentIdentity,
   restoreAgents,
   createMockSession,
   createOidcSession,
@@ -384,20 +384,20 @@ export class AgentIdentity {
    * @throws if `name` is missing or not a non-empty string.
    * @throws if `ownerDid` is missing.
    */
-  async createAgent(options: CreateAgentOptions): Promise<RegisteredAgent> {
+  async createAgentIdentity(options: CreateAgentOptions): Promise<RegisteredAgent> {
     this.assertOpen();
     if (!options.name || typeof options.name !== 'string' || options.name.trim() === '') {
       throw new Error(
-        'createAgent() requires name. Pass a non-empty string identifying the agent.',
+        'createAgentIdentity() requires name. Pass a non-empty string identifying the agent.',
       );
     }
     if (!options.ownerDid) {
       throw new Error(
-        "createAgent() requires ownerDid. Pass the authenticated human's DID " +
+        "createAgentIdentity() requires ownerDid. Pass the authenticated human's DID " +
           '(authSession.humanDid) to bind the agent to its owner.',
       );
     }
-    const agent = await createAgent(
+    const agent = await createAgentIdentity(
       this.storage.agents,
       options as CreateAgentOptions & { ownerDid: string },
       this.verifier,
@@ -422,7 +422,7 @@ export class AgentIdentity {
     const agent = this.agents.get(sourceAgentDid);
     if (!agent) {
       throw new Error(
-        `Agent ${sourceAgentDid} not found. Create the agent first with createAgent().`,
+        `Agent ${sourceAgentDid} not found. Create the agent first with createAgentIdentity().`,
       );
     }
 

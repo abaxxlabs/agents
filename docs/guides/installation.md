@@ -51,6 +51,8 @@ Apply the repository migrations through your deployment tooling before relying o
 
 ## Verify the installation
 
+In your application project, run its own typecheck and tests after integrating Agents++ (the commands below are examples of project scripts):
+
 ```bash
 npm run typecheck
 npm test

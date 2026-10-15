@@ -112,7 +112,7 @@ export class QueryAuthorizer {
     // creates a fresh VP wrapping the same VC.
     //
     // The agent's signer is looked up from the agents map. If the agent
-    // isn't registered (shouldn't happen — createAgent precedes query),
+    // isn't registered (shouldn't happen — createAgentIdentity precedes query),
     // the raw VC is passed through for backward compatibility.
     const agentRec = this.agents.get(agent);
     const columnActions: Map<string, Set<string>> = new Map();
@@ -219,12 +219,12 @@ export class QueryAuthorizer {
               ownerDid: record.ownerDid,
             } as RegisteredAgent;
           }
-        } catch (dbErr) {
+        } catch {
           // Fail closed. A storage error silently skipping the owner check is a
           // security downgrade — propagate so the query is rejected.
           throw new CredentialInvalidError(
             agent,
-            `Agent owner lookup failed — ${dbErr instanceof Error ? dbErr.message : 'database error'}. Cannot verify credential issuer.`,
+            'Agent owner lookup failed. Cannot verify credential issuer.',
           );
         }
       }

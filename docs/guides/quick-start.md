@@ -8,7 +8,6 @@ sidebar_position: 2
 # Quick start
 
 This example uses the SDK directly in one application process. It creates an agent, issues a narrow credential, signs a Verifiable Presentation with the agent signer, and executes a read-only PostgreSQL query through the scope engine.
-
 ## Prepare a disposable database
 
 The `DATABASE_URL` below must point to an existing disposable PostgreSQL database. From a checkout of the Agents++ repository, apply the repository migrations before starting the SDK. The npm package does not include the repository migration directory:
@@ -60,7 +59,7 @@ const scope = await AgentScope.create(
 
 try {
   const session = await scope.authenticate({ mockHumanDid: 'alice' });
-  const agent = await scope.createAgent({
+  const agent = await scope.createAgentIdentity({
     name: 'trading-agent',
     ownerDid: session.humanDid,
   });
@@ -99,6 +98,8 @@ The value passed to `scope.query()` is the signed VP, not the raw credential. Se
 The SDK-direct flow above is the self-contained end-to-end path. The MCP `query` tool also requires an agent-signed Verifiable Presentation; sending the raw credential is rejected because it would be a bearer token.
 
 MCP has no presentation-creation tool, so the client application must supply the VP. The transport never exposes the agent's private signer.
+
+The application can use the public `createPresentation(vcJwt, agentDid, agentSigner, { audience: verifierDid })` helper shown above when it holds the agent signer and the server's verifier DID. An MCP-only client without the agent signer cannot construct a VP from a raw VC using MCP tools alone.
 
 ## What this example does not do
 

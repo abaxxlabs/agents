@@ -1,30 +1,90 @@
 # Changelog
 
+## [0.42.1] - 2026-10-13
+
+### Fixed
+
+- exclude docs-site llms test from public mirror
+
+## [0.42.0] - 2026-10-13
+
+### Added
+
+- Verify protected Playground flow and visitor isolation
+
+
+### Fixed
+
+- prevent stale HTTP sockets in compose smoke
+
+## [0.41.0] - 2026-10-09
+
+### Added
+
+- Fix E2E evidence checks and lockfile version
+- Verify the playground golden path in CI
+
+## [0.40.0] - 2026-10-08
+
+### Added
+
+- rename createAgent to createAgentIdentity and create-agent to create-agent-identity
+
+## [0.39.1] - 2026-10-07
+
+### Fixed
+
+Resolve Agents++ public docsite review findingsResolve Agents++ public docsite review findings
+
+## [0.39.0] - 2026-10-06
+
+### Added
+
+- Prepare the Playground HTTP boundary for public exposure
+
+### Fixed
+
+- harden readiness and cleanup diagnostics
+
+## [0.38.2] - 2026-10-02
+
+### Fixed
+
+- Import maintainer-reviewed public pull requests into private review
+
 ## [0.38.1] - 2026-09-29
 
 ### Fixed
 
-block private package paths in public sync
+- block private package paths in public sync
 
 ## [0.38.0] - 2026-09-29
 
 ### Added
 
-isolate Playground visitor sessions
+- isolate Playground visitor sessions
 
 ### Fixed
 
-persist Playground admin database URL
+- persist Playground admin database URL
 
 ## [0.37.0] - 2026-09-28
 
 ### Added
 
-Credit imported contributors in public Sync commitsenforce public mirror documentation boundaryenforce the public mirror boundaryImport maintainer-reviewed public pull requests into private reviewmake changelog canonical for public release
+- Credit imported contributors in public Sync commits
+- enforce public mirror documentation boundary
+- enforce the public mirror boundary
+- Import maintainer-reviewed public pull requests into private review
+- make changelog canonical for public release
 
 ### Fixed
 
-keep private packages out of the public mirrorremove stale public mirror filesuse TypeScript ESLint config in public mirrorvalidate publication licenses and reject unstaged changesverify generated public checkout independently
+- keep private packages out of the public mirror
+- remove stale public mirror files
+- use TypeScript ESLint config in public mirror
+- validate publication licenses and reject unstaged changes
+- verify generated public checkout independently
 
 ## [0.36.1] - 2026-09-28
 

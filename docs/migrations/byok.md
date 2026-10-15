@@ -37,16 +37,16 @@ That is the migration for **case #1** below. If you do anything else with key ma
 
 ## Decision tree: which case am I in?
 
-Five questions. Answer them in order. Each leaf maps to one of the four worked examples plus any additional guidance.
+Six questions. Answer the applicable ones in order. Each leaf maps to one of the four worked examples plus any additional guidance.
 
 | # | Question | Yes | No |
 |---|---|---|---|
 | Q1 | Do you read `AGENTS_MASTER_KEY` from `process.env` today? | go to Q3 | go to Q2 |
-| Q2 | Do you set `encryption.masterKey` in `AgentScopeConfig` (config-file or inline) today? | go to Q3 | **case #1** (env-only / same-key, with no env reads — you must wire one up; see "If you currently have neither") |
+| Q2 | Do you set `encryption.masterKey` in `AgentScopeConfig` (config-file or inline) today? | go to Q3 | **No key source** — see "If you currently have neither" in case #1 before migrating |
 | Q3 | Are you planning to **change the key value** as part of this upgrade (KMS migration, key rotation, fresh key)? | go to Q4 | go to Q5 |
-| Q4 | Do you also want to move the key source off env vars (HSM / KMS / Secrets Manager) as part of this work? | **case #4** (new-key-with-rewrap + KMS sourcing) | **case #4** (new-key-with-rewrap, env-sourced) |
+| Q4 | Are you currently env-only and keeping env as the key source? | **case #3** (env-only / new key) | **case #4** (config-sourced or moving to KMS / new key) |
 | Q5 | Do you have **both** env reads AND `encryption.masterKey` set in config today? | **environment audit first** — env was silently winning, audit which key value is yours; then you are case #1 or case #2 | go to Q6 |
-| Q6 | Do you set `encryption.masterKey` in `AgentScopeConfig`? | **case #3** (config-hex / same-key) | **case #1** (env-only / same-key) |
+| Q6 | Do you set `encryption.masterKey` in `AgentScopeConfig`? | **case #2** (config-hex / same-key) | **case #1** (env-only / same-key) |
 
 Each case below stands alone — read only the one that applies.
 
@@ -465,7 +465,7 @@ The most complex in-repo consumer was used as the migration dry run for this rel
 ## References
 
 - **CHANGELOG entry**: `CHANGELOG.md` § `[0.9.10.0]`.
-- **Rollback procedure**: `docs/migrations/v0.9.10-rollback.md`.
+- **Rollback procedure**: [v0.9.10.0 rollback guide](v0.9.10-rollback.md).
 - **API surface**:
   - `AgentScope.create(config, injections)` — `src/sql/index.ts`
   - `AgentScopeInjections` interface — `src/sql/types.ts`

@@ -79,7 +79,7 @@ export interface QueryServiceTelemetrySink {
 }
 
 export interface AgentDirectory {
-  createAgent(options: CreateAgentOptions): Promise<RegisteredAgent>;
+  createAgentIdentity(options: CreateAgentOptions): Promise<RegisteredAgent>;
   getAgent?(did: string): Promise<{
     did: string;
     name: string;
@@ -97,7 +97,7 @@ export interface AgentDirectory {
 }
 
 export interface AgentDirectoryService {
-  createAgent(options: CreateAgentOptions): Promise<RegisteredAgent>;
+  createAgentIdentity(options: CreateAgentOptions): Promise<RegisteredAgent>;
   listAgents(filter?: { ownerDid?: string; limit?: number }): Promise<
     Array<{
       did: string;
@@ -259,8 +259,8 @@ export function createAgentDirectoryService(deps: {
 }): AgentDirectoryService {
   const getAgent = deps.agents.getAgent?.bind(deps.agents);
   return {
-    createAgent(options) {
-      return deps.agents.createAgent(options);
+    createAgentIdentity(options) {
+      return deps.agents.createAgentIdentity(options);
     },
     listAgents(filter) {
       return deps.agents.listAgents(filter);

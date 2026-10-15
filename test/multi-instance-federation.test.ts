@@ -43,7 +43,9 @@ describeFn('Multi-instance AgentScope federation (live Postgres required)', () =
     await pool.query('DELETE FROM agent_keys').catch(() => undefined);
     await pool.query('DELETE FROM agents').catch(() => undefined);
 
-    const base = PostgresStorageBackend.fromPool(pool, false, { sessionMacKey: deterministicSessionMacKey() });
+    const base = PostgresStorageBackend.fromPool(pool, false, {
+      sessionMacKey: deterministicSessionMacKey(),
+    });
 
     const masterKeyA = asMasterKey(Buffer.alloc(32, 0xaa));
     const masterKeyB = asMasterKey(Buffer.alloc(32, 0xbb));
@@ -85,9 +87,9 @@ describeFn('Multi-instance AgentScope federation (live Postgres required)', () =
     await pool?.end().catch(() => undefined);
   });
 
-  it('accepts a credential issued by org A when presented to org B\'s verifier', async () => {
+  it("accepts a credential issued by org A when presented to org B's verifier", async () => {
     const session = await scopeA.authenticate({ mockHumanDid: 'James Park, Head of Trading' });
-    const agent = await scopeA.createAgent({
+    const agent = await scopeA.createAgentIdentity({
       name: 'trading-executor',
       ownerDid: session.humanDid,
     });
@@ -115,7 +117,7 @@ describeFn('Multi-instance AgentScope federation (live Postgres required)', () =
 
   it('rejects a VP bound to the wrong audience (cross-org replay prevention)', async () => {
     const session = await scopeA.authenticate({ mockHumanDid: 'Maria Torres, CCO' });
-    const agent = await scopeA.createAgent({
+    const agent = await scopeA.createAgentIdentity({
       name: 'compliance-monitor',
       ownerDid: session.humanDid,
     });

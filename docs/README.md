@@ -20,6 +20,7 @@ The public sections in this directory contain the documentation published for Ag
 - [Rollback from v0.9.10](migrations/v0.9.10-rollback.md)
 - [Migration from v0.10 to v0.11](migrations/v0.11.md)
 - [Human-scoped rate limits](migrations/human-scoped-rate-limits.md)
+- [VC-JWT delegation claim placement](migrations/vc-jwt-claim-placement.md)
 
 ## Updating Documentation
 

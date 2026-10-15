@@ -110,7 +110,7 @@ const scope = await AgentScope.create(
 
 try {
   const session = await scope.authenticate({ mockHumanDid: 'alice' });
-  const agent = await scope.createAgent({ name: 'trading-agent', ownerDid: session.humanDid });
+  const agent = await scope.createAgentIdentity({ name: 'trading-agent', ownerDid: session.humanDid });
 
   const credential = await session.issueCredential({
     agent: agent.did,

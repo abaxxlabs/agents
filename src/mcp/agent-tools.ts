@@ -27,7 +27,7 @@ interface AgentToolDependencies {
 
 export function registerCreateAgentTool(server: McpServer, deps: AgentToolDependencies): void {
   server.registerTool(
-    'create-agent',
+    'create-agent-identity',
     {
       description:
         'Create a new agent identity (DID + keypair). Returns DID and public key — private key stays server-side.',
@@ -38,7 +38,7 @@ export function registerCreateAgentTool(server: McpServer, deps: AgentToolDepend
     },
     async ({ name, ownerDid }) => {
       try {
-        const createdAgent = await deps.services.agents.createAgent({
+        const createdAgent = await deps.services.agents.createAgentIdentity({
           name,
           ownerDid: ownerDid ?? deps.session.humanDid,
         });

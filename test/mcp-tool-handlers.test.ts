@@ -98,11 +98,13 @@ describe('MCP tool handler contract', () => {
     expect(parseMcpToolPayload(result)).toMatchObject({ rows: [{ id: 1 }] });
   });
 
-  it('preserves create-agent defaults, output shaping, and list limits', async () => {
-    const created = await getRegisteredMcpTool(server, 'create-agent').handler({ name: 'worker' });
+  it('preserves create-agent-identity defaults, output shaping, and list limits', async () => {
+    const created = await getRegisteredMcpTool(server, 'create-agent-identity').handler({
+      name: 'worker',
+    });
     const listed = await getRegisteredMcpTool(server, 'list-agents').handler({ limit: 250 });
 
-    expect(services.agents.createAgent).toHaveBeenCalledWith({
+    expect(services.agents.createAgentIdentity).toHaveBeenCalledWith({
       name: 'worker',
       ownerDid: 'did:key:human',
     });
@@ -365,8 +367,10 @@ describe('MCP tool handler contract', () => {
   });
 
   it('preserves duplicate-agent, invalid-date, audit-not-found, and safe internal errors', async () => {
-    vi.mocked(services.agents.createAgent).mockRejectedValueOnce(new Error('already exists'));
-    const duplicate = await getRegisteredMcpTool(server, 'create-agent').handler({
+    vi.mocked(services.agents.createAgentIdentity).mockRejectedValueOnce(
+      new Error('already exists'),
+    );
+    const duplicate = await getRegisteredMcpTool(server, 'create-agent-identity').handler({
       name: 'worker',
     });
     const invalidDate = await getRegisteredMcpTool(server, 'export-audit').handler({

@@ -34,7 +34,7 @@ function createPhase2Fixtures() {
 
   const scope = {
     query: vi.fn(),
-    createAgent: vi.fn(),
+    createAgentIdentity: vi.fn(),
     verify: vi.fn(),
     getAgent: vi.fn(),
     listAgents: vi.fn(),

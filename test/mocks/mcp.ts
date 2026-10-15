@@ -65,7 +65,7 @@ export function createAgentToolServiceFakes(): AgentToolServices {
       })),
     },
     agents: {
-      createAgent: vi.fn(async ({ name, ownerDid }) => ({
+      createAgentIdentity: vi.fn(async ({ name, ownerDid }) => ({
         did: 'did:key:agent',
         name,
         ownerDid: ownerDid ?? 'did:key:human',

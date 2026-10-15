@@ -70,11 +70,19 @@ const chain = payload.delegationChain;
 
 // after
 const { payload } = decodeJwt(credential);
-const ceiling = payload.vc?.termsOfUse?.find((t) => t.type === 'DelegationPolicy')?.maxDepth;
-const chain = payload.vc?.evidence?.find((e) => e.type === 'DelegationChain')?.credentials;
+const findTyped = (value: unknown, expected: string) =>
+  ((Array.isArray(value) ? value : [value]) as unknown[]).find(
+    (entry): entry is Record<string, unknown> => {
+      if (!entry || typeof entry !== 'object') return false;
+      const type = (entry as { type?: unknown }).type;
+      return Array.isArray(type) ? type.includes(expected) : type === expected;
+    },
+  );
+const ceiling = findTyped(payload.vc?.termsOfUse, 'DelegationPolicy')?.maxDepth;
+const chain = findTyped(payload.vc?.evidence, 'DelegationChain')?.credentials;
 ```
 
-Both `type` values may be a string or an array of strings, as VC sub-objects are allowed to carry several types. If you write your own reader, accept both.
+Both `type` values may be a string or an array of strings, as VC sub-objects are allowed to carry several types. The reader above accepts both and reads a single object or an array of entries.
 
 ## 4. Compatibility
 
