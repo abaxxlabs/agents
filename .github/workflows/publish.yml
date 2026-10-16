@@ -19,7 +19,7 @@ on:
         required: false
         default: next
       promote_latest:
-        description: Point the latest dist-tag and the GitHub Latest release at this version.
+        description: Point the latest dist-tag and the GitHub Latest release at this version. Merges to main always promote; use this only when dispatching.
         type: boolean
         default: false
       notes:
@@ -132,13 +132,17 @@ jobs:
           # Pull requests always build so workflow changes are exercised end to end.
           if [ "$is_new" = true ] || [ "$EVENT_NAME" = pull_request ]; then build=true; else build=false; fi
 
+          # Merges to main publish the newest version, so they own the latest tag.
+          # workflow_dispatch stays explicit: backfilling an old tag must not move latest.
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then promote="$INPUT_PROMOTE"; else promote=true; fi
+
           {
             echo "mode=$mode"
             echo "version=$version"
             echo "sha=$sha"
             echo "dist_tag=$INPUT_DIST_TAG"
             echo "is_new=$is_new"
-            echo "promote=$INPUT_PROMOTE"
+            echo "promote=$promote"
             echo "build=$build"
           } >> "$GITHUB_OUTPUT"
           {
@@ -150,7 +154,7 @@ jobs:
             echo "| Mode | $mode |"
             echo "| Already on npm | $([ "$is_new" = true ] && echo no || echo yes) |"
             echo "| dist-tag | $INPUT_DIST_TAG |"
-            echo "| Promote to latest | $INPUT_PROMOTE |"
+            echo "| Promote to latest | $promote |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
