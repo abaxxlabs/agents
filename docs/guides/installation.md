@@ -18,7 +18,7 @@ Agents++ is a TypeScript library and middleware layer for agent identity, author
 ## Install the SQL surface
 
 ```bash
-npm install @abaxxlabs/agents@0.11.4 pg@8.20.0 libpg-query@17.7.3
+npm install @abaxxlabs/agents pg@8.20.0 libpg-query@17.7.3
 ```
 
 The `pg` package provides the PostgreSQL pool. `libpg-query` parses PostgreSQL statements before the scope engine sends an authorized query to the database.

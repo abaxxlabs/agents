@@ -87,7 +87,7 @@ Delegation works the same way down. A supervisor agent can delegate a strict sub
 ## Install
 
 ```bash
-npm install @abaxxlabs/agents@0.11.4 pg@8.20.0 libpg-query@17.7.3
+npm install @abaxxlabs/agents pg@8.20.0 libpg-query@17.7.3
 ```
 
 ## Quick start
