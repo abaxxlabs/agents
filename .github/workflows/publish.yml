@@ -335,7 +335,7 @@ jobs:
             echo "GitHub release $tag already exists. Leaving its notes unchanged."
           else
             gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$SHA" \
-              --title "$tag" --notes-file release/notes.md --latest=false
+              --title "$tag" --latest=false
           fi
           if [ "$PROMOTE" = true ]; then
             gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --latest
