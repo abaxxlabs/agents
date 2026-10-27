@@ -269,6 +269,15 @@ function blockedLiteralViolations(contents, artifactPath, values, reason) {
   return violations;
 }
 
+function maskCodeownerHandles(contents) {
+  return contents.replace(
+    /^([ \t]*(?!#)(?:\\[^\r\n]|[^\\\s])+)([ \t]+[^#\r\n]*)/gm,
+    (_, pattern, owners) =>
+      pattern +
+      owners.replace(/(^|[ \t])@[a-z\d]+(?:-[a-z\d]+)*(?:\/[a-z\d_-]+)?(?=$|[ \t])/gi, '$1'),
+  );
+}
+
 function blockedPatternViolations(contents, artifactPath, terms) {
   const violations = [];
   contents.split(/\r?\n/).forEach((line, index) => {
@@ -339,7 +348,7 @@ export function scanArtifactContentForViolations(contents, artifactPath, options
       'contains a private URL',
     ),
     ...blockedLiteralViolations(
-      contents,
+      artifactPath === '.github/CODEOWNERS' ? maskCodeownerHandles(contents) : contents,
       artifactPath,
       options.employeeNames ?? [],
       'contains an employee name',

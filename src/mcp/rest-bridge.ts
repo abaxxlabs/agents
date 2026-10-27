@@ -26,6 +26,7 @@
  * from consumer code or treat it as a supported adapter.
  */
 
+import { MAX_DELEGATION_CHAIN_DEPTH } from '#config.js';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { parseDuration } from '#config.js';
@@ -170,7 +171,7 @@ export function registerRestBridgeTools(server: McpServer, config: RestBridgeCon
           .number()
           .int()
           .min(1)
-          .max(10)
+          .max(MAX_DELEGATION_CHAIN_DEPTH)
           .optional()
           .describe(
             'Maximum delegation chain depth embedded in the issued credential. Default: 2. Pass 1 to prevent any delegation.',

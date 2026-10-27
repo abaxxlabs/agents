@@ -18,6 +18,7 @@
  * Validation errors expose only issue paths and codes, never submitted values.
  */
 
+import { MAX_DELEGATION_CHAIN_DEPTH } from '#config.js';
 import { z, type ZodIssue } from 'zod';
 import { RequestValidationError, type SafeValidationIssue } from './errors.js';
 import { parseDuration } from '#config.js';
@@ -114,7 +115,7 @@ export const issueCredentialBodyShape = {
   columns: z.array(columnString).min(1).max(100),
   actions: z.array(actionString).min(1).max(16),
   expiresIn: expiresInField,
-  maxDepth: z.number().int().min(1).max(10).optional(),
+  maxDepth: z.number().int().min(1).max(MAX_DELEGATION_CHAIN_DEPTH).optional(),
 };
 export const issueCredentialBodySchema = strictObject(issueCredentialBodyShape);
 

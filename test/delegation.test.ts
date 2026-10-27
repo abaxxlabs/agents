@@ -14,7 +14,7 @@ import {
   issueDelegatedCredential,
   createSigner,
 } from '#auth/index.js';
-import { CredentialInvalidError, UnknownIssuerError } from '#errors/index.js';
+import { CredentialInvalidError } from '#errors/index.js';
 import type { RegisteredAgent } from '#types/index.js';
 
 function createDelegationFixtures() {
@@ -148,7 +148,7 @@ describe('Delegation', () => {
   });
 
   describe('invalid delegation chain', () => {
-    it('rejects a delegated credential when the source credential is forged', async () => {
+    it('rejects a delegated credential when the source credential is forged by an unregistered key', async () => {
       const { supervisor, worker, engine } = createDelegationFixtures();
 
       // Attacker forges a source credential (signed by an unknown key)
@@ -174,14 +174,16 @@ describe('Delegation', () => {
         },
       );
 
-      await expect(
-        engine.query({
+      const err: unknown = await engine
+        .query({
           agent: worker.did,
           credential: delegatedCred,
           table: 'patients',
           sql: 'SELECT name FROM patients',
-        }),
-      ).rejects.toThrow(UnknownIssuerError);
+        })
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(CredentialInvalidError);
+      expect((err as Error).message).toMatch(/not the registered owner/);
     });
 
     it('rejects a delegated credential when the source credential issuer is not the human owner', async () => {

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import { DelegationExpiryExceedsParentError } from '#errors/index.js';
 /**
  * Validate that requested columns and actions are subsets of the parent's scope.
  * @internal Not part of the public API. Consumed by the credential-issuance orchestrator.
@@ -38,12 +39,14 @@ export function validateScope(
 }
 
 /**
- * Clamp the requested expiry to the parent's maximum.
+ * Bound the requested expiry by the parent's. Rejects rather than narrowing, so a
+ * caller is never handed a weaker credential than it asked for without knowing.
+ * @throws {DelegationExpiryExceedsParentError}
  * @internal Not part of the public API. Consumed by the credential-issuance orchestrator.
  */
 export function validateExpiry(requestedExpSeconds: number, parentMaxExpSeconds?: number): number {
-  if (parentMaxExpSeconds !== undefined) {
-    return Math.min(requestedExpSeconds, parentMaxExpSeconds);
+  if (parentMaxExpSeconds !== undefined && requestedExpSeconds > parentMaxExpSeconds) {
+    throw new DelegationExpiryExceedsParentError(requestedExpSeconds, parentMaxExpSeconds);
   }
   return requestedExpSeconds;
 }

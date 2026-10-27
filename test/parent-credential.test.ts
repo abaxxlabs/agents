@@ -10,6 +10,7 @@ import { generateDidKey, createSigner } from '#auth/index.js';
 import { ParentCredentialRequestFailedError } from '#errors/index.js';
 import type { AuditEntry } from '#types/index.js';
 import type { CapabilitySet } from '#capability/types.js';
+import type { IdSdkInstance } from '#types/id-sdk.js';
 import { createMockAuditStore } from './mocks/audit-store.js';
 import { createMockVcVerifier } from './mocks/vc-verifier.js';
 
@@ -17,6 +18,7 @@ const OWN_DID = 'did:key:z6MkownServerTest123';
 const PARENT_DID = 'did:dht:parentOrgInstance456';
 const AGENT_DID = 'did:key:z6MkagentTest789';
 const ISSUER_DID = 'did:key:z6MkTestIssuer1234567890';
+const PARENT_TENANT_URL = 'https://parent.example.com';
 
 function makeParentProvider(response: { jwt: string; issuerDid: string }) {
   return {
@@ -28,6 +30,10 @@ function makeFailingProvider(error: Error) {
   return {
     requestAgentCredential: vi.fn().mockRejectedValue(error),
   };
+}
+
+function makeLogger() {
+  return { warn: vi.fn(), error: vi.fn() };
 }
 
 function makeBindingJwt(capabilities?: CapabilitySet): string {
@@ -183,13 +189,98 @@ describe('issueCredentialFromParent', () => {
   });
 });
 
-describe('createSessionFromDid — parent credential fallback', () => {
+describe('createSessionFromDid — parent credential failure', () => {
   const humanKeys = generateDidKey();
 
-  it('catches ParentCredentialRequestFailedError and falls through to local signing', async () => {
-    const provider = makeFailingProvider(
-      new ParentCredentialRequestFailedError(PARENT_DID, undefined, 'network timeout'),
+  it('propagates the parent error unchanged and signs nothing locally', async () => {
+    const parentError = new ParentCredentialRequestFailedError(
+      PARENT_TENANT_URL,
+      503,
+      'network timeout',
     );
+    const provider = makeFailingProvider(parentError);
+    const logger = makeLogger();
+
+    const session = createSessionFromDid(
+      humanKeys.did,
+      'test@example.com',
+      {} as unknown as VcVerifier,
+      undefined,
+      undefined,
+      humanKeys.privateKey,
+      undefined,
+      {
+        provider,
+        accessToken: 'token-123',
+        issuerDid: PARENT_DID,
+        credentialExp: Math.floor(Date.now() / 1000) + 3600,
+      },
+      logger,
+    );
+
+    await expect(
+      session.issueCredential({
+        agent: AGENT_DID,
+        columns: ['patients.name'],
+        actions: ['read'],
+        expiresIn: '1h',
+      }),
+    ).rejects.toBe(parentError);
+
+    expect(provider.requestAgentCredential).toHaveBeenCalledTimes(1);
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledTimes(1);
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('network timeout'), {
+      tenantUrl: PARENT_TENANT_URL,
+      upstreamStatus: 503,
+    });
+  });
+
+  it('does not fall back to SDK signing when the parent fails', async () => {
+    const provider = makeFailingProvider(
+      new ParentCredentialRequestFailedError(PARENT_TENANT_URL, 403, 'not authorized'),
+    );
+    const sdk = {
+      vc: {
+        createCredential: vi.fn(),
+        getSignerOptions: vi.fn(),
+        signCredential: vi.fn(),
+      },
+    };
+
+    const session = createSessionFromDid(
+      humanKeys.did,
+      'test@example.com',
+      {} as unknown as VcVerifier,
+      sdk as unknown as IdSdkInstance,
+      undefined,
+      undefined,
+      undefined,
+      {
+        provider,
+        accessToken: 'token-123',
+        issuerDid: PARENT_DID,
+        credentialExp: Math.floor(Date.now() / 1000) + 3600,
+      },
+      makeLogger(),
+    );
+
+    await expect(
+      session.issueCredential({
+        agent: AGENT_DID,
+        columns: ['patients.name'],
+        actions: ['read'],
+        expiresIn: '1h',
+      }),
+    ).rejects.toThrow(ParentCredentialRequestFailedError);
+
+    expect(sdk.vc.createCredential).not.toHaveBeenCalled();
+    expect(sdk.vc.getSignerOptions).not.toHaveBeenCalled();
+    expect(sdk.vc.signCredential).not.toHaveBeenCalled();
+  });
+
+  it('returns the credential the parent issued', async () => {
+    const provider = makeParentProvider({ jwt: 'eyJ.parent.jwt', issuerDid: PARENT_DID });
 
     const session = createSessionFromDid(
       humanKeys.did,
@@ -214,8 +305,28 @@ describe('createSessionFromDid — parent credential fallback', () => {
       expiresIn: '1h',
     });
 
-    expect(jwt).toBeDefined();
-    expect(jwt.split('.')).toHaveLength(3);
+    expect(jwt).toBe('eyJ.parent.jwt');
+  });
+
+  it('still signs locally when no parent is configured', async () => {
+    const session = createSessionFromDid(
+      humanKeys.did,
+      'test@example.com',
+      {} as unknown as VcVerifier,
+      undefined,
+      undefined,
+      humanKeys.privateKey,
+    );
+
+    const jwt = await session.issueCredential({
+      agent: AGENT_DID,
+      columns: ['patients.name'],
+      actions: ['read'],
+      expiresIn: '1h',
+    });
+
+    const payload = JSON.parse(Buffer.from(jwt.split('.')[1], 'base64url').toString('utf8'));
+    expect(payload.iss).toBe(humanKeys.did);
   });
 
   it('re-throws non-ParentCredentialRequestFailedError errors', async () => {
@@ -302,7 +413,7 @@ describe('createSessionFromDid — requireParent', () => {
 
   it('throws when parent provider fails and requireParent is set', async () => {
     const provider = makeFailingProvider(
-      new ParentCredentialRequestFailedError(PARENT_DID, undefined, 'network timeout'),
+      new ParentCredentialRequestFailedError(PARENT_TENANT_URL, 503, 'network timeout'),
     );
 
     const session = createSessionFromDid(
@@ -319,6 +430,7 @@ describe('createSessionFromDid — requireParent', () => {
         issuerDid: PARENT_DID,
         credentialExp: Math.floor(Date.now() / 1000) + 3600,
       },
+      makeLogger(),
     );
 
     await expect(
@@ -329,7 +441,7 @@ describe('createSessionFromDid — requireParent', () => {
         expiresIn: '1h',
         requireParent: true,
       }),
-    ).rejects.toThrow('requireParent is set');
+    ).rejects.toThrow(ParentCredentialRequestFailedError);
   });
 
   it('throws when requireParent is set but no parent provider configured', async () => {

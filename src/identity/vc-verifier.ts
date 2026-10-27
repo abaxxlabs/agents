@@ -32,6 +32,7 @@ import { decodeJwt, verifyJwtSignature } from '#crypto/jwt.js';
 import { isDelegatedScopeCredentialType } from '#auth/credential-issuance.js';
 import { DidCache } from '#did/cache.js';
 import { resolveDidKeyFallback } from '#did/resolve.js';
+import { zbase32Decode, zbase32Encode } from '#crypto/zbase32.js';
 import { numericDateToMs } from './numeric-date.js';
 import { ReplayGuard, verifyPresentation } from './vp-verification.js';
 import { checkDelegationChainRevocation, checkDelegationDepthCeiling } from './delegation-chain.js';
@@ -159,9 +160,8 @@ export class VcVerifier {
   }
 
   /**
-   * Resolve a DID to its public key.
-   * Uses the injected platform DID resolver when available, falls back to known
-   * keys and did:key parsing.
+   * Resolve a DID to its public key: registered keys first, then the platform DID
+   * resolver when one is configured, otherwise `did:key` and `did:dht` derived offline.
    */
   async resolvePublicKey(did: string): Promise<Uint8Array> {
     const brandedDid = did as Did;
@@ -180,7 +180,7 @@ export class VcVerifier {
         const doc = result.didDocument as
           | {
               verificationMethod?: Array<{
-                publicKeyJwk?: { x: string };
+                publicKeyJwk?: { x: string; crv?: string };
                 publicKeyMultibase?: string;
               }>;
             }
@@ -189,7 +189,11 @@ export class VcVerifier {
           throw new DidResolutionFailedError(did, 'No verification methods in DID document');
         }
 
-        const vm = doc.verificationMethod[0];
+        // Only EdDSA is verified here, so a non-Ed25519 entry is never the right key.
+        // `?? [0]` keeps multibase documents working, since those carry no `crv`.
+        const vm =
+          doc.verificationMethod.find((m) => m.publicKeyJwk?.crv === 'Ed25519') ??
+          doc.verificationMethod[0];
         let publicKey: Uint8Array;
 
         if (vm.publicKeyJwk) {
@@ -220,6 +224,40 @@ export class VcVerifier {
       const pk = resolveDidKeyFallback(brandedDid);
       this.cache.set(brandedDid, pk);
       return pk;
+    }
+
+    // The identifier IS the Ed25519 identity key, so this verifies offline like did:key.
+    // Only that key: one added or rotated through the DHT still needs the document.
+    if (did.startsWith('did:dht:')) {
+      const identifier = did.slice('did:dht:'.length).split('#')[0].split('/')[0];
+      let decoded: Uint8Array;
+      try {
+        decoded = zbase32Decode(identifier);
+      } catch {
+        throw new DidResolutionFailedError(
+          did,
+          `Cannot resolve ${did}. The identifier is not valid z-base-32.`,
+        );
+      }
+      if (decoded.length !== 32) {
+        throw new DidResolutionFailedError(
+          did,
+          `Cannot resolve ${did}. A did:dht identifier must decode to a 32-byte ` +
+            `Ed25519 key; this one decodes to ${decoded.length}.`,
+        );
+      }
+      // The final character carries four padding bits that decoding discards, so
+      // sixteen identifiers decode to the same key. Only the one an encoder produces
+      // is this DID; accepting the rest would give one key several identities.
+      if (zbase32Encode(decoded) !== identifier) {
+        throw new DidResolutionFailedError(
+          did,
+          `Cannot resolve ${did}. The identifier is not the canonical encoding of the ` +
+            `key it decodes to, so it is an alias rather than this DID.`,
+        );
+      }
+      this.cache.set(brandedDid, decoded);
+      return decoded;
     }
 
     throw new DidResolutionFailedError(
@@ -303,22 +341,27 @@ export class VcVerifier {
       }
     }
 
-    const expMs = payload.exp !== undefined ? numericDateToMs(payload.exp) : null;
-    if (payload.exp !== undefined && expMs === null) {
+    if (payload.exp === undefined) {
+      return {
+        valid: false,
+        status: 'MALFORMED',
+        error: 'Credential expiry (exp) is missing',
+      };
+    }
+    const expMs = numericDateToMs(payload.exp);
+    if (expMs === null) {
       return {
         valid: false,
         status: 'MALFORMED',
         error: 'Credential exp is not a valid NumericDate',
       };
     }
-    if (expMs !== null) {
-      if (now >= expMs) {
-        return {
-          valid: false,
-          status: 'EXPIRED',
-          error: `Credential expired at ${new Date(expMs).toISOString()}`,
-        };
-      }
+    if (now >= expMs) {
+      return {
+        valid: false,
+        status: 'EXPIRED',
+        error: `Credential expired at ${new Date(expMs).toISOString()}`,
+      };
     }
 
     // Signature verification
@@ -443,8 +486,7 @@ export class VcVerifier {
 
     const chainResult = await checkDelegationChainRevocation(delegationChain, {
       revocationStore: this.revocationStore,
-      knownKeys: this.knownKeys,
-      sdk: this.sdk,
+      resolvePublicKey: (d) => this.resolvePublicKey(d),
       emitRevocationTelemetry: (e) => this.emitRevocationTelemetry(e),
     });
     if (chainResult) return chainResult;

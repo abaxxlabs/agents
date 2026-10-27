@@ -20,7 +20,11 @@
  * names) before sending to untrusted clients.
  */
 
-import { AgentScopeError, ScopeViolationError } from '#errors/index.js';
+import {
+  AgentScopeError,
+  ParentCredentialRequestFailedError,
+  ScopeViolationError,
+} from '#errors/index.js';
 import { ScopeExceedsCeilingError } from '#auth/ceiling.js';
 
 export interface SafeValidationIssue {
@@ -71,6 +75,7 @@ const STATUS_BY_CODE: Record<string, number> = {
   UNKNOWN_ISSUER: 401,
   DID_RESOLUTION_FAILED: 401,
   AUTH_UNAVAILABLE: 503,
+  PARENT_CREDENTIAL_REQUEST_FAILED: 503,
   DB_CONNECTION_FAILED: 503,
   AUDIT_WRITE_FAILED: 503,
   CREDENTIAL_EXPIRED: 403,
@@ -103,6 +108,7 @@ const SAFE_PUBLIC_MESSAGE_CODES = new Set([
 const SAFE_MESSAGE_BY_CODE: Record<string, string> = {
   DID_RESOLUTION_FAILED: 'Identifier resolution failed.',
   AUTH_UNAVAILABLE: 'Authentication provider unavailable.',
+  PARENT_CREDENTIAL_REQUEST_FAILED: 'Parent instance could not issue the credential.',
   DB_CONNECTION_FAILED: 'Database dependency unavailable.',
   AUDIT_WRITE_FAILED: 'Audit write failed.',
 };
@@ -132,6 +138,20 @@ export function normalizeDomainError(err: unknown): NormalizedDomainError {
       code: safe.code,
       message: safe.message,
       httpStatus: STATUS_BY_CODE[safe.code],
+    };
+  }
+
+  // A deterministic parent 4xx will not succeed on retry, so it must not map to a retryable 5xx.
+  if (err instanceof ParentCredentialRequestFailedError) {
+    const status = err.httpStatus;
+    const refused =
+      status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 429;
+    return {
+      code: err.code,
+      message: refused
+        ? 'Parent instance refused the credential request.'
+        : SAFE_MESSAGE_BY_CODE[err.code],
+      httpStatus: refused ? 424 : STATUS_BY_CODE[err.code],
     };
   }
 

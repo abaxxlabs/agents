@@ -5,10 +5,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-import {
-  scanArtifactContentForViolations,
-  scanReleaseContentForViolations,
-} from './audit-artifact-content.mjs';
+import { scanArtifactContentForViolations } from './audit-artifact-content.mjs';
 import { corporateEmployeeNames, normalizePrivateUrlPrefixes } from './audit-sensitive-values.mjs';
 import { evaluatePublicRepoPath, loadPublicRepoPolicy } from './assert-package-artifacts.mjs';
 
@@ -66,8 +63,8 @@ export function run(rootDir = process.cwd(), options = {}) {
   return 1;
 }
 
-// Semantic-release runs this after changelog generation and before package, commit, tag, or publication.
-export function prepare(pluginConfig, context) {
+/** Resolves the existing publication policy, sensitive names, and private URLs for a release. */
+export function releaseContentOptions(pluginConfig, context) {
   const rootDir = context.cwd ?? process.cwd();
   const policy = pluginConfig.policyPath
     ? loadPublicRepoPolicy(path.resolve(rootDir, pluginConfig.policyPath))
@@ -76,23 +73,12 @@ export function prepare(pluginConfig, context) {
     ...(pluginConfig.privateUrlPrefixes ?? []),
     context.options?.repositoryUrl,
   ]);
-  let contents;
-  try {
-    contents = readFileSync(path.resolve(rootDir, 'CHANGELOG.md'), 'utf8');
-  } catch {
-    throw new Error('Release changelog audit failed: could not read CHANGELOG.md');
-  }
-  const violations = scanReleaseContentForViolations(contents, 'CHANGELOG.md', {
+  return {
     blockedContentTerms: policy?.blockedTerms,
     employeeNames: corporateEmployeeNames(rootDir, pluginConfig.corporateEmailSuffix),
     privateUrlPrefixes: blockedUrls,
     ticketPrefixes: policy?.ticketPrefixes,
-  });
-  if (violations.length > 0) {
-    printViolations(violations);
-    throw new Error('Release changelog audit failed');
-  }
-  console.log('Release changelog audit passed.');
+  };
 }
 
 const isMain = process.argv[1]

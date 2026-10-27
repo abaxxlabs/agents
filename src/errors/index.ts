@@ -44,6 +44,7 @@ export {
 export {
   ParentCredentialRequestFailedError,
   TtlExceededError,
+  DelegationExpiryExceedsParentError,
   PrecisionLossError,
   CapabilityRequiresPaidTierError,
 } from './business.js';

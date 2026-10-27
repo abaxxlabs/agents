@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
-import { ScopeViolationError, TtlExceededError } from '#errors/index.js';
+import {
+  ParentCredentialRequestFailedError,
+  ScopeViolationError,
+  TtlExceededError,
+} from '#errors/index.js';
 import {
   FixedWindowRateLimiter,
   JWT_MAX_CHARS,
@@ -311,6 +315,84 @@ describe('transport boundary error normalization', () => {
     expect(JSON.stringify(http)).not.toContain('ssn');
     expect(JSON.stringify(mcp)).not.toContain('patients.name');
   });
+
+  it.each([undefined, 408, 429, 500, 502, 503])(
+    'classifies a parent that answered %s as unavailable and retryable',
+    (upstreamStatus) => {
+      const err = new ParentCredentialRequestFailedError(
+        'https://parent.example.com',
+        upstreamStatus,
+      );
+
+      const normalized = normalizeDomainError(err);
+
+      expect(normalized.code).toBe('PARENT_CREDENTIAL_REQUEST_FAILED');
+      expect(normalized.httpStatus).toBe(503);
+      expect(normalized.message).toBe('Parent instance could not issue the credential.');
+    },
+  );
+
+  it.each([400, 401, 403, 404, 422])(
+    'classifies a parent that answered %i as a non-retryable refusal',
+    (upstreamStatus) => {
+      const err = new ParentCredentialRequestFailedError(
+        'https://parent.example.com',
+        upstreamStatus,
+      );
+
+      const normalized = normalizeDomainError(err);
+
+      expect(normalized.code).toBe('PARENT_CREDENTIAL_REQUEST_FAILED');
+      expect(normalized.httpStatus).toBe(424);
+      expect(normalized.message).toBe('Parent instance refused the credential request.');
+    },
+  );
+
+  it('keeps a parent refusal apart from scope and rate-limit refusals', () => {
+    const parent = normalizeDomainError(
+      new ParentCredentialRequestFailedError('https://parent.example.com', 403),
+    );
+    const scope = normalizeDomainError(
+      new ScopeViolationError('did:key:agent', ['patients.ssn'], ['patients.name']),
+    );
+    const rateLimit = normalizeDomainError(
+      Object.assign(new Error('Too many requests'), { code: 'RATE_LIMITED' }),
+    );
+
+    expect(scope.httpStatus).toBe(403);
+    expect(rateLimit.httpStatus).toBe(429);
+    expect([scope.httpStatus, rateLimit.httpStatus]).not.toContain(parent.httpStatus);
+    expect([scope.code, rateLimit.code]).not.toContain(parent.code);
+  });
+
+  it.each([
+    [502, 'UPSTREAM-DETAIL'],
+    [403, 'Human is not authorized to create agents in this tenant.'],
+  ])(
+    'never discloses the parent address, its status %i, or its reason on either transport',
+    (upstreamStatus, reason) => {
+      const err = new ParentCredentialRequestFailedError(
+        'https://parent.example.com',
+        upstreamStatus,
+        reason,
+      );
+
+      const normalized = normalizeDomainError(err);
+      const http = toHttpErrorBody(normalized);
+      const mcp = toMcpErrorBody(normalized);
+
+      expect(http).toMatchObject({
+        error: 'PARENT_CREDENTIAL_REQUEST_FAILED',
+        code: 'PARENT_CREDENTIAL_REQUEST_FAILED',
+      });
+      expect(mcp).toMatchObject({ error: 'PARENT_CREDENTIAL_REQUEST_FAILED' });
+      for (const body of [JSON.stringify(http), JSON.stringify(mcp)]) {
+        expect(body).not.toContain('parent.example.com');
+        expect(body).not.toContain(String(upstreamStatus));
+        expect(body).not.toContain(reason);
+      }
+    },
+  );
 
   it('does not expose internal diagnostics from unknown errors', () => {
     const err = new Error(

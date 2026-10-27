@@ -14,55 +14,22 @@
 
 import { createHash } from 'node:crypto';
 import type { RevocationStore } from '#storage/types.js';
-import type { VerificationResult, IdSdkInstance } from '#types/index.js';
+import type { VerificationResult } from '#types/index.js';
 import { decodeJwt, verifyJwtSignature } from '#crypto/jwt.js';
 import { isDelegatedScopeCredentialType } from '#auth/credential-issuance.js';
+import { MAX_DELEGATION_CHAIN_DEPTH } from '#config.js';
 import {
   DEFAULT_MAX_DELEGATION_DEPTH,
   extractMaxDepth,
   extractDelegationChain,
 } from '#auth/delegation-policy.js';
-import { base58Decode } from '#crypto/base58.js';
+import { DidResolutionFailedError } from '#errors/index.js';
 import type { RevocationTelemetryEvent } from './vc-verifier.js';
 
-const MAX_CHAIN_DEPTH = 10;
+const MAX_CHAIN_DEPTH = MAX_DELEGATION_CHAIN_DEPTH;
 
 function hashCredentialId(jwt: string): string {
   return createHash('sha256').update(jwt).digest('hex').slice(0, 16);
-}
-
-export async function resolveRegisteredIssuerKey(
-  did: string,
-  knownKeys: Map<string, Uint8Array>,
-  sdk?: IdSdkInstance,
-): Promise<Uint8Array | null> {
-  const known = knownKeys.get(did);
-  if (known) return known;
-  if (!sdk) return null;
-  try {
-    const result = await sdk.did.resolve(did);
-    const doc = result.didDocument as
-      | {
-          verificationMethod?: Array<{
-            publicKeyJwk?: { x: string };
-            publicKeyMultibase?: string;
-          }>;
-        }
-      | undefined;
-    const vm = doc?.verificationMethod?.[0];
-    if (!vm) return null;
-    if (vm.publicKeyJwk) {
-      return new Uint8Array(Buffer.from(vm.publicKeyJwk.x, 'base64url'));
-    }
-    if (vm.publicKeyMultibase) {
-      const encoded = vm.publicKeyMultibase.slice(1);
-      const pk = base58Decode(encoded);
-      return pk[0] === 0xed && pk[1] === 0x01 ? pk.slice(2) : pk;
-    }
-    return null;
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -144,12 +111,16 @@ export function checkDelegationDepthCeiling(payload: {
   return undefined;
 }
 
+/**
+ * Verify every ancestor in a delegation chain: issuer key through `deps.resolvePublicKey`
+ * (a `DidResolutionFailedError` becomes `UNKNOWN_ISSUER`, other errors propagate), signature,
+ * no re-delegation, and local revocation. Returns undefined when the chain is absent or clean.
+ */
 export async function checkDelegationChainRevocation(
   rootChain: unknown,
   deps: {
     revocationStore: RevocationStore;
-    knownKeys: Map<string, Uint8Array>;
-    sdk?: IdSdkInstance;
+    resolvePublicKey(did: string): Promise<Uint8Array>;
     emitRevocationTelemetry(event: RevocationTelemetryEvent): void;
   },
 ): Promise<VerificationResult | undefined> {
@@ -195,24 +166,21 @@ export async function checkDelegationChainRevocation(
         };
       }
 
-      if (!ancestorPayload.iss) {
+      if (typeof ancestorPayload.iss !== 'string' || ancestorPayload.iss === '') {
         return {
           valid: false,
           status: 'MALFORMED',
           error: 'Delegation chain ancestor missing issuer (iss) claim',
         };
       }
-      const ancestorKey = await resolveRegisteredIssuerKey(
-        ancestorPayload.iss,
-        deps.knownKeys,
-        deps.sdk,
-      );
-      if (!ancestorKey) {
-        return {
-          valid: false,
-          status: 'UNKNOWN_ISSUER',
-          error: 'Delegation chain ancestor issuer not registered',
-        };
+      let ancestorKey: Uint8Array;
+      try {
+        ancestorKey = await deps.resolvePublicKey(ancestorPayload.iss);
+      } catch (err) {
+        if (err instanceof DidResolutionFailedError) {
+          return { valid: false, status: 'UNKNOWN_ISSUER', error: err.message };
+        }
+        throw err;
       }
       if (!(await verifyJwtSignature(ancestorJwt, ancestorKey))) {
         return {

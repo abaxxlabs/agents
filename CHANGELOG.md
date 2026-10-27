@@ -1,28 +1,122 @@
 # Changelog
 
+## [0.50.2] - 2026-10-27
+
+### Fixed
+
+- Add exception to codeowners employee names
+- demo: internal changes.
+- demo: internal changes.
+
+## [0.50.1] - 2026-10-27
+
+### Fixed
+
+- repository: changes; .github, packages, private, scripts: internal changes.
+
+## [0.50.0] - 2026-10-27
+
+### Added
+
+- .github, packages: internal changes.
+
+## [0.49.0] - 2026-10-26
+
+### Added
+
+- .github, docs-site, scripts, test: internal changes.
+
+## [0.48.2] - 2026-10-26
+
+### Fixed
+
+- src, test: changes; demo, scripts, test: internal changes.
+
+## [0.48.1] - 2026-10-26
+
+### Fixed
+
+- src, test: changes; docs, scripts, test: internal changes.
+
+## [0.48.0] - 2026-10-23
+
+### Added
+
+- .github, docs-site: internal changes.
+
+## [0.47.0] - 2026-10-22
+
+### Added
+
+- src, test: changes; demo, repository: internal changes.
+
+## [0.46.1] - 2026-10-22
+
+### Fixed
+
+- reject credentials without an expiry
+
+## [0.46.0] - 2026-10-20
+
+### Added
+
+- demo: internal changes.
+
+## [0.45.0] - 2026-10-20
+
+### Added
+
+- demo: internal changes.
+
+## [0.44.0] - 2026-10-20
+
+### Added
+
+- demo: internal changes.
+
+## [0.43.0] - 2026-10-19
+
+### Added
+
+- .github, demo, packages: internal changes.
+- derive did:dht keys offline when no resolver is configured
+- docs-site: internal changes.
+- export AuthorizationUrlResult from the package root
+- expose buildAuthorizationUrl on AgentScope
+- src, test: changes; test: internal changes.
+
+
+### Fixed
+
+- .github, packages: internal changes.
+- .github: internal changes.
+- .github: internal changes.
+- add missing declarations on AgentScopeInstance
+- export DelegationExpiryExceedsParentError from the package root
+- repository, scripts: changes; .github, repository, scripts: internal changes.
+- repository: internal changes.
+- scripts: changes; .github, packages, scripts: internal changes.
+- scripts: changes; .github, packages: internal changes.
+- surface a malformed did:dht identifier as a resolution failure
+
 ## [0.42.1] - 2026-10-13
 
 ### Fixed
 
-- exclude docs-site llms test from public mirror
+- Excluded a site-only test from the distributed source checkout.
 
 ## [0.42.0] - 2026-10-13
 
 ### Added
 
-- Verify protected Playground flow and visitor isolation
-
-
-### Fixed
-
-- prevent stale HTTP sockets in compose smoke
+- Added assertions that out-of-scope queries are rejected before database execution.
+- .github: internal changes.
 
 ## [0.41.0] - 2026-10-09
 
 ### Added
 
-- Fix E2E evidence checks and lockfile version
-- Verify the playground golden path in CI
+- demo: internal changes.
 
 ## [0.40.0] - 2026-10-08
 
@@ -34,23 +128,19 @@
 
 ### Fixed
 
-Resolve Agents++ public docsite review findingsResolve Agents++ public docsite review findings
+- Clarified MCP presentation creation, identity SDK integration, and key-migration guidance.
 
 ## [0.39.0] - 2026-10-06
 
 ### Added
 
-- Prepare the Playground HTTP boundary for public exposure
-
-### Fixed
-
-- harden readiness and cleanup diagnostics
+- Removed database connection details and underlying storage errors from SDK error responses.
 
 ## [0.38.2] - 2026-10-02
 
 ### Fixed
 
-- Import maintainer-reviewed public pull requests into private review
+- scripts: internal changes.
 
 ## [0.38.1] - 2026-09-29
 
@@ -62,11 +152,7 @@ Resolve Agents++ public docsite review findingsResolve Agents++ public docsite r
 
 ### Added
 
-- isolate Playground visitor sessions
-
-### Fixed
-
-- persist Playground admin database URL
+- demo: internal changes.
 
 ## [0.37.0] - 2026-09-28
 
@@ -75,8 +161,8 @@ Resolve Agents++ public docsite review findingsResolve Agents++ public docsite r
 - Credit imported contributors in public Sync commits
 - enforce public mirror documentation boundary
 - enforce the public mirror boundary
-- Import maintainer-reviewed public pull requests into private review
 - make changelog canonical for public release
+- scripts: internal changes.
 
 ### Fixed
 
@@ -102,92 +188,73 @@ Resolve Agents++ public docsite review findingsResolve Agents++ public docsite r
 
 ### Changed
 
-- Redesigned the Playground UI with in-flow access comparison and query inspection.
+- demo: internal changes.
 
 ## [0.34.3] - 2026-09-21
 
 ### Fixed
 
-- Added evidence to requests.
+- packages: internal changes.
 
 ## [0.34.2] - 2026-09-14
 
 ### Fixed
 
-- Hardened /present security boundary.
+- packages: internal changes.
 
 ## [0.34.1] - 2026-09-14
 
 ### Fixed
 
-- Improved Playground evidence and Docker build.
+- demo: internal changes.
 
 ## [0.34.0] - 2026-09-10
 
 ### Added
 
-- Reframed the showcase for commodity futures.
+- demo: internal changes.
 
 ## [0.33.1] - 2026-09-09
 
 ### Fixed
 
-- Updated the Dockerfile.
+- packages: internal changes.
 
 ## [0.33.0] - 2026-09-09
 
-### Added
+### Changed
 
-- Confined direct SQL access to the sandbox.
-
-### Fixed
-
-- Bounded direct SQL requests to one total deadline.
+- demo: internal changes.
 
 ## [0.32.0] - 2026-09-09
 
 ### Added
 
-- Enforced local-only request boundaries for the Playground API.
-- Hardened the Playground local API against CSRF and DNS rebinding.
-
-### Fixed
-
-- Restricted Playground loopback hostnames.
+- demo: internal changes.
 
 ## [0.31.0] - 2026-09-07
 
 ### Added
 
-- Added support for running the playground in Compose with separate setup and runtime database privileges.
-
-### Changed
-
-- Removed the playground Compose configuration from public CI.
-
-### Fixed
-
-- Probed database readiness with a real query.
+- demo: internal changes.
 
 ## [0.30.1] - 2026-09-03
 
 ### Fixed
 
-- Improved container image release security.
+- .github: internal changes.
 
 ## [0.30.0] - 2026-09-02
 
 ### Added
 
-- Added support for running the playground from the canonical repository source.
+- demo: internal changes.
 
 ## [0.29.0] - 2026-08-28
 
 ### Added
 
-- Added one clear walkthrough of cross-organization trust.
-- Added a credential-revocation walkthrough that preserves agent operation.
-- Added startup examples contrasting valid and invalid encryption keys.
+- demo: internal changes.
 
 ### Changed
 
@@ -197,7 +264,7 @@ Resolve Agents++ public docsite review findingsResolve Agents++ public docsite r
 
 ### Fixed
 
-- Removed the backdrop filter to improve performance.
+- demo: internal changes.
 
 ## [0.28.0] - 2026-08-27
 
@@ -219,13 +286,13 @@ Resolve Agents++ public docsite review findingsResolve Agents++ public docsite r
 
 ### Changed
 
-- Reorganized documentation sources and synchronized the documentation site content.
+- Reorganized repository documentation into concept, guide, interface, security, and migration sections.
 
 ## [0.27.5] - 2026-08-26
 
 ### Added
 
-- Added the policy gateway service, pilot deployment configuration, and gateway coverage.
+- packages: internal changes.
 
 ## [0.27.4] - 2026-08-26
 
@@ -249,62 +316,49 @@ Resolve Agents++ public docsite review findingsResolve Agents++ public docsite r
 
 ### Added
 
-- Added configurable authentication rate limiting to generated applications.
-- Added CodeQL-sensitive naming guidance for authentication-related helpers.
+- packages: internal changes.
 
 ## [0.27.0] - 2026-08-25
 
 ### Added
 
-- Added a branded documentation footer with product and company links.
+- docs-site: internal changes.
 
 ## [0.26.1] - 2026-08-25
 
 ### Fixed
 
-- Corrected GitHub Pages base-path handling and workflow permissions for pull requests.
+- docs-site: internal changes.
 
 ## [0.26.0] - 2026-08-25
 
 ### Added
 
-- Added an administrative endpoint for global audit-chain verification.
-
-### Fixed
-
-- Rate-limited global audit-chain verification and removed duplicate rate-limit constants.
+- packages: internal changes.
 
 ## [0.25.0] - 2026-08-25
 
 ### Added
 
-- Added documentation artifact preparation and audit scripts with workflow coverage.
+- docs-site: internal changes.
 
 ## [0.24.0] - 2026-08-25
 
 ### Added
 
-- Added a server endpoint for creating Verifiable Presentations.
-
-### Fixed
-
-- Added rate limits to presentation and query endpoints.
+- packages: internal changes.
 
 ## [0.23.2] - 2026-08-25
 
 ### Added
 
-- Added the gbrain compatibility reference deployment, native HTTP adapter, presenter, and integration coverage.
-
-### Security
-
-- Prevented browser-selected routes from changing presenter gateway targets.
+- packages: internal changes.
 
 ## [0.23.1] - 2026-08-25
 
 ### Security
 
-- Compared administrative API keys in constant time.
+- packages: internal changes.
 
 ## [0.23.0] - 2026-08-24
 
@@ -332,7 +386,7 @@ Resolve Agents++ public docsite review findingsResolve Agents++ public docsite r
 
 ### Added
 
-- Added installation, overview, quick-start, interface, and security documentation to the documentation site.
+- Added installation, overview, quick-start, interface, and security reference material to the repository documentation.
 
 ## [0.21.3] - 2026-08-24
 
@@ -354,13 +408,10 @@ Resolve Agents++ public docsite review findingsResolve Agents++ public docsite r
 
 ## [0.21.0] - 2026-08-21
 
-### Added
-
-- Restructured the documentation site and added a landing page.
-
 ### Fixed
 
 - Updated identity tool registration to use `registerTool`.
+- docs-site: internal changes.
 
 ## [0.20.4] - 2026-08-21
 
@@ -368,7 +419,7 @@ Resolve Agents++ public docsite review findingsResolve Agents++ public docsite r
 
 - Persisted v3 audit columns in the SQLite store.
 - Pinned the Bun version in the JSDoc workflow.
-- Added `registerTool` support to the rate-limit test harness.
+- test: internal changes.
 
 ## [0.20.3] - 2026-08-20
 
@@ -381,7 +432,7 @@ Resolve Agents++ public docsite review findingsResolve Agents++ public docsite r
 
 ### Fixed
 
-- Gave session and revocation stores separate SQLite paths.
+- packages: internal changes.
 
 ## [0.20.1] - 2026-08-19
 
@@ -393,47 +444,37 @@ Resolve Agents++ public docsite review findingsResolve Agents++ public docsite r
 
 ### Added
 
-- Added documentation synchronization and public-boundary validation scripts with manifest consistency checks.
+- docs-site: internal changes.
 
 ## [0.19.1] - 2026-08-19
 
 ### Fixed
 
-- Keyed REST and MCP rate limits by authenticated human identity so switching agents or transports cannot bypass a human's limit.
+- Keyed MCP rate limits by authenticated human identity so switching agents cannot bypass a human's limit.
 
 ## [0.19.0] - 2026-08-13
 
 ### Changed
 
-- Simplified the final demo security scenario so both blocked attacks are presented clearly.
+- demo: internal changes.
 
 ## [0.18.0] - 2026-08-13
 
 ### Added
 
-- Added an audit registry and tamper-detection scenario to the current demo.
-
-### Fixed
-
-- Refined audit-chain navigation in the current demo.
+- demo: internal changes.
 
 ## [0.17.0] - 2026-08-13
 
 ### Changed
 
-- Refactored the demo query pipeline scenario.
+- demo: internal changes.
 
 ## [0.16.0] - 2026-08-13
 
 ### Added
 
-- Added the current demo identity ceremony.
-- Added a side-by-side scope comparison scenario.
-- Refined identity-ceremony presentation and behavior.
-
-### Fixed
-
-- Guarded the demo credential map against invalid state.
+- demo: internal changes.
 
 ## [0.15.5] - 2026-08-13
 
@@ -470,7 +511,7 @@ Resolve Agents++ public docsite review findingsResolve Agents++ public docsite r
 
 ### Added
 
-- Added the opening problem screen for the current demo.
+- demo: internal changes.
 
 ## [0.14.14] - 2026-08-07
 
@@ -480,12 +521,12 @@ Resolve Agents++ public docsite review findingsResolve Agents++ public docsite r
 
 ### Changed
 
-- Corrected demo documentation so optional natural-language-to-SQL integration is not described as a library capability.
 - Documented query execution as validation followed by execution, with out-of-scope references rejected rather than returned as ciphertext.
 - Documented wildcard projection rejection and projection checks across `SELECT`, `WHERE`, `ORDER BY`, `HAVING`, and `JOIN ON` references.
 - Distinguished mutation parse errors from scope-violation errors.
 - Separated issuance-time delegation narrowing from query-time signature, revocation, depth, and binding verification.
 - Documented bearer-token validation for every MCP HTTP request and development-only unauthenticated startup behavior.
+- demo: internal changes.
 
 ## [0.14.13] - 2026-08-05
 
@@ -504,15 +545,14 @@ Resolve Agents++ public docsite review findingsResolve Agents++ public docsite r
 
 ### Fixed
 
-- Added missing rate limiting.
-- Made rehydrated sessions collapse the scope ceiling to deny-all when authority cannot be reconstructed.
-- Applied follow-up corrections to the session rehydration path.
+- Extended `SessionEnvelope` with optional OIDC identity and scope-claim metadata.
+- packages: internal changes.
 
 ## [0.14.10] - 2026-08-04
 
 ### Removed
 
-- Removed retired legacy demonstration scenarios.
+- demo: internal changes.
 
 ## [0.14.9] - 2026-07-29
 
@@ -543,7 +583,7 @@ Resolve Agents++ public docsite review findingsResolve Agents++ public docsite r
 
 ### Fixed
 
-- Synchronized a development fixture lockfile while preserving linked package resolution.
+- demo: internal changes.
 
 ## [0.14.4] - 2026-07-06
 
@@ -561,25 +601,25 @@ Resolve Agents++ public docsite review findingsResolve Agents++ public docsite r
 
 ### Fixed
 
-- Removed stale fail-open smoke-test configuration.
+- private: internal changes.
 
 ## [0.14.1] - 2026-07-06
 
 ### Fixed
 
-- Repaired demo story imports after the identity module rebuild.
+- demo: internal changes.
 
 ## [0.14.0] - 2026-06-29
 
 ### Added
 
-- Added an assessment and measurement script for lazy MCP tool-schema loading.
+- scripts: internal changes.
 
 ## [0.13.3] - 2026-06-26
 
 ### Fixed
 
-- Installed server dependencies separately for type checking in pre-commit and release gates.
+- packages: internal changes.
 
 ## [0.13.2] - 2026-06-12
 
@@ -598,7 +638,7 @@ Resolve Agents++ public docsite review findingsResolve Agents++ public docsite r
 
 ### Added
 
-- Added a live OpenAI agent mode to a scope-escalation and prompt-injection scenario.
+- demo: internal changes.
 
 ## [0.12.7] - 2026-06-12
 
@@ -626,37 +666,23 @@ Resolve Agents++ public docsite review findingsResolve Agents++ public docsite r
 
 ### Changed
 
-- Made credential-route tests safe under concurrent and sharded execution.
 - Returned the Node.js engine floor to `>=20.3.0` after restoring dual-module dependencies.
 - Documented `IssueCredentialOptions.maxDepth` defaults, valid range, and thrown validation error.
+- test: internal changes.
 
 ## [0.12.4.0] - 2026-05-26
 
 ### Added
 
-- Added a demo scenario that proves startup fails loudly when encrypted data is opened with the wrong bring-your-own key, including structured failure counts.
-
-### Changed
-
-- Reworded revocation and wrong-key demo narratives to avoid version-dependent language.
-- Made the revocation scenario continue to the wrong-key scenario and moved the completion summary to the true final scenario.
-
-### Fixed
-
-- Honored `?noadvance=true` when the final demo scenario would otherwise loop to the beginning.
+- demo: internal changes.
 
 ## [0.12.3.0] - 2026-05-22
 
 ### Added
 
-- Added a credential-revocation demo showing accepted, revoked, and still-valid credentials for one agent without decommissioning its DID.
-- Added optional `maxDepth` support to REST `POST /credentials` and the MCP `issue-credential` tool, with a default of 2 and HTTP 400 validation for non-positive or non-integer values.
-- Updated OpenAPI and MCP REST-bridge descriptors for `maxDepth`.
-
-### Changed
-
-- Reworded the cross-organization demo completion state because it was no longer the final scenario.
-- Made the demo status bar derive its total scenario count dynamically.
+- Added optional `maxDepth` support to the MCP `issue-credential` tool, defaulting to 2 and accepting integers from 1 through 10.
+- Updated the source-only MCP REST-bridge descriptor for `maxDepth`.
+- demo: internal changes.
 
 ## [0.12.2.0] - 2026-05-21
 
@@ -687,7 +713,7 @@ Resolve Agents++ public docsite review findingsResolve Agents++ public docsite r
 - Made `connectIdSdkMcp()` work after a single package installation by declaring its transitive runtime dependencies at the package root.
 - Reported optional native dependency failures by dependency name instead of surfacing opaque module-loading errors.
 - Hardened `--master-key-stdin` with interactive-TTY rejection and a 1 KiB input cap.
-- Preserved inherited `AGENTS_MASTER_KEY` when `agents serve` builds a child-process environment.
+- src: internal changes.
 
 ### Changed
 
@@ -728,7 +754,7 @@ Resolve Agents++ public docsite review findingsResolve Agents++ public docsite r
 
 ### Fixed
 
-- Mapped credential TTL violations to HTTP 400 through the canonical `TtlExceededError` implementation.
+- Unified credential TTL validation to throw `TtlExceededError`.
 - Bounded duration parsing and related regular expressions to resolve polynomial regular-expression denial-of-service risks.
 - Replaced connection-string masking regex logic with index-based parsing.
 
@@ -762,13 +788,13 @@ Release label: `0.11.3.0`.
 - Added an npm cache ownership guard before package verification and publication checks.
 - Added public artifact scanning for restricted paths, oversized text, and high-confidence secrets.
 - Separated deterministic default tests from explicitly enabled platform and network integration tests.
-- Added a transport-neutral REST and MCP architecture decision.
 - Added public API export snapshots for the six supported package subpaths.
 - Added MCP import smoke tests that do not require SQL peer dependencies.
+- docs: internal changes.
 
 ### Changed
 
-- Standardized active package metadata, documentation, demos, and consumers on `@abaxxlabs/agents`.
+- Standardized public package metadata and documentation on `@abaxxlabs/agents`.
 - Exactly pinned runtime, optional, and peer dependency versions for the release.
 
 ### Fixed
@@ -857,7 +883,7 @@ Release label: `0.11.3.0`.
 
 ### Changed
 
-- Moved development-mode environment bridging to server, MCP, and scaffold boundaries while retaining production guards.
+- Moved development-mode environment bridging to the MCP boundary while retaining production guards.
 - Unified consumer-domain classification; additional public email domains are now treated as consumer identities rather than organizations, so previously authenticated identities from those domains can fail organization assertions after upgrade.
 
 ### Breaking
@@ -877,14 +903,14 @@ Release label: `0.11.3.0`.
 - Added `AgentScope.pruneRevocations()`, `VcVerifier.isRevoked()`, and `composeStorageBackend()`.
 - Added `@abaxxlabs/agents/bootstrap` helpers for strict master-key parsing and environment bootstrap.
 - Added `verifyAllColumnKeys()` for non-mutating master-key migration diagnostics.
-- Added configurable memory, PostgreSQL, and SQLite revocation backend selection in the server, with PostgreSQL selected automatically when configured.
 - Added compile-time checking of TypeScript examples embedded in public JSDoc.
 - Added a read-only `agents migrate-check` scanner for legacy master-key integration patterns.
+- packages: internal changes.
 
 ### Changed
 
 - Distinguished missing schemas from wrong-key decryption in column-key and agent restoration.
-- Passed master keys explicitly through server, CLI, demo, and scaffold boundaries without environment mutation.
+- Passed master keys explicitly through CLI initialization and demo setup without environment mutation.
 - Retained `StorageBackend.sessions` and the verifier getter while providing sanctioned revocation methods.
 
 ### Security
@@ -929,23 +955,13 @@ Release label: `0.11.3.0`.
 - Added `ISessionStore` with memory, PostgreSQL, and SQLite adapters.
 - Added size-bounded `SessionEnvelope` records protected by HMAC-SHA256 over canonical JSON with an HKDF-derived key.
 - Added migration 008 for expiring sessions and human-DID deletion support.
-- Added session pruning, deletion by human DID, and an authenticated administrative revocation endpoint.
-- Added structured session lifecycle audit events that hash rather than log raw tokens.
-- Added configurable store selection, dual-write upgrade mode, allowed OIDC issuer configuration, and administrative API authentication.
+- Added session-store pruning and deletion by human DID.
 - Added bounded PostgreSQL read-through caching and per-token singleflight request coalescing.
+- packages: internal changes.
 
 ### Changed
 
-- Replaced the server's authoritative process-local session map with injected session storage plus a non-authoritative live-object cache.
-- Made session middleware asynchronous and fail closed with distinct integrity, provider, and store-availability responses.
 - Enabled SQLite WAL mode with `synchronous = NORMAL` across adapters.
-- Parent-provider credentials were not persisted or re-verified during cross-process reconstruction; flows requiring a live parent access token required reauthentication.
-- Single-instance deployments using the default in-memory session store retained their existing behavior.
-
-### Security
-
-- Persisted signed session envelopes so authenticated state can be re-established across processes without storing private keys or OAuth tokens.
-- Re-derived scope ceilings and re-verified available parent authority when reconstructing live state.
 
 ## [0.9.6.0] - 2026-04-23
 
@@ -953,7 +969,7 @@ Release label: `0.11.3.0`.
 
 - Added `IRevocationStore` with memory, PostgreSQL, and SQLite adapters.
 - Added migration 007 for expiring revoked credentials.
-- Added fail-closed asynchronous `VcVerifier.revokeAsync()` and server-side expired-revocation pruning.
+- Added fail-closed asynchronous `VcVerifier.revokeAsync()`.
 - Added row-level locking for revocation reads.
 
 ### Changed
@@ -964,7 +980,7 @@ Release label: `0.11.3.0`.
 ### Security
 
 - Added durable credential revocation with a default 30-second cross-instance visibility bound.
-- Required credential revocation requests to match the authenticated issuer DID.
+- packages: internal changes.
 
 ### Breaking
 
@@ -972,10 +988,6 @@ Release label: `0.11.3.0`.
 - Changed its return type from `Promise<void>` to `Promise<{ sdkNotificationFailed?: Error }>`.
 
 ## [0.9.5.0] - 2026-04-23
-
-### Added
-
-- Added authenticated `GET /credentials` listing with composable `agentDid` and `issuedAfter` filters derived from audit records.
 
 ### Fixed
 
@@ -998,17 +1010,13 @@ Release label: `0.11.3.0`.
 - Added timezone-authoritative time-of-day issuance rules for scope ceilings.
 - Added audit hash-chain verification with structured success and failure positions.
 
-### Changed
-
-- Updated server and demo branding to Agents++ and renamed the server package to `@abaxxlabs/agents-server`.
-
 ### Fixed
 
-- Stabilized scoped-query, audit-chain, decryption, identity, database-isolation, and reset behavior in integration scenarios.
+- Validated scoped-query table identifiers, checked agent persistence results, and made mock identities stable across authentication calls.
 - Improved wrong-key diagnostics and skipped unreadable legacy column keys during startup.
 - Made storage initialization surface migration SQL failures.
-- Returned `jti` and `exp` from credential creation responses.
-- Hardened demo startup preflight, dependency installation, browser launch, and sandbox behavior.
+- demo: internal changes.
+- packages: internal changes.
 
 ## [0.9.2.0] - 2026-04-19
 
@@ -1018,7 +1026,7 @@ Release label: `0.11.3.0`.
 - Added ephemeral parent trust anchors that cannot overwrite persistent anchors.
 - Enforced parent capability ceilings before agent credentials are accepted.
 - Added V3 audit records with optional `orgId` and indexed organization filtering in PostgreSQL and SQLite.
-- Added an end-to-end parent-credential demo covering trust, audit, scope ceilings, and fallback.
+- demo: internal changes.
 
 ### Fixed
 
@@ -1030,12 +1038,7 @@ Release label: `0.11.3.0`.
 
 ### Changed
 
-- Reworked demo data from healthcare to a capital-markets order-book scenario with two roles and three agent functions.
-- Expanded the order-book fixture from three to six rows and from three to five encrypted columns.
-
-### Fixed
-
-- Removed a no-op ternary from demo helpers.
+- demo: internal changes.
 
 ## [0.9.1.0] - 2026-04-18
 
@@ -1043,7 +1046,6 @@ Release label: `0.11.3.0`.
 
 - Made projection scope mode the default so every referenced column, encrypted or not, must be credential-authorized.
 - Added capability-gating errors with actionable capability and namespace details.
-- Added six runnable examples for credential flow, column scope, audit integrity, revocation, read-only SQL, and free-tier operation.
 
 ### Fixed
 
@@ -1069,41 +1071,26 @@ Release label: `0.11.3.0`.
 
 ### Added
 
-- Added REST endpoints for agent listing, audit signature verification, and audit-chain verification.
 - Added the MCP `delegate-credential` tool with source-subset and session-ceiling enforcement.
 - Added signed Verifiable Presentations with nonce replay protection, optional audience binding, expiry, and automatic wrapping of raw credentials.
 - Added `WRONG_AUDIENCE` verification results and fail-closed audience enforcement when the audience claim is missing.
-- Added a one-command local integration environment with a database, OIDC provider, login flow, sandbox, and REST server.
-- Added a browser OIDC login flow using PKCE and verified bearer-token session creation.
-- Added capital-markets demo identities, order-book scopes, network policy, and operator quick-reference material.
-- Added identity endpoints for server identity, signing, trust discovery, and time-bound presentation challenges, plus OpenAPI coverage.
 - Added bounded replay caching and UUID7 presentation identifiers with timestamp extraction.
 - Added encrypted agent private-key persistence and agent restoration across restarts through migration 003.
-- Added `MCP_ENABLED` as an MCP startup toggle independent of mock identity.
+- demo: internal changes.
+- packages: internal changes.
 
 ### Changed
 
-- Made REST bearer verification available in development and production and removed unverified identity claims from request bodies.
-- Updated integration scenarios to use capital-markets data with expanded scope visualization and fixture serving.
-- Bound MCP HTTP transport to all interfaces for sandbox connectivity.
 - Made delegated credential creation asynchronous and verified the source credential and full owner chain.
 
 ### Security
 
-- Isolated MCP SSE transports by SDK session ID and bound each connection to its authenticated identity and scope ceiling.
-- Required authentication for signing, challenge, and audit endpoints.
 - Replaced substring provider dispatch with exact issuer-hostname matching.
-- Added per-session challenge and endpoint rate limiting, bounded stale-bucket cleanup, and a 100 KiB JSON body limit.
-- Added explicit CORS origin configuration and four-hour session expiry with periodic cleanup.
-- Bound MCP message requests to the same token used to establish their SSE transport.
-- Scoped audit endpoints to the authenticated tenant.
-- Escaped OIDC login output, used unpredictable temporary paths, and retained background process logs.
 
 ### Fixed
 
 - Replaced empty-string presentation nonces with generated nonces.
 - Added `WRONG_AUDIENCE` to the verification result type.
-- Logged OIDC user-info failures instead of silently swallowing them.
 
 ## [0.7.0] - 2026-04-17
 
@@ -1112,18 +1099,13 @@ Release label: `0.11.3.0`.
 - Added `QueryRejectedError`, `ScopeViolationError`, and `CredentialReplayedError` with safe external responses.
 - Rejected out-of-scope encrypted column references in projections, predicates, ordering, grouping, and joins before execution.
 - Added V2 audit rejection records, backward-compatible hashing, and serialized chain updates after successful persistence.
-- Added production OIDC bearer verification through JWKS with issuer-origin validation and caching.
-- Added a local Keycloak configuration with scope claim mappings.
+- demo: internal changes.
+- packages: internal changes.
 - Allowed positive integer-second `expiresIn` values in addition to duration strings.
 
 ### Fixed
 
 - Made database failures during agent-owner lookup reject queries instead of bypassing owner verification.
-- Corrected REST server import ordering and HTTP error status mapping.
-
-### Changed
-
-- Delegation ceiling enforcement remained in the REST layer rather than the SDK delegation method.
 
 ## [0.6.0] - 2026-04-17
 
@@ -1132,16 +1114,8 @@ Release label: `0.11.3.0`.
 - Added session-level `ScopeCeiling` authorization for credential issuance.
 - Added fail-closed scope ceiling derivation from direct OIDC scope claims and caller-defined group mappings.
 - Added detailed subset checks and a mock-only unrestricted ceiling marker.
-- Added REST scope-ceiling exposure and HTTP 403 responses naming excess scope.
-- Added runnable adversarial scope, delegation, credential, policy, REST, and deployment-migration demo material.
-- Added signed cross-agent REST interaction transcripts.
-
-### Changed
-
-- Made the REST server default to production so mock authentication is disabled unless development is explicit.
-- Improved natural-language demo fallback messaging and expanded canned query mappings.
-- Moved local examples and quickstart defaults away from port 3000.
-- Delegation ceiling enforcement remained at the REST boundary.
+- demo: internal changes.
+- packages: internal changes.
 
 ## [0.5.0] - 2026-04-14
 
@@ -1167,7 +1141,6 @@ Release label: `0.11.3.0`.
 
 ### Added
 
-- Added a language-neutral capability specification for action matching, delegation, and role expansion.
 - Added `CapabilityEngine` checks, subset evaluation, and role resolution with bounded input normalization.
 - Added capability denial behavior that avoids revealing granted capabilities and skips malformed stored entries.
 - Added `LocalTrustAnchorStore` with local, environment-bootstrap, and API anchor sources, persistence, and discovery events.
@@ -1179,6 +1152,7 @@ Release label: `0.11.3.0`.
 - Added conditional MCP `whoami`, `sign`, `discover`, and `challenge` tools for configured server identities.
 - Added domain-separated Ed25519 signing with a 64 KiB payload cap.
 - Added bounded, atomic HMAC challenge issuance and consumption with UUID7 identifiers.
+- docs: internal changes.
 
 ## [0.3.0] - 2026-04-11
 

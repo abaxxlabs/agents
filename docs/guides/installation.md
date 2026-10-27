@@ -25,6 +25,8 @@ The `pg` package provides the PostgreSQL pool. `libpg-query` parses PostgreSQL s
 
 These versions match the exact peer dependencies declared by the published Agents++ package. Update them together when a newer compatible Agents++ release is published.
 
+The `latest` npm dist-tag tracks the current recommended release; releases merged to `main` are promoted to `latest` automatically. Versions published without promotion are available under the `next` dist-tag; install one with `npm install @abaxxlabs/agents@next` or pin an exact version.
+
 For identity-only use cases, install the Agents++ package without the PostgreSQL peers and import from `@abaxxlabs/agents`.
 
 ## Configure the master key
