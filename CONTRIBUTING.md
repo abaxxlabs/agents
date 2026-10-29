@@ -59,6 +59,15 @@ Commit subjects must follow [Conventional Commits](https://www.conventionalcommi
 4. Keep PRs focused -- one logical change per PR
 5. If the change touches security-sensitive code (key handling, credential verification, scope enforcement, encryption), call that out explicitly in the PR description
 
+## Releases
+
+Releases are published to npm from this repository by the `Publish` workflow (`.github/workflows/publish.yml`):
+
+- Each merge to `main` that carries a new `package.json` version builds, tests, and publishes that version with npm provenance under the `next` dist-tag, promotes it to `latest`, and creates its GitHub release from `CHANGELOG.md`.
+- Versions already on npm are skipped, so reruns are safe.
+- Manual runs move `latest` only when `promote_latest` is enabled; alternatively, a package owner can run `npm dist-tag add @abaxxlabs/agents@<version> latest`.
+- Maintainers can publish an existing release tag or supply curated release notes by running the workflow manually with `ref` and `notes`. Manual runs default to a dry run.
+
 ## Reporting Issues
 
 - **Security issues**: see [SECURITY.md](SECURITY.md) -- do not use public GitHub issues

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { describe, it, expect } from 'vitest';
 import { checkDelegationChainRevocation } from '#identity/delegation-chain.js';
 import { InMemoryRevocationStore } from '#storage/memory/revocation-store.js';
+import { DidResolutionFailedError } from '#errors/index.js';
 import { generateDidKey, createSigner } from '#auth/index.js';
 
 function hashCredentialId(jwt: string): string {
@@ -11,7 +12,11 @@ function hashCredentialId(jwt: string): string {
 function makeDeps(knownKeys = new Map<string, Uint8Array>()) {
   return {
     revocationStore: new InMemoryRevocationStore(),
-    knownKeys,
+    async resolvePublicKey(did: string) {
+      const key = knownKeys.get(did);
+      if (!key) throw new DidResolutionFailedError(did, 'not registered');
+      return key;
+    },
     emitRevocationTelemetry: () => {},
   };
 }

@@ -172,6 +172,10 @@
         "kind": "type"
       },
       {
+        "name": "AuthorizationUrlResult",
+        "kind": "type"
+      },
+      {
         "name": "AuthUnavailableError",
         "kind": "type+value"
       },
@@ -442,6 +446,10 @@
       {
         "name": "DelegateCredentialOptions",
         "kind": "type"
+      },
+      {
+        "name": "DelegationExpiryExceedsParentError",
+        "kind": "type+value"
       },
       {
         "name": "deriveSessionMacKey",

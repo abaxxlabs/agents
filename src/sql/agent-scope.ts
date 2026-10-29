@@ -33,6 +33,7 @@ import type {
 } from '#types/auth.js';
 import type { DelegateCredentialOptions } from '#types/credential.js';
 import type { IdSdkInstance } from '#types/id-sdk.js';
+import type { AuthorizationUrlResult } from '#auth/provider.js';
 import type { AuditRecord } from '#types/audit.js';
 import type { VerificationResult } from '#types/verification.js';
 import type {
@@ -216,10 +217,25 @@ export class AgentScope implements AgentScopeInstance {
   }
 
   /**
+   * Start a browser OIDC flow. Returns the url plus the `state` and `codeVerifier`
+   * that `completeAuthentication()` requires back; the verifier is not recoverable
+   * from the url, which carries only its S256 challenge.
+   *
+   * @param options.redirectUri Applied when the provider is first created; later calls
+   *   reuse the cached provider and its original value, as `authenticate()` does.
+   */
+  async buildAuthorizationUrl(
+    options: { redirectUri?: string } = {},
+  ): Promise<AuthorizationUrlResult> {
+    return this.identity.buildAuthorizationUrl(options);
+  }
+
+  /**
    * Complete OIDC authentication after receiving the authorization code callback.
    *
    * The `state` parameter is required and is validated against the provider's
-   * PendingFlowStore opened by the matching `authenticate()` call. Throws
+   * PendingFlowStore opened by the matching `authenticate()` or
+   * `buildAuthorizationUrl()` call. Throws
    * `AuthUnavailableError` on any state mismatch, expiry, or PKCE verifier
    * mismatch — before any network exchange.
    */

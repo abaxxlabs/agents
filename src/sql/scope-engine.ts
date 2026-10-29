@@ -143,6 +143,7 @@ export class ScopeEngine {
       // Log rejection audit from the scope engine (not server catch blocks)
       // so SDK consumers without an HTTP server still get audit trails.
       if (err instanceof AgentScopeError) {
+        if (err.details) delete err.details.auditId;
         const rejectionAgent = this.agents.get(options.agent);
         await this.auditLogger
           .logRejection(err.message, err.code, rejectionAgent?.signer, {
@@ -152,6 +153,9 @@ export class ScopeEngine {
             orgId: options.orgId,
             delegatorDid: rejectionContext.delegatorDid,
             delegatedGrantId: rejectionContext.delegatedGrantId,
+          })
+          .then((record) => {
+            if (err.details) err.details.auditId = record.id;
           })
           .catch(() => {
             // Best-effort: don't let rejection audit failure mask the original error

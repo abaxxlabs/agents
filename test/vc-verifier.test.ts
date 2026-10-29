@@ -6,6 +6,7 @@ import { generateDidKey, issueCredential, createSigner } from '#auth/index.js';
 import { resolveDidKey, resolveDidKeyFallback } from '#did/resolve.js';
 import { DidResolutionFailedError } from '#errors/index.js';
 import { base58Encode } from '#crypto/base58.js';
+import { zbase32Decode } from '#crypto/zbase32.js';
 import { asDid } from '#types/domain.js';
 
 describe('VC Verifier', () => {
@@ -148,6 +149,28 @@ describe('VC Verifier', () => {
         expect(result.valid).toBe(false);
         expect(result.status).toBe('EXPIRED');
         dateSpy.mockRestore();
+      });
+
+      it('rejects a VC without an expiration claim', async () => {
+        const jwt = await createJwt(
+          {
+            iss: human.did,
+            sub: agent.did,
+            iat: Math.floor(Date.now() / 1000),
+            vc: {
+              credentialSubject: {
+                id: agent.did,
+                scope: { columns: ['patients.name'], actions: ['read'] },
+              },
+            },
+          },
+          human.privateKey,
+        );
+
+        const result = await verifier.verify(jwt);
+        expect(result.valid).toBe(false);
+        expect(result.status).toBe('MALFORMED');
+        expect(result.error).toBe('Credential expiry (exp) is missing');
       });
 
       it('rejects a non-numeric VC expiration claim', async () => {
@@ -911,5 +934,129 @@ describe('VC Verifier', () => {
       const result = resolveDidKeyFallback(asDid(did));
       expect(result.length).toBe(32);
     });
+  });
+
+  describe('SDK resolution — Ed25519 preference (partial fix, not kid-based selection)', () => {
+    // Pins the current heuristic: first Ed25519 entry wins, not kid-based selection.
+    // Synthetic key material generated for these tests; not from any environment.
+    const ED_X = 'm6eQlw7UFn_SQAXTaM1A-elOVdaeSlyULV0198x6aBw';
+    const SECP_X = 'cfsr6o8Pi_yQdDISlNNEXwYi-CnDK8n4qRE-e4HBxKY'; // secp256k1
+
+    const ED_VM = { id: '#0', publicKeyJwk: { crv: 'Ed25519', kty: 'OKP', x: ED_X } };
+    const SECP_VM = { id: '#1', publicKeyJwk: { crv: 'secp256k1', kty: 'EC', x: SECP_X } };
+
+    function verifierResolving(verificationMethod: unknown[]): VcVerifier {
+      const v = new VcVerifier({ revocationStore: new InMemoryRevocationStore() });
+      v.setSdk({
+        did: {
+          resolve: async () => ({ didDocument: { verificationMethod }, didResolutionMetadata: {} }),
+        },
+      } as never);
+      return v;
+    }
+
+    const expected = new Uint8Array(Buffer.from(ED_X, 'base64url'));
+
+    it('picks the Ed25519 key when it is first', async () => {
+      const pk = await verifierResolving([ED_VM, SECP_VM]).resolvePublicKey('did:dht:zExample');
+      expect(Buffer.from(pk).equals(Buffer.from(expected))).toBe(true);
+    });
+
+    it('picks the Ed25519 key even when secp256k1 comes first', async () => {
+      const pk = await verifierResolving([SECP_VM, ED_VM]).resolvePublicKey('did:dht:zExample');
+      expect(Buffer.from(pk).equals(Buffer.from(expected))).toBe(true);
+      expect(pk.length).toBe(32);
+    });
+
+    it('falls back to the first method when none declares Ed25519', async () => {
+      // Load-bearing: multibase entries carry no `crv`, so the Ed25519 lookup skips
+      // them and the fallback is the only thing that resolves such a document.
+      const multibase = {
+        id: '#0',
+        publicKeyMultibase: 'z' + base58Encode(new Uint8Array([0xed, 0x01, ...expected])),
+      };
+      const pk = await verifierResolving([multibase]).resolvePublicKey('did:dht:zExample');
+      expect(Buffer.from(pk).equals(Buffer.from(expected))).toBe(true);
+      expect(pk.length).toBe(32);
+    });
+
+    it.todo('selects by JWS kid and validates the assertionMethod relationship');
+    it.todo('rejects a document whose only Ed25519 key is not authorised for assertions');
+    it.todo('disambiguates a document containing two Ed25519 keys');
+  });
+});
+
+describe('did:dht offline resolution', () => {
+  // Synthetic key pair generated for these tests; not from any environment.
+  const DID = 'did:dht:jtm9ud15y8bqxsf4eub1efz7iz7yskxo3gjegccijdwfz8fcpd5y';
+  const PUBLIC_KEY = 'TFf5jlsBwufYukTDJBb9rfoLKfDJkoMxlUjoW5ysaPY';
+
+  function verifier(): VcVerifier {
+    return new VcVerifier({ revocationStore: new InMemoryRevocationStore() });
+  }
+
+  it('derives the identity key from the identifier with no resolver configured', async () => {
+    const pk = await verifier().resolvePublicKey(DID);
+    expect(Buffer.from(pk).toString('base64url')).toBe(PUBLIC_KEY);
+    expect(pk.length).toBe(32);
+  });
+
+  it('ignores a fragment or path on the identifier', async () => {
+    const pk = await verifier().resolvePublicKey(`${DID}#0`);
+    expect(Buffer.from(pk).toString('base64url')).toBe(PUBLIC_KEY);
+  });
+
+  it('prefers a registered key over the derived one', async () => {
+    const v = verifier();
+    const registered = new Uint8Array(32).fill(7);
+    v.registerKey(DID, registered);
+    expect(Buffer.from(await v.resolvePublicKey(DID)).equals(Buffer.from(registered))).toBe(true);
+  });
+
+  it('still refuses a method it cannot derive', async () => {
+    await expect(verifier().resolvePublicKey('did:ion:EiAunknown123')).rejects.toThrow(
+      DidResolutionFailedError,
+    );
+  });
+
+  it('refuses an identifier longer than the canonical 52 characters', async () => {
+    // Decodes to 37 bytes. Truncating to the first 32 would derive this key from a
+    // string that is not this DID.
+    const tooLong = `${DID}ybndrfgh`;
+    await expect(verifier().resolvePublicKey(tooLong)).rejects.toThrow(DidResolutionFailedError);
+  });
+
+  it('refuses an identifier shorter than the canonical 52 characters', async () => {
+    const tooShort = DID.slice(0, -1);
+    await expect(verifier().resolvePublicKey(tooShort)).rejects.toThrow(DidResolutionFailedError);
+  });
+
+  it('names the decoded length in the refusal, so a malformed identifier is diagnosable', async () => {
+    await expect(verifier().resolvePublicKey(`${DID}ybndrfgh`)).rejects.toThrow(/37/);
+  });
+
+  it('refuses an identifier carrying a character outside the alphabet', async () => {
+    // Must surface as a resolution failure; an unclassified error reaches the transport as a 500.
+    const invalid = `${DID.slice(0, -1)}0`;
+    expect(invalid.length).toBe(DID.length);
+    await expect(verifier().resolvePublicKey(invalid)).rejects.toThrow(DidResolutionFailedError);
+    await expect(verifier().resolvePublicKey(invalid)).rejects.toThrow(/z-base-32/);
+  });
+
+  it('refuses a 52-character alias that decodes to the same key', async () => {
+    // The last character carries four padding bits, so sixteen identifiers decode
+    // to this same key. Only the canonical one is this DID.
+    const alias = `${DID.slice(0, -1)}b`;
+    expect(alias).not.toBe(DID);
+    expect(alias.length).toBe(DID.length);
+
+    // Same key, different string — which is exactly what makes it worth refusing.
+    const canonical = await verifier().resolvePublicKey(DID);
+    expect(
+      Buffer.from(zbase32Decode(alias.slice('did:dht:'.length))).equals(Buffer.from(canonical)),
+    ).toBe(true);
+
+    await expect(verifier().resolvePublicKey(alias)).rejects.toThrow(DidResolutionFailedError);
+    await expect(verifier().resolvePublicKey(alias)).rejects.toThrow(/canonical/);
   });
 });

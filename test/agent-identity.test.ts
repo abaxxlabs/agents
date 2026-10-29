@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import { AgentIdentity, VcVerifier } from '#identity/index.js';
 import { InMemoryRevocationStore } from '#storage/memory/revocation-store.js';
 import { InMemorySessionStore } from '#storage/memory/session-store.js';
@@ -567,6 +568,63 @@ describe('config.credential.maxTtl ceiling merging', () => {
       expiresIn: '36500d',
     });
     expect(jwt).toBeTruthy();
+    identity.close();
+  });
+});
+
+describe('AgentIdentity.buildAuthorizationUrl', () => {
+  // completeAuthentication() compares the codeVerifier against the one the provider
+  // stored, and the verifier is not in the url — only its S256 challenge is. Without
+  // a public way to obtain it, an AbaxxOne login can be started but never finished.
+  it('returns the url, state and codeVerifier the caller needs to complete the flow', async () => {
+    const storage = buildTestStorage();
+    const identity = await AgentIdentity.create(
+      {
+        audit: { enabled: true },
+        abaxxOne: { tenantUrl: 'https://tenant.example', clientId: 'test-client' },
+      },
+      { storage, masterKey: asMasterKey(Buffer.alloc(32, 0xab)) },
+    );
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          issuer: 'https://tenant.example',
+          authorization_endpoint: 'https://tenant.example/auth/authorize',
+          token_endpoint: 'https://tenant.example/auth/token',
+          userinfo_endpoint: 'https://tenant.example/auth/userinfo',
+          jwks_uri: 'https://tenant.example/.well-known/jwks',
+          code_challenge_methods_supported: ['S256'],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    const result = await identity.buildAuthorizationUrl({
+      redirectUri: 'http://localhost:3000/callback',
+    });
+
+    expect(result.url).toContain('https://tenant.example/auth/authorize');
+    expect(result.state).toBeTruthy();
+    expect(result.codeVerifier).toBeTruthy();
+
+    const url = new URL(result.url);
+    expect(url.searchParams.get('state')).toBe(result.state);
+    const expectedChallenge = createHash('sha256').update(result.codeVerifier).digest('base64url');
+    expect(url.searchParams.get('code_challenge')).toBe(expectedChallenge);
+
+    vi.restoreAllMocks();
+    identity.close();
+  });
+
+  it('fails with a clear message when no OIDC provider is configured', async () => {
+    const storage = buildTestStorage();
+    const identity = await AgentIdentity.create(
+      { audit: { enabled: true } },
+      { storage, masterKey: asMasterKey(Buffer.alloc(32, 0xab)) },
+    );
+
+    await expect(identity.buildAuthorizationUrl()).rejects.toThrow('AbaxxOne OIDC not configured');
     identity.close();
   });
 });

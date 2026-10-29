@@ -22,6 +22,9 @@ import { TtlExceededError } from '#errors/index.js';
 
 export type { ScopeMode, AgentScopeConfig } from '#types/config.js';
 
+/** Walker bound and request ceiling in one place, so an accepted request stays walkable. */
+export const MAX_DELEGATION_CHAIN_DEPTH = 10;
+
 const DEFAULTS: Partial<AgentScopeConfig> = {
   encryption: {
     algorithm: 'aes-256-gcm',

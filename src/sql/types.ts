@@ -23,6 +23,7 @@ import type pg from 'pg';
 import type { MasterKey } from '#crypto/master-key.js';
 import type { StorageBackend } from '#storage/types.js';
 import type { Logger } from '#observability/logger.js';
+import type { AuthorizationUrlResult } from '#auth/provider.js';
 import type {
   AuthOptions,
   AuthenticatedSession,
@@ -100,6 +101,12 @@ export interface AgentScopeInjections {
 
 export interface AgentScopeInstance {
   authenticate(options: AuthOptions): Promise<AuthenticatedSession>;
+  buildAuthorizationUrl(options?: { redirectUri?: string }): Promise<AuthorizationUrlResult>;
+  completeAuthentication(
+    authorizationCode: string,
+    state: string,
+    codeVerifier: string,
+  ): Promise<AuthenticatedSession>;
   createAgentIdentity(options: CreateAgentOptions): Promise<RegisteredAgent>;
   createPresentationForAgent(options: {
     agentDid: string;

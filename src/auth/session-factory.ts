@@ -16,14 +16,8 @@ import { createHash, createPrivateKey, createPublicKey } from 'node:crypto';
 import type { AuthenticatedSession } from '#types/auth.js';
 import type { IssueCredentialOptions } from '#types/credential.js';
 import { VcVerifier } from '#identity/index.js';
-import {
-  assertScopeFitsInCeiling,
-  unrestrictedCeiling,
-  type ScopeCeiling,
-} from './ceiling.js';
-import {
-  ParentCredentialRequestFailedError,
-} from '#errors/index.js';
+import { assertScopeFitsInCeiling, unrestrictedCeiling, type ScopeCeiling } from './ceiling.js';
+import { ParentCredentialRequestFailedError } from '#errors/index.js';
 import type { IdSdkInstance } from '#types/id-sdk.js';
 import {
   issueCredential,
@@ -76,7 +70,12 @@ export function createSessionFromDid(
       requestAgentCredential: (
         accessToken: string,
         agentDid: string,
-        options: { columns: string[]; actions: string[]; expiresIn: string | number; maxDepth?: number },
+        options: {
+          columns: string[];
+          actions: string[];
+          expiresIn: string | number;
+          maxDepth?: number;
+        },
       ) => Promise<{ jwt: string; issuerDid: string }>;
     };
     accessToken: string;
@@ -112,33 +111,34 @@ export function createSessionFromDid(
         );
       }
 
+      // A parent-bound session must not silently self-sign: callers cannot tell the two apart.
       if (parentConfig) {
         try {
           const result = await issueCredentialFromParent(
             parentConfig.provider,
             parentConfig.accessToken,
             options.agent,
-            { columns: options.columns, actions: options.actions, expiresIn: options.expiresIn, maxDepth: options.maxDepth },
+            {
+              columns: options.columns,
+              actions: options.actions,
+              expiresIn: options.expiresIn,
+              maxDepth: options.maxDepth,
+            },
           );
           return result.jwt;
         } catch (e) {
-          if (!(e instanceof ParentCredentialRequestFailedError)) throw e;
-          if (options.requireParent) {
-            throw new Error(
-              'Parent credential request failed and requireParent is set. ' +
-                'Re-authenticate with the AbaxxOne parent instance or remove the requireParent flag.',
-            );
+          // Transports send a generic message, so the upstream reason is only visible in this log.
+          if (e instanceof ParentCredentialRequestFailedError) {
+            logger.error(`[agents] Parent credential request failed: ${e.message}`, {
+              tenantUrl: e.tenantUrl,
+              upstreamStatus: e.httpStatus,
+            });
           }
-          logger.warn(
-            '[agents] Parent credential request failed — falling back to ' +
-              (sdk ? 'SDK' : 'local') +
-              ' signing. Agent will receive a self-asserted credential.',
-            { fallbackTo: sdk ? 'sdk' : 'local' },
-          );
+          throw e;
         }
       }
 
-      if (options.requireParent && !parentConfig) {
+      if (options.requireParent) {
         throw new Error(
           'requireParent is set but no parent provider is configured on this session.',
         );

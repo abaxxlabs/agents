@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import { MAX_DELEGATION_CHAIN_DEPTH } from '#config.js';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { AgentToolServices } from '#services/index.js';
@@ -71,7 +72,7 @@ export function registerIssueCredentialTool(
           .number()
           .int()
           .min(1)
-          .max(10)
+          .max(MAX_DELEGATION_CHAIN_DEPTH)
           .optional()
           .describe(
             'Maximum delegation chain depth embedded in the issued credential. Default: 2. Pass 1 to prevent any delegation.',

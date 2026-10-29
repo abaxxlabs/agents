@@ -52,6 +52,7 @@ import { AbaxxOneOidcProvider } from '#auth/abaxx-one.js';
 import { createSessionFromDid } from '#auth/session-factory.js';
 import { createPresentation } from './presentation.js';
 import type { ScopeCeiling } from '#auth/ceiling.js';
+import type { AuthorizationUrlResult } from '#auth/provider.js';
 import { expiresInToMs } from '#config.js';
 import type {
   AuthOptions,
@@ -331,7 +332,10 @@ export class AgentIdentity {
     if (this.config.abaxxOne) {
       const provider = this.ensureAbaxxOneProvider(options.redirectUri);
       const { url } = await provider.buildAuthorizationUrl();
-      throw new AuthUnavailableError(`OIDC flow requires browser redirect to: ${url}`);
+      throw new AuthUnavailableError(
+        `OIDC flow requires browser redirect to: ${url} — ` +
+          'call buildAuthorizationUrl() instead to get the url, state and codeVerifier.',
+      );
     }
 
     throw new Error(
@@ -339,6 +343,22 @@ export class AgentIdentity {
         'mockHumanDid (dev/test), oidcIdentity (from completed OAuth flow), ' +
         'or configure abaxxOne/oidc in AgentIdentityConfig.',
     );
+  }
+
+  /**
+   * Start a browser OIDC flow. Returns the url plus the `state` and `codeVerifier`
+   * that `completeAuthentication()` requires back; the verifier is not recoverable
+   * from the url, which carries only its S256 challenge.
+   *
+   * @param options.redirectUri Applied when the provider is first created; later calls
+   *   reuse the cached provider and its original value, as `authenticate()` does.
+   */
+  async buildAuthorizationUrl(
+    options: { redirectUri?: string } = {},
+  ): Promise<AuthorizationUrlResult> {
+    this.assertOpen();
+    const provider = this.ensureAbaxxOneProvider(options.redirectUri);
+    return provider.buildAuthorizationUrl();
   }
 
   /**

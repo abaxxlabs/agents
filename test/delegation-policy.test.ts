@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { DelegationExpiryExceedsParentError } from '#errors/index.js';
 import {
   validateScope,
   validateExpiry,
@@ -69,8 +70,24 @@ describe('delegation-policy', () => {
       expect(validateExpiry(1000, 1000)).toBe(1000);
     });
 
-    it('clamps to parent max when requested expiry exceeds it', () => {
-      expect(validateExpiry(2000, 1000)).toBe(1000);
+    it('rejects when the requested expiry exceeds the parent max', () => {
+      expect(() => validateExpiry(2000, 1000)).toThrow(DelegationExpiryExceedsParentError);
+    });
+
+    it('reports how far past the parent the request went', () => {
+      try {
+        validateExpiry(2000, 1000);
+        expect.unreachable('should have thrown');
+      } catch (err) {
+        expect(err).toBeInstanceOf(DelegationExpiryExceedsParentError);
+        const e = err as DelegationExpiryExceedsParentError;
+        expect(e.code).toBe('POLICY_VIOLATION');
+        expect(e.details).toMatchObject({
+          requestedExpSeconds: 2000,
+          parentMaxExpSeconds: 1000,
+          overBySeconds: 1000,
+        });
+      }
     });
 
     it('returns zero when requested expiry is zero', () => {

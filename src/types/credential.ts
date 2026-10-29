@@ -18,7 +18,12 @@ export interface IssueCredentialOptions {
   actions: 'read'[];
   expiresIn: string | number;
   metadata?: Record<string, unknown>;
-  /** When true, the credential MUST be issued by the parent instance. */
+  /**
+   * When true, refuse to issue unless a parent instance is configured. A session that has a
+   * parent already fails closed when the parent cannot issue, so this only guards a
+   * parent-capable session created without one. Session types that cannot have a parent
+   * ignore it.
+   */
   requireParent?: boolean;
   /**
    * Maximum delegation chain depth; embedded in the JWT and inherited downstream.

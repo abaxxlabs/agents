@@ -46,6 +46,19 @@ export class TtlExceededError extends AgentScopeError {
   }
 }
 
+export class DelegationExpiryExceedsParentError extends AgentScopeError {
+  constructor(requestedExpSeconds: number, parentMaxExpSeconds: number) {
+    const overBySeconds = requestedExpSeconds - parentMaxExpSeconds;
+    super(
+      'POLICY_VIOLATION',
+      `Delegated credential expiry exceeds the parent credential's by ${overBySeconds}s. ` +
+        `A delegated credential cannot outlive the credential it derives from.`,
+      { requestedExpSeconds, parentMaxExpSeconds, overBySeconds },
+    );
+    this.name = 'DelegationExpiryExceedsParentError';
+  }
+}
+
 export class PrecisionLossError extends AgentScopeError {
   constructor(rawValue: string) {
     super(

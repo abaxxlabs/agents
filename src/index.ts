@@ -106,6 +106,7 @@ export {
   ScopeViolationError,
   CredentialReplayedError,
   TtlExceededError,
+  DelegationExpiryExceedsParentError,
   CapabilityRequiresPaidTierError,
   ParentCredentialRequestFailedError,
   DiscoveryEndpointBlockedError,
@@ -209,6 +210,7 @@ export {
 
 // Generic OIDC — provider-agnostic OAuth.
 export { GenericOidcProvider } from '#auth/generic.js';
+export type { AuthorizationUrlResult } from '#auth/provider.js';
 export { verifyIdTokenSignature } from '#auth/jwks-verify.js';
 
 // Scope Ceiling — session-level authorization bound.

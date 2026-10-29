@@ -1,126 +1,19 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { ScopeEngine } from '#sql/scope-engine.js';
+import * as queryPolicy from '#sql/query-policy.js';
 import { VcVerifier } from '#identity/index.js';
 import { InMemoryRevocationStore } from '#storage/memory/revocation-store.js';
 import { AuditLogger } from '#audit/index.js';
-import { encrypt, generateColumnKey } from '#encryption/index.js';
-import { generateDidKey, issueCredential, createSigner } from '#auth/index.js';
-import { ScopeViolationError } from '#errors/index.js';
-import type { RegisteredAgent } from '#types/index.js';
+import { generateDidKey, issueCredential } from '#auth/index.js';
+import { AgentScopeError, QueryRejectedError, ScopeViolationError } from '#errors/index.js';
 import type { AgentStore } from '#storage/types.js';
 import type { Pool } from 'pg';
 import { createMockAuditStore } from './mocks/audit-store.js';
-
-function createTestFixtures() {
-  const human = generateDidKey();
-  const agentA = generateDidKey();
-  const agentB = generateDidKey();
-
-  const verifier = new VcVerifier({
-    clockSkew: '30s',
-    revocationStore: new InMemoryRevocationStore(),
-  });
-  verifier.registerKey(human.did, human.publicKey);
-  verifier.registerKey(agentA.did, agentA.publicKey);
-  verifier.registerKey(agentB.did, agentB.publicKey);
-
-  // Column keys
-  const dobKey = generateColumnKey();
-  const diagKey = generateColumnKey();
-  const ssnKey = generateColumnKey();
-  const columnKeys = new Map<string, Buffer>([
-    ['patients.dob', dobKey],
-    ['patients.diagnosis', diagKey],
-    ['patients.ssn', ssnKey],
-  ]);
-
-  const encryptedColumns = new Set(['patients.dob', 'patients.diagnosis', 'patients.ssn']);
-
-  // Sample encrypted rows
-  const sampleRows = [
-    {
-      id: 1,
-      name: 'Jane Doe',
-      dob: encrypt('1990-03-15', dobKey),
-      diagnosis: encrypt('Type 2 Diabetes', diagKey),
-      ssn: encrypt('123-45-6789', ssnKey),
-    },
-    {
-      id: 2,
-      name: 'John Smith',
-      dob: encrypt('1985-07-22', dobKey),
-      diagnosis: encrypt('Hypertension', diagKey),
-      ssn: encrypt('987-65-4321', ssnKey),
-    },
-  ];
-
-  // Mock pool
-  const pool = {
-    query: vi.fn().mockImplementation(async (sql: string) => {
-      if (sql.includes('INSERT INTO agent_audit')) {
-        return { rows: [], rowCount: 1 };
-      }
-      if (sql.includes('SELECT') && sql.includes('patients')) {
-        return { rows: sampleRows, rowCount: sampleRows.length };
-      }
-      return { rows: [], rowCount: 0 };
-    }),
-  } as unknown as Pool;
-
-  // Agents map
-  const agents = new Map<string, RegisteredAgent>([
-    [
-      agentA.did,
-      {
-        did: agentA.did,
-        name: 'Agent A',
-        ownerDid: human.did,
-        signer: createSigner(agentA.privateKey),
-        publicKey: agentA.publicKey,
-      },
-    ],
-    [
-      agentB.did,
-      {
-        did: agentB.did,
-        name: 'Agent B',
-        ownerDid: human.did,
-        signer: createSigner(agentB.privateKey),
-        publicKey: agentB.publicKey,
-      },
-    ],
-  ]);
-
-  const auditLogger = new AuditLogger({
-    auditStore: createMockAuditStore(),
-    enabled: true,
-  });
-
-  // Server identity for VP audience binding
-  const server = generateDidKey();
-  verifier.registerKey(server.did, server.publicKey);
-
-  const engine = new ScopeEngine({
-    pool,
-    verifier,
-    auditLogger,
-    columnKeys,
-    encryptedColumns,
-    agents,
-    verifierDid: server.did,
-    agentStore: {
-      findByDid: vi.fn().mockResolvedValue(null),
-      create: vi.fn(),
-      list: vi.fn(),
-      listAll: vi.fn(),
-      count: vi.fn(),
-    } as unknown as AgentStore,
-  });
-
-  return { human, agentA, agentB, engine, verifier, pool, columnKeys, encryptedColumns };
-}
+import { createTestFixtures } from './support/scope-engine-fixtures.js';
 
 describe('Scope Enforcement Engine', () => {
+  afterEach(() => vi.restoreAllMocks());
+
   describe('valid queries', () => {
     it('decrypts in-scope columns for full-scope agent', async () => {
       const { human, agentA, engine } = createTestFixtures();
@@ -146,7 +39,7 @@ describe('Scope Enforcement Engine', () => {
     });
 
     it('rejects queries for encrypted columns outside scope', async () => {
-      const { human, agentB, engine, pool } = createTestFixtures();
+      const { human, agentB, engine, pool, auditStore } = createTestFixtures();
 
       const credential = await issueCredential(human.did, human.privateKey, {
         agent: agentB.did,
@@ -155,14 +48,26 @@ describe('Scope Enforcement Engine', () => {
         expiresIn: '4h',
       });
 
-      await expect(
-        engine.query({
+      const err = await engine
+        .query({
           agent: agentB.did,
           credential,
           table: 'patients',
           sql: 'SELECT name, dob, diagnosis, ssn FROM patients',
+        })
+        .catch((err: unknown) => err);
+
+      expect(err).toBeInstanceOf(ScopeViolationError);
+      expect(err).toMatchObject({ details: { agentDid: agentB.did, auditId: expect.any(String) } });
+      expect(auditStore.append).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          id: (err as ScopeViolationError).details?.auditId,
+          agentDid: agentB.did,
+          ownerDid: human.did,
+          status: 'rejected',
+          reasonCode: 'SCOPE_VIOLATION',
         }),
-      ).rejects.toThrow(ScopeViolationError);
+      );
       expect(pool.query).not.toHaveBeenCalled();
     });
 
@@ -190,6 +95,62 @@ describe('Scope Enforcement Engine', () => {
       expect(result.metadata.rowCount).toBe(2);
       expect(result.metadata.auditId).toBeDefined();
     });
+  });
+
+  describe.each([false, true])('rejection audit append failure=%s', (failOnAppend) => {
+    it.each([
+      [
+        'scope violation',
+        (did: string) => new ScopeViolationError(did, ['patients.ssn'], ['patients.name']),
+      ],
+      ['query rejection', (did: string) => new QueryRejectedError(did, 'Only SELECT is allowed')],
+      ['error without details', () => new AgentScopeError('QUERY_REJECTED', 'Request rejected')],
+    ] as const)(
+      'preserves the original %s and correlates only a completed append',
+      async (_label, createError) => {
+        const { human, agentA, engine, pool, auditStore } = createTestFixtures({ failOnAppend });
+        const credential = await issueCredential(human.did, human.privateKey, {
+          agent: agentA.did,
+          columns: ['patients.name'],
+          actions: ['read'],
+          expiresIn: '4h',
+        });
+        const originalError = createError(agentA.did);
+        const originalDetails = originalError.details;
+        if (originalDetails) originalDetails.auditId = 'previous-rejection-audit-id';
+        const { message, code } = originalError;
+        vi.spyOn(queryPolicy, 'authorizeQuery').mockRejectedValueOnce(originalError);
+
+        await expect(
+          engine.query({
+            agent: agentA.did,
+            credential,
+            table: 'patients',
+            sql: 'SELECT name FROM patients',
+          }),
+        ).rejects.toBe(originalError);
+
+        expect(originalError.message).toBe(message);
+        expect(originalError.code).toBe(code);
+        expect(originalError.details).toBe(originalDetails);
+        expect(auditStore.append).toHaveBeenCalledOnce();
+        if (failOnAppend || !originalDetails) {
+          expect(originalError.details?.auditId).toBeUndefined();
+        } else {
+          expect(originalError.details?.auditId).toEqual(expect.any(String));
+          expect(originalError.details?.auditId).not.toBe('previous-rejection-audit-id');
+          expect(auditStore.append).toHaveBeenCalledWith(
+            expect.objectContaining({
+              id: originalError.details?.auditId,
+              agentDid: agentA.did,
+              status: 'rejected',
+              reasonCode: code,
+            }),
+          );
+        }
+        expect(pool.query).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('credential errors', () => {
