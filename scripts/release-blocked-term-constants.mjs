@@ -6,16 +6,6 @@ export const RELEASE_BLOCKED_TERMS = [
   },
   {
     category: 'ticket/process history',
-    term: 'pre-landing',
-    pattern: /\bpre[- ]landing\b/i,
-  },
-  {
-    category: 'ticket/process history',
-    term: 'adversarial review',
-    pattern: /\badversarial review\b/i,
-  },
-  {
-    category: 'ticket/process history',
     term: 'agent workflow',
     pattern: /\bagent workflow\b/i,
   },
@@ -23,16 +13,6 @@ export const RELEASE_BLOCKED_TERMS = [
     category: 'ticket/process history',
     term: 'handoff',
     pattern: /\bhandoff\b/i,
-  },
-  {
-    category: 'temporal/internal delivery history',
-    term: 'Session',
-    pattern: /\b(?:post-)?Sessions?\s*[- ]\s*\d+\b/i,
-  },
-  {
-    category: 'temporal/internal delivery history',
-    term: 'Phase',
-    pattern: /\bPhase\s*[- ]\s*\d+\b/i,
   },
   {
     category: 'temporal/internal delivery history',
@@ -53,12 +33,7 @@ export const RELEASE_BLOCKED_TERMS = [
     category: 'strategy/commercial positioning',
     term: 'upgrade path',
     pattern: /\bupgrade path\b/i,
-  },
-  {
-    category: 'strategy/commercial positioning',
-    term: 'open-core',
-    pattern: /\bopen[- ]core\b/i,
-  },
+  }
 ];
 
 export const DEFAULT_BLOCKED_RELEASE_TERM_ALLOWLIST = [

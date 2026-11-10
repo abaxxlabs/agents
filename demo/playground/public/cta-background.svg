@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="130" height="42" viewBox="0 0 130 42" preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="cta" x1="0" y1="0" x2="132.571" y2="17.2978" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#62758A"/>
+      <stop offset="1" stop-color="#455D76"/>
+    </linearGradient>
+  </defs>
+  <rect width="130" height="42" fill="url(#cta)"/>
+</svg>

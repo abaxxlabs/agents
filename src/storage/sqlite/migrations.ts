@@ -70,7 +70,13 @@ export const SQLITE_SCHEMA_STATEMENTS: string[] = [
     version INTEGER DEFAULT 1,
     status TEXT DEFAULT 'success',
     reason TEXT,
-    reason_code TEXT
+    reason_code TEXT,
+    event_kind TEXT,
+    direction TEXT,
+    counterpart_agent_did TEXT,
+    counterpart_instance_did TEXT,
+    message_record_id TEXT,
+    message_digest TEXT
   )`,
 
   `CREATE TRIGGER IF NOT EXISTS trg_audit_no_update
@@ -161,4 +167,13 @@ export const SQLITE_MIGRATIONS: string[] = [
   `ALTER TABLE agent_audit ADD COLUMN delegator_did TEXT`,
   `ALTER TABLE agent_audit ADD COLUMN delegated_grant_id TEXT`,
   `CREATE INDEX IF NOT EXISTS idx_agent_audit_delegator_did ON agent_audit(delegator_did)`,
+  // Message events (version 5): mirror Postgres migration 011. NULL on query and rejection records.
+  `ALTER TABLE agent_audit ADD COLUMN event_kind TEXT`,
+  `ALTER TABLE agent_audit ADD COLUMN direction TEXT`,
+  `ALTER TABLE agent_audit ADD COLUMN counterpart_agent_did TEXT`,
+  `ALTER TABLE agent_audit ADD COLUMN counterpart_instance_did TEXT`,
+  `ALTER TABLE agent_audit ADD COLUMN message_record_id TEXT`,
+  `ALTER TABLE agent_audit ADD COLUMN message_digest TEXT`,
+  `CREATE INDEX IF NOT EXISTS idx_agent_audit_message ON agent_audit(agent_did, message_record_id)
+    WHERE message_record_id IS NOT NULL`,
 ];

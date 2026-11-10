@@ -1,20 +1,20 @@
 # Migration: delegation claims moved inside the credential
 
-**Audience:** anyone decoding an issued credential and reading its claims directly. If you only call `issueCredential`, `issueDelegatedCredential` or the verifier, nothing changes for you.
+**Audience:** applications that decode issued credentials and read their claims directly. Applications that only call `issueCredential`, `issueDelegatedCredential`, or the verifier require no changes.
 
-The delegation ceiling and the ancestor chain used to sit at the JWT top level, beside `iss`, `sub` and `exp`. In VC-JWT the verifiable credential is the object under `vc`; anything outside it is a statement about the token, not about the credential. Both claims now live inside `vc`, so a verifier reading the credential finds them where the specification says to look.
-
----
-
-## TL;DR
-
-One thing can break you: reading `payload.maxDepth` or `payload.delegationChain` off a decoded credential. Both now return `undefined` on newly issued credentials.
-
-Everything else is unchanged. The options you pass at issuance are the same, and credentials issued before this release keep verifying.
+The delegation ceiling and ancestor chain were previously stored at the JWT top level, alongside `iss`, `sub`, and `exp`. In VC-JWT, the verifiable credential is the object under `vc`; claims outside that object describe the token rather than the credential. Both delegation claims are now stored within `vc`, in the locations defined by the specification.
 
 ---
 
-## 1. Where the claims live now
+## Summary {#tldr}
+
+Applications that read `payload.maxDepth` or `payload.delegationChain` directly from a decoded credential must update those access paths. Both top-level fields return `undefined` on newly issued credentials.
+
+Issuance options are unchanged, and previously issued credentials remain verifiable.
+
+---
+
+## 1. Updated claim locations {#1-where-the-claims-live-now}
 
 ```jsonc
 // before
@@ -54,11 +54,11 @@ Everything else is unchanged. The options you pass at issuance are the same, and
 
 `termsOfUse` and `evidence` are both defined by the W3C credentials context. `termsOfUse` carries constraints the issuer places on use, which is what a delegation ceiling is; `evidence` carries provenance, which is what an ancestor chain is.
 
-## 2. Two fields are gone
+## 2. Removed fields {#2-two-fields-are-gone}
 
-`credentialSubject.owner` duplicated `iss` in every path that issued it, and nothing read it — ownership is checked by comparing the credential's issuer against the agent's registered owner.
+`credentialSubject.owner` duplicated `iss` in every issuance path and was not used during verification. Ownership is checked by comparing the credential's issuer against the agent's registered owner.
 
-`credentialSubject.delegated` was always `false`, including on delegated credentials, where it contradicted the `type` array declaring `DelegatedAgentScopeCredential`. Nothing read it either.
+`credentialSubject.delegated` was always `false`, including on delegated credentials, where it contradicted the `type` array declaring `DelegatedAgentScopeCredential`. This field was also unused during verification.
 
 ## 3. If you read the claims yourself
 
@@ -86,7 +86,7 @@ Both `type` values may be a string or an array of strings, as VC sub-objects are
 
 ## 4. Compatibility
 
-Credentials issued before this release keep verifying. The verifier reads the current location first and falls back to the legacy top-level claim, so a mixed population of credentials works without any action on your part.
+Credentials issued before this release remain verifiable. The verifier checks the current claim location first and falls back to the legacy top-level claim, supporting both credential formats without a migration.
 
 The fallback is transitional. It will be removed once no unexpired credential can still carry the legacy shape, which is bounded by the longest credential lifetime you issue. If you decode credentials yourself, move to the reader above before then.
 
@@ -103,4 +103,4 @@ await scope.issueCredential({
 });
 ```
 
-The option name, its meaning and its default are unchanged. Only where the value lands inside the issued JWT changed.
+The option name, meaning, and default are unchanged. Only the location of the value within the issued JWT has changed.

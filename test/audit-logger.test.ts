@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { AuditLogger, hashCredential, hashQuery, hashAuditRecord } from '#audit/index.js';
 import { generateDidKey, createSigner } from '#auth/index.js';
 import { DidAliasRegistry } from '#did/alias.js';
@@ -143,6 +143,45 @@ describe('Audit Logger', () => {
       expect(record1.previousHash).toBe('GENESIS');
       expect(record2.previousHash).not.toBe('GENESIS');
       expect(record3.previousHash).not.toBe(record2.previousHash);
+    });
+  });
+
+  describe('timestamps', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it('never repeat while the clock stands still or steps back', async () => {
+      const logger = new AuditLogger({ auditStore: createMockAuditStore(), enabled: true });
+      const signer = createSigner(agent.privateKey);
+      const now = vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000);
+
+      const first = await logger.log(entry, signer);
+      const second = await logger.log(entry, signer);
+      now.mockReturnValue(1_799_999_999_000);
+      const third = await logger.log(entry, signer);
+
+      expect([first, second, third].map((record) => Date.parse(record.timestamp))).toEqual([
+        1_800_000_000_000, 1_800_000_000_001, 1_800_000_000_002,
+      ]);
+    });
+
+    it('are later than the stored head, whatever form the store returns it in', async () => {
+      const signer = createSigner(agent.privateKey);
+      const head = await new AuditLogger({ auditStore: createMockAuditStore(), enabled: true }).log(
+        entry,
+        signer,
+      );
+      const ahead = Date.now() + 60_000;
+
+      for (const timestamp of [new Date(ahead).toISOString(), new Date(ahead)]) {
+        const store = createMockAuditStore();
+        vi.mocked(store.loadLastRecordLocked).mockResolvedValue({
+          ...head,
+          timestamp: timestamp as string,
+        });
+        const logger = new AuditLogger({ auditStore: store, enabled: true });
+        const record = await logger.log(entry, signer);
+        expect(Date.parse(record.timestamp)).toBe(ahead + 1);
+      }
     });
   });
 

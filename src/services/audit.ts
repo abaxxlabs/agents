@@ -170,25 +170,8 @@ export function createAuditService(deps: {
             brokenLinks.push(mismatch);
           }
         }
-        previousHash = hashAuditRecord({
-          id: record.id,
-          timestamp: record.timestamp,
-          agentDid: record.agentDid,
-          ownerDid: record.ownerDid,
-          credentialId: record.credentialId,
-          queryHash: record.queryHash,
-          columnsAccessed: record.columnsAccessed,
-          rowCount: record.rowCount,
-          durationMs: record.durationMs,
-          previousHash: record.previousHash,
-          version: record.version ?? 1,
-          status: record.status,
-          reason: record.reason,
-          reasonCode: record.reasonCode,
-          orgId: record.orgId,
-          delegatorDid: record.delegatorDid,
-          delegatedGrantId: record.delegatedGrantId,
-        });
+        // The whole record: each version hashes its own set of fields.
+        previousHash = hashAuditRecord({ ...record, version: record.version ?? 1 });
       }
 
       return {

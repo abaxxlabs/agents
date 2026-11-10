@@ -1,0 +1,76 @@
+x-playground-image: &playground-image
+  image: ${PLAYGROUND_IMAGE:-agents-playground:local}
+
+x-playground-environment: &playground-environment
+  AGENTS_MASTER_KEY: ${PLAYGROUND_MASTER_KEY:-}
+  PLAYGROUND_ENV_FILE: /var/lib/playground/.env
+
+x-playground-service: &playground-service
+  <<: *playground-image
+  environment: *playground-environment
+  volumes:
+    - playground_config:/var/lib/playground
+  extra_hosts:
+    - host.docker.internal:host-gateway
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: playground
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - playground_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "psql -U $${POSTGRES_USER} -d $${POSTGRES_DB} -Atc 'SELECT 1' >/dev/null"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  setup:
+    <<: *playground-service
+    build:
+      context: ../..
+      dockerfile: demo/playground/Dockerfile
+    command: ["node", "scripts/setup-db.mjs"]
+    environment:
+      <<: *playground-environment
+      DATABASE_URL: ${PLAYGROUND_SETUP_DATABASE_URL:-${PLAYGROUND_DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/playground}}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  playground:
+    <<: *playground-service
+    command: ["node", "src/server.mjs"]
+    environment:
+      <<: *playground-environment
+      PLAYGROUND_HTTP_MODE: local
+      PLAYGROUND_NEW_SESSION_RATE_LIMIT: ${PLAYGROUND_NEW_SESSION_RATE_LIMIT:-10}
+      PLAYGROUND_NEW_SESSION_RATE_WINDOW_MS: ${PLAYGROUND_NEW_SESSION_RATE_WINDOW_MS:-60000}
+      HOST: 0.0.0.0
+      PORT: 3100
+      PLAYGROUND_TRUST_COMPOSE_GATEWAY: "true"
+      PLAYGROUND_ADMIN_DATABASE_URL: ${PLAYGROUND_SETUP_DATABASE_URL:-${PLAYGROUND_DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/playground}}
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:${PLAYGROUND_PORT:-3100}:3100"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3100/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    stop_grace_period: 15s
+
+volumes:
+  playground_config:
+  playground_pgdata:

@@ -1,0 +1,38 @@
+{
+  "name": "agents-demo-playground",
+  "version": "1.0.0",
+  "description": "Real integration demo with @abaxxlabs/agents for scoped access to an order book",
+  "type": "module",
+  "engines": {
+    "node": ">=20.3.0"
+  },
+  "scripts": {
+    "check:linked-agents": "node scripts/check-linked-agents-build.mjs",
+    "proof:sqlite-runtime": "node scripts/sqlite-runtime-proof.mjs",
+    "presetup": "npm run check:linked-agents",
+    "setup": "node scripts/setup-db.mjs",
+    "build": "npm run build:css",
+    "build:css": "tailwindcss -i styles/tailwind.css -o public/styles.css --minify",
+    "dev:css": "tailwindcss -i styles/tailwind.css -o public/styles.css --watch",
+    "prestart": "npm run check:linked-agents && npm run build:css",
+    "start": "node src/server.mjs",
+    "pretest": "npm run build:css",
+    "test": "node --test",
+    "test:compose": "node scripts/smoke-dispatch.mjs",
+    "proof:sandbox-isolation": "node scripts/sandbox-isolation-proof.mjs",
+    "proof:worker-routing-fencing": "node scripts/worker-routing-fencing-proof.mjs",
+    "test:docker-context": "node scripts/check-docker-context.mjs",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@abaxxlabs/agents": "file:../..",
+    "better-sqlite3": "12.11.1",
+    "libpg-query": "17.7.3",
+    "pg": "8.20.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@tailwindcss/cli": "4.3.2",
+    "tailwindcss": "4.3.2"
+  }
+}

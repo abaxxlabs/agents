@@ -132,6 +132,7 @@ export function createSessionFromDid(
             logger.error(`[agents] Parent credential request failed: ${e.message}`, {
               tenantUrl: e.tenantUrl,
               upstreamStatus: e.httpStatus,
+              upstreamBody: e.details?.upstreamBody,
             });
           }
           throw e;

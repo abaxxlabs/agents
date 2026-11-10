@@ -20,6 +20,112 @@ import type { Pool, PoolClient } from 'pg';
 import type { AuditRecord } from '#types/audit.js';
 import type { AuditStore, AuditQueryFilter } from '../types.js';
 
+const BASE_COLUMNS = [
+  'id',
+  'timestamp',
+  'agent_did',
+  'owner_did',
+  'credential_id',
+  'query_hash',
+  'columns_accessed',
+  'row_count',
+  'duration_ms',
+  'previous_hash',
+  'signature',
+  'org_id',
+  'version',
+  'status',
+  'reason',
+  'reason_code',
+  'delegator_did',
+  'delegated_grant_id',
+];
+
+/** Present only once the message event migration has run. Query records never name them. */
+const MESSAGE_COLUMNS = [
+  'event_kind',
+  'direction',
+  'counterpart_agent_did',
+  'counterpart_instance_did',
+  'message_record_id',
+  'message_digest',
+];
+
+function baseValues(record: AuditRecord): unknown[] {
+  return [
+    record.id,
+    record.timestamp,
+    record.agentDid,
+    record.ownerDid,
+    record.credentialId,
+    record.queryHash,
+    JSON.stringify(record.columnsAccessed),
+    record.rowCount,
+    record.durationMs,
+    record.previousHash,
+    record.signature,
+    record.orgId ?? null,
+    record.version ?? 1,
+    record.status ?? 'success',
+    record.reason ?? null,
+    record.reasonCode ?? null,
+    record.delegatorDid ?? null,
+    record.delegatedGrantId ?? null,
+  ];
+}
+
+function messageValues(record: AuditRecord): unknown[] {
+  return [
+    record.eventKind ?? null,
+    record.direction ?? null,
+    record.counterpartAgentDid ?? null,
+    record.counterpartInstanceDid ?? null,
+    record.messageRecordId ?? null,
+    record.messageDigest ?? null,
+  ];
+}
+
+/**
+ * Columns and values for one insert. Only message records name the message columns, so query
+ * records keep writing on a database where that migration has not run yet.
+ */
+function insertShape(record: AuditRecord): { columns: string[]; values: unknown[] } {
+  if (record.version !== 5) return { columns: BASE_COLUMNS, values: baseValues(record) };
+  return {
+    columns: [...BASE_COLUMNS, ...MESSAGE_COLUMNS],
+    values: [...baseValues(record), ...messageValues(record)],
+  };
+}
+
+function buildWhere(filter?: AuditQueryFilter): { where: string; params: unknown[] } {
+  let where = ' WHERE 1=1';
+  const params: unknown[] = [];
+  const add = (clause: (placeholder: string) => string, value: unknown) => {
+    params.push(value);
+    where += ` AND ${clause(`$${params.length}`)}`;
+  };
+
+  if (filter?.id) add((p) => `id = ${p}`, filter.id);
+  if (filter?.agentDids && filter.agentDids.length > 0) {
+    add((p) => `agent_did = ANY(${p}::text[])`, filter.agentDids);
+  } else if (filter?.agentDid) {
+    add((p) => `agent_did = ${p}`, filter.agentDid);
+  }
+  if (filter?.since) add((p) => `timestamp >= ${p}`, filter.since.toISOString());
+  if (filter?.ownerDid) add((p) => `owner_did = ${p}`, filter.ownerDid);
+  if (filter?.credentialId) add((p) => `credential_id = ${p}`, filter.credentialId);
+  if (filter?.orgId) add((p) => `org_id = ${p}`, filter.orgId);
+  // Records written before version 5 carry no event_kind and are queries.
+  if (filter?.eventKind) add((p) => `COALESCE(event_kind, 'query') = ${p}`, filter.eventKind);
+  if (filter?.messageRecordId) add((p) => `message_record_id = ${p}`, filter.messageRecordId);
+  if (filter?.messageRecordIds) {
+    add((p) => `message_record_id = ANY(${p}::text[])`, [...filter.messageRecordIds]);
+  }
+  if (filter?.direction) add((p) => `direction = ${p}`, filter.direction);
+
+  return { where, params };
+}
+
 export class PostgresAuditStore implements AuditStore {
   private readonly pool: Pool;
 
@@ -56,33 +162,11 @@ export class PostgresAuditStore implements AuditStore {
   }
 
   private async insertRecord(executor: Pool | PoolClient, record: AuditRecord): Promise<void> {
+    const { columns, values } = insertShape(record);
+    const placeholders = columns.map((_, index) => `$${index + 1}`).join(', ');
     await executor.query(
-      `INSERT INTO agent_audit
-       (id, timestamp, agent_did, owner_did, credential_id, query_hash,
-        columns_accessed, row_count, duration_ms, previous_hash, signature,
-        org_id, version, status, reason, reason_code,
-        delegator_did, delegated_grant_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
-      [
-        record.id,
-        record.timestamp,
-        record.agentDid,
-        record.ownerDid,
-        record.credentialId,
-        record.queryHash,
-        JSON.stringify(record.columnsAccessed),
-        record.rowCount,
-        record.durationMs,
-        record.previousHash,
-        record.signature,
-        record.orgId ?? null,
-        record.version ?? 1,
-        record.status ?? 'success',
-        record.reason ?? null,
-        record.reasonCode ?? null,
-        record.delegatorDid ?? null,
-        record.delegatedGrantId ?? null,
-      ],
+      `INSERT INTO agent_audit (${columns.join(', ')}) VALUES (${placeholders})`,
+      values,
     );
   }
 
@@ -92,11 +176,7 @@ export class PostgresAuditStore implements AuditStore {
 
   private async loadLastRecordFrom(executor: Pool | PoolClient): Promise<AuditRecord | null> {
     const result = await executor.query(
-      `SELECT id, timestamp, agent_did, owner_did, credential_id, query_hash,
-              columns_accessed, row_count, duration_ms, previous_hash, signature,
-              org_id, version, status, reason, reason_code,
-              delegator_did, delegated_grant_id
-       FROM agent_audit ORDER BY timestamp DESC LIMIT 1`,
+      'SELECT * FROM agent_audit ORDER BY timestamp DESC LIMIT 1',
     );
 
     if (result.rows.length === 0) return null;
@@ -126,7 +206,7 @@ export class PostgresAuditStore implements AuditStore {
   private _rowToRecord(row: Record<string, unknown>): AuditRecord {
     return {
       id: row.id as string,
-      timestamp: row.timestamp as string,
+      timestamp: (row.timestamp as Date | undefined)?.toISOString?.() ?? (row.timestamp as string),
       agentDid: row.agent_did as string,
       ownerDid: row.owner_did as string,
       credentialId: row.credential_id as string,
@@ -136,111 +216,41 @@ export class PostgresAuditStore implements AuditStore {
       durationMs: row.duration_ms as number,
       previousHash: row.previous_hash as string,
       signature: row.signature as string,
-      version: ((row.version as number) ?? 1) as 1 | 2 | 3 | 4,
+      version: ((row.version as number) ?? 1) as AuditRecord['version'],
       status: row.status as 'success' | 'rejected',
-      reason: row.reason as string | undefined,
-      reasonCode: row.reason_code as string | undefined,
+      reason: (row.reason as string | null) ?? undefined,
+      reasonCode: (row.reason_code as string | null) ?? undefined,
       orgId: (row.org_id as string | undefined) ?? undefined,
       delegatorDid: (row.delegator_did as string | undefined) ?? undefined,
       delegatedGrantId: (row.delegated_grant_id as string | undefined) ?? undefined,
+      eventKind: (row.event_kind as AuditRecord['eventKind'] | null) ?? undefined,
+      direction: (row.direction as AuditRecord['direction'] | null) ?? undefined,
+      counterpartAgentDid: (row.counterpart_agent_did as string | null) ?? undefined,
+      counterpartInstanceDid: (row.counterpart_instance_did as string | null) ?? undefined,
+      messageRecordId: (row.message_record_id as string | null) ?? undefined,
+      messageDigest: (row.message_digest as string | null) ?? undefined,
     };
   }
 
   async query(filter?: AuditQueryFilter): Promise<AuditRecord[]> {
-    let query = 'SELECT * FROM agent_audit WHERE 1=1';
-    const params: unknown[] = [];
-
-    if (filter?.id) {
-      params.push(filter.id);
-      query += ` AND id = $${params.length}`;
-    }
-    if (filter?.agentDids && filter.agentDids.length > 0) {
-      params.push(filter.agentDids);
-      query += ` AND agent_did = ANY($${params.length}::text[])`;
-    } else if (filter?.agentDid) {
-      params.push(filter.agentDid);
-      query += ` AND agent_did = $${params.length}`;
-    }
-    if (filter?.since) {
-      params.push(filter.since.toISOString());
-      query += ` AND timestamp >= $${params.length}`;
-    }
-    if (filter?.ownerDid) {
-      params.push(filter.ownerDid);
-      query += ` AND owner_did = $${params.length}`;
-    }
-    if (filter?.credentialId) {
-      params.push(filter.credentialId);
-      query += ` AND credential_id = $${params.length}`;
-    }
-    if (filter?.orgId) {
-      params.push(filter.orgId);
-      query += ` AND org_id = $${params.length}`;
-    }
-
-    query += ' ORDER BY timestamp ASC';
+    const { where, params } = buildWhere(filter);
+    let query = `SELECT * FROM agent_audit${where} ORDER BY timestamp ASC`;
     if (filter?.limit !== undefined) {
       params.push(filter.limit);
       query += ` LIMIT $${params.length}`;
     }
 
     const result = await this.pool.query(query, params);
-    return result.rows.map((row) => ({
-      id: row.id,
-      timestamp: row.timestamp,
-      agentDid: row.agent_did,
-      ownerDid: row.owner_did,
-      credentialId: row.credential_id,
-      queryHash: row.query_hash,
-      columnsAccessed: row.columns_accessed,
-      rowCount: row.row_count,
-      durationMs: row.duration_ms,
-      previousHash: row.previous_hash,
-      signature: row.signature,
-      version: row.version ?? (1 as 1 | 2 | 3 | 4),
-      status: row.status,
-      reason: row.reason,
-      reasonCode: row.reason_code,
-      orgId: row.org_id ?? undefined,
-      delegatorDid: row.delegator_did ?? undefined,
-      delegatedGrantId: row.delegated_grant_id ?? undefined,
-    }));
+    return result.rows.map((row) => this._rowToRecord(row));
   }
 
   /** The int cast prevents pg from returning COUNT as a string. */
   async count(filter?: AuditQueryFilter): Promise<number> {
-    let query = 'SELECT COUNT(*)::int AS cnt FROM agent_audit WHERE 1=1';
-    const params: unknown[] = [];
-
-    if (filter?.id) {
-      params.push(filter.id);
-      query += ` AND id = $${params.length}`;
-    }
-    if (filter?.agentDids && filter.agentDids.length > 0) {
-      params.push(filter.agentDids);
-      query += ` AND agent_did = ANY($${params.length}::text[])`;
-    } else if (filter?.agentDid) {
-      params.push(filter.agentDid);
-      query += ` AND agent_did = $${params.length}`;
-    }
-    if (filter?.since) {
-      params.push(filter.since.toISOString());
-      query += ` AND timestamp >= $${params.length}`;
-    }
-    if (filter?.ownerDid) {
-      params.push(filter.ownerDid);
-      query += ` AND owner_did = $${params.length}`;
-    }
-    if (filter?.credentialId) {
-      params.push(filter.credentialId);
-      query += ` AND credential_id = $${params.length}`;
-    }
-    if (filter?.orgId) {
-      params.push(filter.orgId);
-      query += ` AND org_id = $${params.length}`;
-    }
-
-    const result = await this.pool.query(query, params);
+    const { where, params } = buildWhere(filter);
+    const result = await this.pool.query(
+      `SELECT COUNT(*)::int AS cnt FROM agent_audit${where}`,
+      params,
+    );
     return result.rows[0].cnt;
   }
 }

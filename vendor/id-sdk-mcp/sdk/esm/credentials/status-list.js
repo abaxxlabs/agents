@@ -10,7 +10,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 import { VerifiableCredential as VC } from './credential.js';
 import { v4 as uuidv4 } from 'uuid';
 import { Convert } from '../common/index.js';
-import pako from 'pako';
+import * as pako from 'pako';
 /**
  * Constants for Status List 2021 implementation
  */

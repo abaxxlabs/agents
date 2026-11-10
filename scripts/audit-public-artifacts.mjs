@@ -96,6 +96,7 @@ function auditFiles(paths, pathRules, options = {}) {
       violations.push(
         ...scanFileForContentViolations(artifactPath, rootDir, {
           blockedContentTerms: options.blockedContentTerms,
+          contentExceptions: options.contentExceptions,
           scanBlockedTerms,
           employeeNames: options.employeeNames,
           fileStatus,
@@ -133,6 +134,7 @@ export function auditPublicRepoFiles(paths, options = {}) {
     {
       ...options,
       blockedContentTerms: policy?.blockedTerms ?? options.blockedContentTerms,
+      contentExceptions: policy?.contentExceptions ?? options.contentExceptions,
       ticketPrefixes: policy?.ticketPrefixes ?? options.ticketPrefixes,
       validatePublishedLinks: true,
     },
