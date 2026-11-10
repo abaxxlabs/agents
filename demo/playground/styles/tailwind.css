@@ -1,0 +1,127 @@
+@layer theme, base, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities) source(none);
+@source '../public';
+
+@custom-variant compact {
+  @media (max-width: 800px) {
+    @slot;
+  }
+}
+
+@custom-variant mobile {
+  @media (max-width: 520px) {
+    @slot;
+  }
+}
+
+@font-face {
+  font-family: 'Lato Header';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/LatoLatin-Regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Lato Header';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/LatoLatin-Medium.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Lato CTA';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/LatoLatin-Bold.woff2') format('woff2');
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+:root {
+  --bg: #0d1117;
+  --panel: #161b22;
+  --border: #2d333b;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --accent: #58a6ff;
+  --green: #3fb950;
+  --red: #f85149;
+  --amber: #d29922;
+  --mono: 'SFMono-Regular', 'JetBrains Mono', Consolas, monospace;
+  --playground-page-start: #1a2946;
+  --playground-page-middle: #0b1322;
+  --playground-panel: #101b2e;
+  --playground-control: #0a111e;
+  --playground-border: rgba(255, 255, 255, 0.08);
+  --playground-text: #f1f5f9;
+  --playground-muted: #8a99ad;
+  --playground-subtle: #a3b3c5;
+  --playground-dim: #64748b;
+  --playground-red: #ef4444;
+  --playground-red-dark: #cf0000;
+  --playground-green: #10b981;
+  --playground-blue: #2563eb;
+  --playground-gray: #6b7280;
+  --playground-font: Lato, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --playground-mono: Cousine, 'SFMono-Regular', Consolas, monospace;
+  --comparison-red: #ff4848;
+  --comparison-teal: #55e5c3;
+  --comparison-text: #f1f5f9;
+  --comparison-muted: #a3b3c5;
+  --comparison-surface: #101b2e;
+  --comparison-inset: #0a111e;
+  --comparison-border: rgba(255, 255, 255, 0.08);
+}
+
+@theme inline {
+  --color-legacy-bg: var(--bg);
+  --color-legacy-panel: var(--panel);
+  --color-legacy-border: var(--border);
+  --color-legacy-text: var(--text);
+  --color-legacy-muted: var(--muted);
+  --color-legacy-accent: var(--accent);
+  --color-legacy-green: var(--green);
+  --color-legacy-red: var(--red);
+  --color-legacy-amber: var(--amber);
+  --font-legacy-mono: var(--mono);
+  --color-pg-panel: var(--playground-panel);
+  --color-pg-control: var(--playground-control);
+  --color-pg-border: var(--playground-border);
+  --color-pg-text: var(--playground-text);
+  --color-pg-muted: var(--playground-muted);
+  --color-pg-subtle: var(--playground-subtle);
+  --color-pg-dim: var(--playground-dim);
+  --color-pg-error: var(--playground-red);
+  --color-pg-primary: var(--playground-red-dark);
+  --color-pg-success: var(--playground-green);
+  --color-pg-blue: var(--playground-blue);
+  --color-pg-gray: var(--playground-gray);
+  --font-pg: var(--playground-font);
+  --font-pg-brand: 'Lato Header', Lato, sans-serif;
+  --font-pg-cta: 'Lato CTA', Lato, sans-serif;
+  --font-pg-mono: var(--playground-mono);
+  --color-comparison-accent: var(--comparison-accent);
+  --color-comparison-red: var(--comparison-red);
+  --color-comparison-teal: var(--comparison-teal);
+  --color-comparison-text: var(--comparison-text);
+  --color-comparison-muted: var(--comparison-muted);
+  --color-comparison-surface: var(--comparison-surface);
+  --color-comparison-inset: var(--comparison-inset);
+  --color-comparison-border: var(--comparison-border);
+  --color-comparison-tint: var(--comparison-tint);
+  --color-comparison-edge: var(--comparison-edge);
+  --color-preset-accent: var(--preset-accent);
+  --background-image-pg-cta: url('/cta-background.svg');
+  --background-image-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='m2 3 3 3 3-3' fill='none' stroke='%238A99AD' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.25'/%3E%3C/svg%3E");
+  --background-image-checkbox-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m2.25 6.25 2.25 2.25 5.25-5.25' fill='none' stroke='%23FFFFFF' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5'/%3E%3C/svg%3E");
+}

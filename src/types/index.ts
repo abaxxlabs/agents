@@ -35,7 +35,13 @@ export type {
 
 export type { VerifyOptions, VerificationResult, DecodedCredential } from './verification.js';
 
-export type { AuditRecord, AuditEntry } from './audit.js';
+export type {
+  AuditRecord,
+  AuditEntry,
+  AuditEventKind,
+  MessageAuditEvent,
+  MessageDirection,
+} from './audit.js';
 
 export {
   IDENTITY_MIGRATION_CREDENTIAL,

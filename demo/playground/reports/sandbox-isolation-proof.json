@@ -1,0 +1,4132 @@
+{
+  "protocol": 1,
+  "status": "PASS",
+  "startedAt": "2026-11-05T16:08:28.878Z",
+  "command": [
+    "npm",
+    "run",
+    "proof:sandbox-isolation"
+  ],
+  "environment": {
+    "sourceRevision": "6ebee231291b3c220e0f4c6c3e335da7bc23572f",
+    "workingTree": "dirty",
+    "hostNode": "v24.18.0",
+    "build": "Canonical Playground Dockerfile built from the current checkout",
+    "lockSha256": "461918bb6cc66170b76dcce1d194d019e71720afc712b83ae427996030aff54b",
+    "image": {
+      "reference": "agents-playground-sandbox-proof:32743-1832ca53",
+      "id": "sha256:2c40fd90e8dfad58f4353c7427b7c43d1260dc4912a2bc1506128eb87fe8ad10",
+      "digests": [
+        "agents-playground-sandbox-proof@sha256:2c40fd90e8dfad58f4353c7427b7c43d1260dc4912a2bc1506128eb87fe8ad10"
+      ],
+      "architecture": "arm64",
+      "os": "linux",
+      "user": "node"
+    },
+    "modules": {
+      "executor.mjs": "cc2ffe0e6059924fd517ba8c6cf6452c9b61e2dc3586707026e762f5891da212",
+      "fixture.mjs": "79d9446ea32c6e0255e0d9554adc25895c46dfa275a73960ea2132b36e4ed97c",
+      "scenarios.mjs": "04efb2aaf12c4161520ee750f612951086c2075416e78b57741f49d3403f64dd",
+      "worker.mjs": "859dd91831f7260dc89dff1c99d10a247b6dbf7b8f74faddf403486cb5acec99"
+    },
+    "hostRunnerSha256": "88fa09616fbeafa1802296caf3a60b0e53c2732dac8b98894164f1ec6c67a7c3",
+    "hostCommandModuleSha256": "d7054f1e71228fa435ff765bfb2a6c21c5884e4b23af4606c311409d4dc5ff01",
+    "postgres": {
+      "id": "sha256:e8a07d2c7579b038938cdba6c539e580e5001caf9ea203d397b5cc83e76bd938",
+      "digests": [
+        "postgres@sha256:e8a07d2c7579b038938cdba6c539e580e5001caf9ea203d397b5cc83e76bd938"
+      ],
+      "version": "16.15 (Debian 16.15-1.pgdg12+2)"
+    }
+  },
+  "fixture": {
+    "type": "fixture",
+    "status": "PASS",
+    "migrations": [
+      "001_init.sql",
+      "002_context_entries.sql",
+      "003_agent_keys.sql",
+      "004_did_aliases.sql",
+      "005_rename_tables.sql",
+      "006_audit_org_id.sql",
+      "007_revoked_credentials.sql",
+      "008_sessions.sql",
+      "009_audit_v3_columns.sql",
+      "010_audit_delegation_provenance.sql",
+      "011_audit_message_events.sql"
+    ],
+    "protectedRows": 2,
+    "sandboxes": 2,
+    "privateRows": 4,
+    "roles": [
+      "proof_query",
+      "proof_raw",
+      "proof_control"
+    ],
+    "policyProbeRole": "proof_probe"
+  },
+  "worker": {
+    "protocol": 1,
+    "status": "PASS",
+    "checks": [
+      {
+        "name": "fixture has overlapping ids and distinct private markers",
+        "status": "PASS"
+      },
+      {
+        "name": "proof_query has no privileged database identity",
+        "status": "PASS",
+        "role": "proof_query"
+      },
+      {
+        "name": "proof_raw has no privileged database identity",
+        "status": "PASS",
+        "role": "proof_raw"
+      },
+      {
+        "name": "plaintext row policy is forced with symmetric write check",
+        "status": "PASS"
+      },
+      {
+        "name": "query starts without a context token",
+        "status": "PASS"
+      },
+      {
+        "name": "query cannot read private rows outside scoped transaction",
+        "status": "PASS",
+        "layer": "postgres-role + context",
+        "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "raw starts without a context token",
+        "status": "PASS"
+      },
+      {
+        "name": "raw cannot read private rows outside scoped transaction",
+        "status": "PASS",
+        "layer": "postgres-role + context",
+        "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "qualified plaintext read is scoped to A",
+        "status": "PASS",
+        "layer": "sql-policy + postgres-rls",
+        "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 2
+      },
+      {
+        "name": "qualified plaintext read is scoped to B",
+        "status": "PASS",
+        "layer": "sql-policy + postgres-rls",
+        "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 2
+      },
+      {
+        "name": "A explicit B read returns zero rows",
+        "status": "PASS",
+        "layer": "postgres-rls",
+        "sql": "SELECT * FROM public.orders_plaintext WHERE sandbox_id = '22222222-2222-4222-8222-222222222222'",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 0
+      },
+      {
+        "name": "A update affects exactly its own row",
+        "status": "PASS",
+        "layer": "sql-policy + postgres-rls",
+        "sql": "UPDATE public.orders_plaintext SET instrument = 'A-changed', quantity = 77, price = 99, counterparty = 'A-updated' WHERE id = 1",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 1
+      },
+      {
+        "name": "A update changes its selected row",
+        "status": "PASS"
+      },
+      {
+        "name": "A update leaves B and full encrypted fixture unchanged",
+        "status": "PASS"
+      },
+      {
+        "name": "A explicit B update affects zero rows",
+        "status": "PASS",
+        "layer": "postgres-rls",
+        "sql": "UPDATE public.orders_plaintext SET quantity = 0 WHERE sandbox_id = '22222222-2222-4222-8222-222222222222'",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 0
+      },
+      {
+        "name": "A delete affects exactly its own row",
+        "status": "PASS",
+        "layer": "sql-policy + postgres-rls",
+        "sql": "DELETE FROM public.orders_plaintext WHERE id = 2",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 1
+      },
+      {
+        "name": "A delete removes only its selected row",
+        "status": "PASS"
+      },
+      {
+        "name": "A explicit B delete affects zero rows",
+        "status": "PASS",
+        "layer": "postgres-rls",
+        "sql": "DELETE FROM public.orders_plaintext WHERE sandbox_id = '22222222-2222-4222-8222-222222222222'",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 0
+      },
+      {
+        "name": "A delete leaves B and full encrypted fixture unchanged",
+        "status": "PASS"
+      },
+      {
+        "name": "reset runs with an enabled rejecting BEFORE TRUNCATE guard",
+        "status": "PASS"
+      },
+      {
+        "name": "reset reseeds A without truncating shared state",
+        "status": "PASS",
+        "layer": "trusted-control",
+        "sql": "SELECT proof_private.reset_sandbox($1::uuid)",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 1
+      },
+      {
+        "name": "reset emits only selected sandbox row DELETE events",
+        "status": "PASS",
+        "deletedRows": 1,
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "truncateGuardEnabled": true
+      },
+      {
+        "name": "A reset restores exactly A original rows",
+        "status": "PASS"
+      },
+      {
+        "name": "A reset leaves B and full encrypted fixture unchanged",
+        "status": "PASS"
+      },
+      {
+        "name": "A real SDK narrow credential allows base projection",
+        "status": "PASS",
+        "layer": "sdk",
+        "sql": "SELECT id, instrument, quantity, price FROM orders ORDER BY id",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 2
+      },
+      {
+        "name": "A narrow credential denies broader projection",
+        "status": "PASS",
+        "layer": "sdk",
+        "sql": "SELECT id, instrument, quantity, price, counterparty FROM orders ORDER BY id",
+        "expected": "SCOPE_VIOLATION",
+        "observed": "SCOPE_VIOLATION",
+        "sqlstate": null
+      },
+      {
+        "name": "A identical SQL succeeds with broader signed credential",
+        "status": "PASS",
+        "layer": "sdk",
+        "sql": "SELECT id, instrument, quantity, price, counterparty FROM orders ORDER BY id",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 2
+      },
+      {
+        "name": "B real SDK narrow credential allows base projection",
+        "status": "PASS",
+        "layer": "sdk",
+        "sql": "SELECT id, instrument, quantity, price FROM orders ORDER BY id",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 2
+      },
+      {
+        "name": "B narrow credential denies broader projection",
+        "status": "PASS",
+        "layer": "sdk",
+        "sql": "SELECT id, instrument, quantity, price, counterparty FROM orders ORDER BY id",
+        "expected": "SCOPE_VIOLATION",
+        "observed": "SCOPE_VIOLATION",
+        "sqlstate": null
+      },
+      {
+        "name": "B identical SQL succeeds with broader signed credential",
+        "status": "PASS",
+        "layer": "sdk",
+        "sql": "SELECT id, instrument, quantity, price, counterparty FROM orders ORDER BY id",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 2
+      },
+      {
+        "name": "SDK visitors read the same shared protected fixture",
+        "status": "PASS"
+      },
+      {
+        "name": "A rawBytes contains only its private rows",
+        "status": "PASS",
+        "layer": "postgres-rls + encrypted-read",
+        "sql": [
+          {
+            "role": "raw",
+            "sql": "SELECT id, instrument, price, counterparty FROM public.orders_plaintext ORDER BY id LIMIT 4"
+          },
+          {
+            "role": "query",
+            "sql": "SELECT id, instrument, price, counterparty FROM public.orders ORDER BY id LIMIT 4"
+          }
+        ],
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 4,
+        "components": [
+          {
+            "role": "raw",
+            "rowCount": 2
+          },
+          {
+            "role": "query",
+            "rowCount": 2
+          }
+        ]
+      },
+      {
+        "name": "B rawBytes contains only its private rows",
+        "status": "PASS",
+        "layer": "postgres-rls + encrypted-read",
+        "sql": [
+          {
+            "role": "raw",
+            "sql": "SELECT id, instrument, price, counterparty FROM public.orders_plaintext ORDER BY id LIMIT 4"
+          },
+          {
+            "role": "query",
+            "sql": "SELECT id, instrument, price, counterparty FROM public.orders ORDER BY id LIMIT 4"
+          }
+        ],
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 4,
+        "components": [
+          {
+            "role": "raw",
+            "rowCount": 2
+          },
+          {
+            "role": "query",
+            "rowCount": 2
+          }
+        ]
+      },
+      {
+        "name": "rawBytes encrypted fixture is shared and unchanged",
+        "status": "PASS"
+      },
+      {
+        "name": "rawBytes ciphertext equals the entire canonical encrypted fixture projection",
+        "status": "PASS"
+      },
+      {
+        "name": "rawBytes does not mutate B or the full encrypted fixture",
+        "status": "PASS"
+      },
+      {
+        "name": "query database denies private registry without parser",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "SELECT * FROM proof_private.sandboxes",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "query database denies private signing key without parser",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "SELECT * FROM proof_private.context_secret",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "query database denies private DELETE observer without parser",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "SELECT * FROM proof_private.delete_events",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "query database denies shared table truncation without parser",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "TRUNCATE public.orders_plaintext",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "query database denies privileged role catalog without parser",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "SELECT * FROM pg_catalog.pg_authid",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "query database denies context signer without parser",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "SELECT proof_private.issue_context('11111111-1111-4111-8111-111111111111'::uuid, pg_backend_pid(), txid_current()::text, current_user::text)",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "query database denies sandbox reset without parser",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "SELECT proof_private.reset_sandbox('22222222-2222-4222-8222-222222222222'::uuid)",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "query database denies private snapshot without parser",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "SELECT proof_private.snapshot() AS snapshot",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "query database denies test-only RLS oracle without parser",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "SELECT proof_private.probe_with_check('11111111-1111-4111-8111-111111111111'::uuid, '22222222-2222-4222-8222-222222222222'::uuid)",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "query database denies role escalation without parser",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "SET ROLE proof_control",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "query database denies session identity escalation without parser",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "SET SESSION AUTHORIZATION proof_control",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "query database denies private function in subquery without parser",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "SELECT (SELECT proof_private.snapshot())",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "query cannot update sandbox ownership",
+        "status": "PASS",
+        "layer": "postgres-column-grant",
+        "sql": "UPDATE public.orders_plaintext SET sandbox_id = '22222222-2222-4222-8222-222222222222' WHERE id = 1",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "query cannot insert another sandbox row",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "INSERT INTO public.orders_plaintext (sandbox_id,id,instrument,quantity,price,counterparty) VALUES ('22222222-2222-4222-8222-222222222222',3,'forged',1,1,'forged')",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "query subquery cannot expose B",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "SELECT stolen FROM (SELECT (SELECT counterparty FROM public.orders_plaintext WHERE sandbox_id = '22222222-2222-4222-8222-222222222222' LIMIT 1) AS stolen) AS nested",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "raw parser rejects private registry",
+        "status": "PASS",
+        "layer": "sql-policy",
+        "sql": "SELECT * FROM proof_private.sandboxes",
+        "expected": "SQL_POLICY_REJECTED",
+        "observed": "SQL_POLICY_REJECTED",
+        "sqlstate": null
+      },
+      {
+        "name": "raw database denies private registry without parser",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "SELECT * FROM proof_private.sandboxes",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "raw parser rejects private signing key",
+        "status": "PASS",
+        "layer": "sql-policy",
+        "sql": "SELECT * FROM proof_private.context_secret",
+        "expected": "SQL_POLICY_REJECTED",
+        "observed": "SQL_POLICY_REJECTED",
+        "sqlstate": null
+      },
+      {
+        "name": "raw database denies private signing key without parser",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "SELECT * FROM proof_private.context_secret",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "raw parser rejects private DELETE observer",
+        "status": "PASS",
+        "layer": "sql-policy",
+        "sql": "SELECT * FROM proof_private.delete_events",
+        "expected": "SQL_POLICY_REJECTED",
+        "observed": "SQL_POLICY_REJECTED",
+        "sqlstate": null
+      },
+      {
+        "name": "raw database denies private DELETE observer without parser",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "SELECT * FROM proof_private.delete_events",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "raw parser rejects shared table truncation",
+        "status": "PASS",
+        "layer": "sql-policy",
+        "sql": "TRUNCATE public.orders_plaintext",
+        "expected": "SQL_POLICY_REJECTED",
+        "observed": "SQL_POLICY_REJECTED",
+        "sqlstate": null
+      },
+      {
+        "name": "raw database denies shared table truncation without parser",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "TRUNCATE public.orders_plaintext",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "raw parser rejects privileged role catalog",
+        "status": "PASS",
+        "layer": "sql-policy",
+        "sql": "SELECT * FROM pg_catalog.pg_authid",
+        "expected": "SQL_POLICY_REJECTED",
+        "observed": "SQL_POLICY_REJECTED",
+        "sqlstate": null
+      },
+      {
+        "name": "raw database denies privileged role catalog without parser",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "SELECT * FROM pg_catalog.pg_authid",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "raw parser rejects context signer",
+        "status": "PASS",
+        "layer": "sql-policy",
+        "sql": "SELECT proof_private.issue_context('11111111-1111-4111-8111-111111111111'::uuid, pg_backend_pid(), txid_current()::text, current_user::text)",
+        "expected": "SQL_POLICY_REJECTED",
+        "observed": "SQL_POLICY_REJECTED",
+        "sqlstate": null
+      },
+      {
+        "name": "raw database denies context signer without parser",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "SELECT proof_private.issue_context('11111111-1111-4111-8111-111111111111'::uuid, pg_backend_pid(), txid_current()::text, current_user::text)",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "raw parser rejects sandbox reset",
+        "status": "PASS",
+        "layer": "sql-policy",
+        "sql": "SELECT proof_private.reset_sandbox('22222222-2222-4222-8222-222222222222'::uuid)",
+        "expected": "SQL_POLICY_REJECTED",
+        "observed": "SQL_POLICY_REJECTED",
+        "sqlstate": null
+      },
+      {
+        "name": "raw database denies sandbox reset without parser",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "SELECT proof_private.reset_sandbox('22222222-2222-4222-8222-222222222222'::uuid)",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "raw parser rejects private snapshot",
+        "status": "PASS",
+        "layer": "sql-policy",
+        "sql": "SELECT proof_private.snapshot() AS snapshot",
+        "expected": "SQL_POLICY_REJECTED",
+        "observed": "SQL_POLICY_REJECTED",
+        "sqlstate": null
+      },
+      {
+        "name": "raw database denies private snapshot without parser",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "SELECT proof_private.snapshot() AS snapshot",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "raw parser rejects test-only RLS oracle",
+        "status": "PASS",
+        "layer": "sql-policy",
+        "sql": "SELECT proof_private.probe_with_check('11111111-1111-4111-8111-111111111111'::uuid, '22222222-2222-4222-8222-222222222222'::uuid)",
+        "expected": "SQL_POLICY_REJECTED",
+        "observed": "SQL_POLICY_REJECTED",
+        "sqlstate": null
+      },
+      {
+        "name": "raw database denies test-only RLS oracle without parser",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "SELECT proof_private.probe_with_check('11111111-1111-4111-8111-111111111111'::uuid, '22222222-2222-4222-8222-222222222222'::uuid)",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "raw parser rejects role escalation",
+        "status": "PASS",
+        "layer": "sql-policy",
+        "sql": "SET ROLE proof_control",
+        "expected": "SQL_POLICY_REJECTED",
+        "observed": "SQL_POLICY_REJECTED",
+        "sqlstate": null
+      },
+      {
+        "name": "raw database denies role escalation without parser",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "SET ROLE proof_control",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "raw parser rejects session identity escalation",
+        "status": "PASS",
+        "layer": "sql-policy",
+        "sql": "SET SESSION AUTHORIZATION proof_control",
+        "expected": "SQL_POLICY_REJECTED",
+        "observed": "SQL_POLICY_REJECTED",
+        "sqlstate": null
+      },
+      {
+        "name": "raw database denies session identity escalation without parser",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "SET SESSION AUTHORIZATION proof_control",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "raw parser rejects private function in subquery",
+        "status": "PASS",
+        "layer": "sql-policy",
+        "sql": "SELECT (SELECT proof_private.snapshot())",
+        "expected": "SQL_POLICY_REJECTED",
+        "observed": "SQL_POLICY_REJECTED",
+        "sqlstate": null
+      },
+      {
+        "name": "raw database denies private function in subquery without parser",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "SELECT (SELECT proof_private.snapshot())",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "parser rejects sandbox reassignment",
+        "status": "PASS",
+        "layer": "sql-policy",
+        "sql": "UPDATE public.orders_plaintext SET sandbox_id = '22222222-2222-4222-8222-222222222222' WHERE id = 1",
+        "expected": "SQL_POLICY_REJECTED",
+        "observed": "SQL_POLICY_REJECTED",
+        "sqlstate": null
+      },
+      {
+        "name": "raw cannot update sandbox ownership",
+        "status": "PASS",
+        "layer": "postgres-column-grant",
+        "sql": "UPDATE public.orders_plaintext SET sandbox_id = '22222222-2222-4222-8222-222222222222' WHERE id = 1",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "raw cannot insert another sandbox row",
+        "status": "PASS",
+        "layer": "postgres-role",
+        "sql": "INSERT INTO public.orders_plaintext (sandbox_id,id,instrument,quantity,price,counterparty) VALUES ('22222222-2222-4222-8222-222222222222',3,'forged',1,1,'forged')",
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "parser rejects derived relation subquery",
+        "status": "PASS",
+        "layer": "sql-policy",
+        "sql": "SELECT stolen FROM (SELECT (SELECT counterparty FROM public.orders_plaintext WHERE sandbox_id = '22222222-2222-4222-8222-222222222222' LIMIT 1) AS stolen) AS nested",
+        "expected": "SQL_POLICY_REJECTED",
+        "observed": "SQL_POLICY_REJECTED",
+        "sqlstate": null
+      },
+      {
+        "name": "raw subquery cannot expose B",
+        "status": "PASS",
+        "layer": "postgres-rls",
+        "sql": "SELECT stolen FROM (SELECT (SELECT counterparty FROM public.orders_plaintext WHERE sandbox_id = '22222222-2222-4222-8222-222222222222' LIMIT 1) AS stolen) AS nested",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 1
+      },
+      {
+        "name": "parser rejects context-mutating function",
+        "status": "PASS",
+        "layer": "sql-policy",
+        "sql": "SELECT set_config('proof.sandbox_token', 'forged', true) FROM public.orders_plaintext",
+        "expected": "SQL_POLICY_REJECTED",
+        "observed": "SQL_POLICY_REJECTED",
+        "sqlstate": null
+      },
+      {
+        "name": "test-only nonowner oracle exercises real INSERT WITH CHECK",
+        "status": "PASS",
+        "layer": "postgres-rls-test-only-oracle",
+        "sql": "SELECT proof_private.probe_with_check($1::uuid, $2::uuid) AS probe",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 1
+      },
+      {
+        "name": "WITH CHECK oracle leaves B and encrypted fixture unchanged",
+        "status": "PASS"
+      },
+      {
+        "name": "signed context is retained only in transaction memory",
+        "status": "PASS"
+      },
+      {
+        "name": "raw forged custom GUC cannot establish authenticated context",
+        "status": "PASS",
+        "layer": "postgres-context",
+        "sql": [
+          {
+            "role": "raw",
+            "sql": "SELECT set_config('proof.sandbox_token', $1, true)"
+          },
+          {
+            "role": "raw",
+            "sql": "SELECT proof_guard.current_sandbox()"
+          }
+        ],
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "raw prior transaction token replay cannot establish authenticated context",
+        "status": "PASS",
+        "layer": "postgres-context",
+        "sql": [
+          {
+            "role": "raw",
+            "sql": "SELECT set_config('proof.sandbox_token', $1, true)"
+          },
+          {
+            "role": "raw",
+            "sql": "SELECT proof_guard.current_sandbox()"
+          }
+        ],
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "raw original signed context matches current sandbox PID XID and session user",
+        "status": "PASS"
+      },
+      {
+        "name": "raw invalid signature with current context cannot establish authenticated context",
+        "status": "PASS",
+        "layer": "postgres-context",
+        "sql": [
+          {
+            "role": "raw",
+            "sql": "SELECT pg_backend_pid() AS pid, txid_current()::text AS xid, session_user::text AS session_user, proof_guard.current_sandbox() AS sandbox, current_setting('proof.sandbox_token') AS token"
+          },
+          {
+            "role": "raw",
+            "sql": "SELECT set_config('proof.sandbox_token', $1, true)"
+          },
+          {
+            "role": "raw",
+            "sql": "SELECT proof_guard.current_sandbox()"
+          }
+        ],
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "query forged custom GUC cannot establish authenticated context",
+        "status": "PASS",
+        "layer": "postgres-context",
+        "sql": [
+          {
+            "role": "query",
+            "sql": "SELECT set_config('proof.sandbox_token', $1, true)"
+          },
+          {
+            "role": "query",
+            "sql": "SELECT proof_guard.current_sandbox()"
+          }
+        ],
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "query prior transaction token replay cannot establish authenticated context",
+        "status": "PASS",
+        "layer": "postgres-context",
+        "sql": [
+          {
+            "role": "query",
+            "sql": "SELECT set_config('proof.sandbox_token', $1, true)"
+          },
+          {
+            "role": "query",
+            "sql": "SELECT proof_guard.current_sandbox()"
+          }
+        ],
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "query original signed context matches current sandbox PID XID and session user",
+        "status": "PASS"
+      },
+      {
+        "name": "query invalid signature with current context cannot establish authenticated context",
+        "status": "PASS",
+        "layer": "postgres-context",
+        "sql": [
+          {
+            "role": "query",
+            "sql": "SELECT pg_backend_pid() AS pid, txid_current()::text AS xid, session_user::text AS session_user, proof_guard.current_sandbox() AS sandbox, current_setting('proof.sandbox_token') AS token"
+          },
+          {
+            "role": "query",
+            "sql": "SELECT set_config('proof.sandbox_token', $1, true)"
+          },
+          {
+            "role": "query",
+            "sql": "SELECT proof_guard.current_sandbox()"
+          }
+        ],
+        "expected": "42501",
+        "observed": "42501",
+        "sqlstate": "42501"
+      },
+      {
+        "name": "raw persistent poisoning on commit",
+        "status": "PASS",
+        "layer": "postgres-session-defense",
+        "sql": [
+          {
+            "role": "raw",
+            "sql": "SELECT set_config('proof.sandbox_token',current_setting('proof.sandbox_token'),false), set_config('search_path','pg_catalog',false), set_config('statement_timeout','9000',false), set_config('lock_timeout','8000',false), set_config('idle_in_transaction_session_timeout','7000',false)"
+          }
+        ],
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 1
+      },
+      {
+        "name": "raw sanitizes persistent GUC changes after commit",
+        "status": "PASS",
+        "before": {
+          "pid": 113,
+          "role": "proof_raw",
+          "search_path": "pg_catalog, public",
+          "statement_timeout": "5s",
+          "lock_timeout": "0",
+          "idle_timeout": "0",
+          "tokenEmpty": true
+        },
+        "after": {
+          "pid": 113,
+          "role": "proof_raw",
+          "search_path": "pg_catalog, public",
+          "statement_timeout": "5s",
+          "lock_timeout": "0",
+          "idle_timeout": "0",
+          "tokenEmpty": true
+        }
+      },
+      {
+        "name": "raw B receives clean authenticated context after poisoning",
+        "status": "PASS",
+        "layer": "postgres-context",
+        "sql": "SELECT proof_guard.current_sandbox() AS sandbox",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 1
+      },
+      {
+        "name": "raw persistent poisoning on rollback",
+        "status": "PASS",
+        "layer": "postgres-session-defense",
+        "sql": [
+          {
+            "role": "raw",
+            "sql": "SELECT set_config('proof.sandbox_token',current_setting('proof.sandbox_token'),false), set_config('search_path','pg_catalog',false), set_config('statement_timeout','9000',false), set_config('lock_timeout','8000',false), set_config('idle_in_transaction_session_timeout','7000',false)"
+          },
+          {
+            "role": "raw",
+            "sql": "SELECT 1 / 0"
+          }
+        ],
+        "expected": "22012",
+        "observed": "22012",
+        "sqlstate": "22012"
+      },
+      {
+        "name": "raw sanitizes persistent GUC changes after rollback",
+        "status": "PASS",
+        "before": {
+          "pid": 113,
+          "role": "proof_raw",
+          "search_path": "pg_catalog, public",
+          "statement_timeout": "5s",
+          "lock_timeout": "0",
+          "idle_timeout": "0",
+          "tokenEmpty": true
+        },
+        "after": {
+          "pid": 113,
+          "role": "proof_raw",
+          "search_path": "pg_catalog, public",
+          "statement_timeout": "5s",
+          "lock_timeout": "0",
+          "idle_timeout": "0",
+          "tokenEmpty": true
+        }
+      },
+      {
+        "name": "raw B receives clean authenticated context after poisoning",
+        "status": "PASS",
+        "layer": "postgres-context",
+        "sql": "SELECT proof_guard.current_sandbox() AS sandbox",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 1
+      },
+      {
+        "name": "query persistent poisoning on commit",
+        "status": "PASS",
+        "layer": "postgres-session-defense",
+        "sql": [
+          {
+            "role": "query",
+            "sql": "SELECT set_config('proof.sandbox_token',current_setting('proof.sandbox_token'),false), set_config('search_path','pg_catalog',false), set_config('statement_timeout','9000',false), set_config('lock_timeout','8000',false), set_config('idle_in_transaction_session_timeout','7000',false)"
+          }
+        ],
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 1
+      },
+      {
+        "name": "query sanitizes persistent GUC changes after commit",
+        "status": "PASS",
+        "before": {
+          "pid": 111,
+          "role": "proof_query",
+          "search_path": "pg_catalog, public",
+          "statement_timeout": "5s",
+          "lock_timeout": "0",
+          "idle_timeout": "0",
+          "tokenEmpty": true
+        },
+        "after": {
+          "pid": 111,
+          "role": "proof_query",
+          "search_path": "pg_catalog, public",
+          "statement_timeout": "5s",
+          "lock_timeout": "0",
+          "idle_timeout": "0",
+          "tokenEmpty": true
+        }
+      },
+      {
+        "name": "query B receives clean authenticated context after poisoning",
+        "status": "PASS",
+        "layer": "postgres-context",
+        "sql": "SELECT proof_guard.current_sandbox() AS sandbox",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 1
+      },
+      {
+        "name": "query persistent poisoning on rollback",
+        "status": "PASS",
+        "layer": "postgres-session-defense",
+        "sql": [
+          {
+            "role": "query",
+            "sql": "SELECT set_config('proof.sandbox_token',current_setting('proof.sandbox_token'),false), set_config('search_path','pg_catalog',false), set_config('statement_timeout','9000',false), set_config('lock_timeout','8000',false), set_config('idle_in_transaction_session_timeout','7000',false)"
+          },
+          {
+            "role": "query",
+            "sql": "SELECT 1 / 0"
+          }
+        ],
+        "expected": "22012",
+        "observed": "22012",
+        "sqlstate": "22012"
+      },
+      {
+        "name": "query sanitizes persistent GUC changes after rollback",
+        "status": "PASS",
+        "before": {
+          "pid": 111,
+          "role": "proof_query",
+          "search_path": "pg_catalog, public",
+          "statement_timeout": "5s",
+          "lock_timeout": "0",
+          "idle_timeout": "0",
+          "tokenEmpty": true
+        },
+        "after": {
+          "pid": 111,
+          "role": "proof_query",
+          "search_path": "pg_catalog, public",
+          "statement_timeout": "5s",
+          "lock_timeout": "0",
+          "idle_timeout": "0",
+          "tokenEmpty": true
+        }
+      },
+      {
+        "name": "query B receives clean authenticated context after poisoning",
+        "status": "PASS",
+        "layer": "postgres-context",
+        "sql": "SELECT proof_guard.current_sandbox() AS sandbox",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 1
+      },
+      {
+        "name": "A alternating reuse scoped read 0",
+        "status": "PASS",
+        "layer": "postgres-rls",
+        "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 2
+      },
+      {
+        "name": "A parser rejection before checkout 0",
+        "status": "PASS",
+        "layer": "sql-policy",
+        "sql": "SELECT pg_sleep(1)",
+        "expected": "SQL_POLICY_REJECTED",
+        "observed": "SQL_POLICY_REJECTED",
+        "sqlstate": null
+      },
+      {
+        "name": "A SDK rejection during reuse 0",
+        "status": "PASS",
+        "layer": "sdk",
+        "sql": "SELECT id, instrument, quantity, price, counterparty FROM orders ORDER BY id",
+        "expected": "SCOPE_VIOLATION",
+        "observed": "SCOPE_VIOLATION",
+        "sqlstate": null
+      },
+      {
+        "name": "raw A real transaction abort 0",
+        "status": "PASS",
+        "layer": "postgres-execution",
+        "sql": "SELECT 1 / 0",
+        "expected": "22012",
+        "observed": "22012",
+        "sqlstate": "22012"
+      },
+      {
+        "name": "query A real transaction abort 0",
+        "status": "PASS",
+        "layer": "postgres-execution",
+        "sql": "SELECT 1 / 0",
+        "expected": "22012",
+        "observed": "22012",
+        "sqlstate": "22012"
+      },
+      {
+        "name": "B alternating reuse scoped read 0",
+        "status": "PASS",
+        "layer": "postgres-rls",
+        "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 2
+      },
+      {
+        "name": "B parser rejection before checkout 0",
+        "status": "PASS",
+        "layer": "sql-policy",
+        "sql": "SELECT pg_sleep(1)",
+        "expected": "SQL_POLICY_REJECTED",
+        "observed": "SQL_POLICY_REJECTED",
+        "sqlstate": null
+      },
+      {
+        "name": "B SDK rejection during reuse 0",
+        "status": "PASS",
+        "layer": "sdk",
+        "sql": "SELECT id, instrument, quantity, price, counterparty FROM orders ORDER BY id",
+        "expected": "SCOPE_VIOLATION",
+        "observed": "SCOPE_VIOLATION",
+        "sqlstate": null
+      },
+      {
+        "name": "raw B real transaction abort 0",
+        "status": "PASS",
+        "layer": "postgres-execution",
+        "sql": "SELECT 1 / 0",
+        "expected": "22012",
+        "observed": "22012",
+        "sqlstate": "22012"
+      },
+      {
+        "name": "query B real transaction abort 0",
+        "status": "PASS",
+        "layer": "postgres-execution",
+        "sql": "SELECT 1 / 0",
+        "expected": "22012",
+        "observed": "22012",
+        "sqlstate": "22012"
+      },
+      {
+        "name": "B survives failed operations 0",
+        "status": "PASS",
+        "layer": "postgres-rls",
+        "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 2
+      },
+      {
+        "name": "B SDK query survives failed transactions 0",
+        "status": "PASS",
+        "layer": "sdk",
+        "sql": "SELECT id, instrument, quantity, price FROM orders ORDER BY id",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 2
+      },
+      {
+        "name": "A alternating reuse scoped read 1",
+        "status": "PASS",
+        "layer": "postgres-rls",
+        "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 2
+      },
+      {
+        "name": "A parser rejection before checkout 1",
+        "status": "PASS",
+        "layer": "sql-policy",
+        "sql": "SELECT pg_sleep(1)",
+        "expected": "SQL_POLICY_REJECTED",
+        "observed": "SQL_POLICY_REJECTED",
+        "sqlstate": null
+      },
+      {
+        "name": "A SDK rejection during reuse 1",
+        "status": "PASS",
+        "layer": "sdk",
+        "sql": "SELECT id, instrument, quantity, price, counterparty FROM orders ORDER BY id",
+        "expected": "SCOPE_VIOLATION",
+        "observed": "SCOPE_VIOLATION",
+        "sqlstate": null
+      },
+      {
+        "name": "raw A real transaction abort 1",
+        "status": "PASS",
+        "layer": "postgres-execution",
+        "sql": "SELECT 1 / 0",
+        "expected": "22012",
+        "observed": "22012",
+        "sqlstate": "22012"
+      },
+      {
+        "name": "query A real transaction abort 1",
+        "status": "PASS",
+        "layer": "postgres-execution",
+        "sql": "SELECT 1 / 0",
+        "expected": "22012",
+        "observed": "22012",
+        "sqlstate": "22012"
+      },
+      {
+        "name": "B alternating reuse scoped read 1",
+        "status": "PASS",
+        "layer": "postgres-rls",
+        "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 2
+      },
+      {
+        "name": "B parser rejection before checkout 1",
+        "status": "PASS",
+        "layer": "sql-policy",
+        "sql": "SELECT pg_sleep(1)",
+        "expected": "SQL_POLICY_REJECTED",
+        "observed": "SQL_POLICY_REJECTED",
+        "sqlstate": null
+      },
+      {
+        "name": "B SDK rejection during reuse 1",
+        "status": "PASS",
+        "layer": "sdk",
+        "sql": "SELECT id, instrument, quantity, price, counterparty FROM orders ORDER BY id",
+        "expected": "SCOPE_VIOLATION",
+        "observed": "SCOPE_VIOLATION",
+        "sqlstate": null
+      },
+      {
+        "name": "raw B real transaction abort 1",
+        "status": "PASS",
+        "layer": "postgres-execution",
+        "sql": "SELECT 1 / 0",
+        "expected": "22012",
+        "observed": "22012",
+        "sqlstate": "22012"
+      },
+      {
+        "name": "query B real transaction abort 1",
+        "status": "PASS",
+        "layer": "postgres-execution",
+        "sql": "SELECT 1 / 0",
+        "expected": "22012",
+        "observed": "22012",
+        "sqlstate": "22012"
+      },
+      {
+        "name": "B survives failed operations 1",
+        "status": "PASS",
+        "layer": "postgres-rls",
+        "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 2
+      },
+      {
+        "name": "B SDK query survives failed transactions 1",
+        "status": "PASS",
+        "layer": "sdk",
+        "sql": "SELECT id, instrument, quantity, price FROM orders ORDER BY id",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 2
+      },
+      {
+        "name": "A alternating reuse scoped read 2",
+        "status": "PASS",
+        "layer": "postgres-rls",
+        "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 2
+      },
+      {
+        "name": "A parser rejection before checkout 2",
+        "status": "PASS",
+        "layer": "sql-policy",
+        "sql": "SELECT pg_sleep(1)",
+        "expected": "SQL_POLICY_REJECTED",
+        "observed": "SQL_POLICY_REJECTED",
+        "sqlstate": null
+      },
+      {
+        "name": "A SDK rejection during reuse 2",
+        "status": "PASS",
+        "layer": "sdk",
+        "sql": "SELECT id, instrument, quantity, price, counterparty FROM orders ORDER BY id",
+        "expected": "SCOPE_VIOLATION",
+        "observed": "SCOPE_VIOLATION",
+        "sqlstate": null
+      },
+      {
+        "name": "raw A real transaction abort 2",
+        "status": "PASS",
+        "layer": "postgres-execution",
+        "sql": "SELECT 1 / 0",
+        "expected": "22012",
+        "observed": "22012",
+        "sqlstate": "22012"
+      },
+      {
+        "name": "query A real transaction abort 2",
+        "status": "PASS",
+        "layer": "postgres-execution",
+        "sql": "SELECT 1 / 0",
+        "expected": "22012",
+        "observed": "22012",
+        "sqlstate": "22012"
+      },
+      {
+        "name": "B alternating reuse scoped read 2",
+        "status": "PASS",
+        "layer": "postgres-rls",
+        "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 2
+      },
+      {
+        "name": "B parser rejection before checkout 2",
+        "status": "PASS",
+        "layer": "sql-policy",
+        "sql": "SELECT pg_sleep(1)",
+        "expected": "SQL_POLICY_REJECTED",
+        "observed": "SQL_POLICY_REJECTED",
+        "sqlstate": null
+      },
+      {
+        "name": "B SDK rejection during reuse 2",
+        "status": "PASS",
+        "layer": "sdk",
+        "sql": "SELECT id, instrument, quantity, price, counterparty FROM orders ORDER BY id",
+        "expected": "SCOPE_VIOLATION",
+        "observed": "SCOPE_VIOLATION",
+        "sqlstate": null
+      },
+      {
+        "name": "raw B real transaction abort 2",
+        "status": "PASS",
+        "layer": "postgres-execution",
+        "sql": "SELECT 1 / 0",
+        "expected": "22012",
+        "observed": "22012",
+        "sqlstate": "22012"
+      },
+      {
+        "name": "query B real transaction abort 2",
+        "status": "PASS",
+        "layer": "postgres-execution",
+        "sql": "SELECT 1 / 0",
+        "expected": "22012",
+        "observed": "22012",
+        "sqlstate": "22012"
+      },
+      {
+        "name": "B survives failed operations 2",
+        "status": "PASS",
+        "layer": "postgres-rls",
+        "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 2
+      },
+      {
+        "name": "B SDK query survives failed transactions 2",
+        "status": "PASS",
+        "layer": "sdk",
+        "sql": "SELECT id, instrument, quantity, price FROM orders ORDER BY id",
+        "expected": "accepted",
+        "observed": "accepted",
+        "affectedRows": 2
+      },
+      {
+        "name": "raw token timeouts search path and role never leak across reuse",
+        "status": "PASS",
+        "before": {
+          "pid": 113,
+          "role": "proof_raw",
+          "search_path": "pg_catalog, public",
+          "statement_timeout": "5s",
+          "lock_timeout": "0",
+          "idle_timeout": "0",
+          "tokenEmpty": true
+        },
+        "after": {
+          "pid": 113,
+          "role": "proof_raw",
+          "search_path": "pg_catalog, public",
+          "statement_timeout": "5s",
+          "lock_timeout": "0",
+          "idle_timeout": "0",
+          "tokenEmpty": true
+        }
+      },
+      {
+        "name": "raw reused one physical connection across both visitors and failures",
+        "status": "PASS"
+      },
+      {
+        "name": "query token timeouts search path and role never leak across reuse",
+        "status": "PASS",
+        "before": {
+          "pid": 111,
+          "role": "proof_query",
+          "search_path": "pg_catalog, public",
+          "statement_timeout": "5s",
+          "lock_timeout": "0",
+          "idle_timeout": "0",
+          "tokenEmpty": true
+        },
+        "after": {
+          "pid": 111,
+          "role": "proof_query",
+          "search_path": "pg_catalog, public",
+          "statement_timeout": "5s",
+          "lock_timeout": "0",
+          "idle_timeout": "0",
+          "tokenEmpty": true
+        }
+      },
+      {
+        "name": "query reused one physical connection across both visitors and failures",
+        "status": "PASS"
+      },
+      {
+        "name": "A private SQLite audit includes success and scope rejections",
+        "status": "PASS",
+        "auditRows": 6,
+        "fullChain": true
+      },
+      {
+        "name": "B private SQLite audit includes success and scope rejections",
+        "status": "PASS",
+        "auditRows": 9,
+        "fullChain": true
+      },
+      {
+        "name": "entire encrypted fixture and both private sandboxes remain intact",
+        "status": "PASS",
+        "beforeFingerprint": "38d93fa7ea317060f85c3111952e69f326a79ad5d11041f1cc9dc141708bb5e8",
+        "afterFingerprint": "38d93fa7ea317060f85c3111952e69f326a79ad5d11041f1cc9dc141708bb5e8"
+      }
+    ],
+    "events": [
+      {
+        "role": "query",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "755",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query"
+      },
+      {
+        "role": "query",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "756",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query"
+      },
+      {
+        "role": "query",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "757",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query"
+      },
+      {
+        "role": "query",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "758",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "759",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw"
+      },
+      {
+        "role": "raw",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "760",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "761",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "762",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "763",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "764",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "765",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw"
+      },
+      {
+        "role": "query",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "767",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query"
+      },
+      {
+        "role": "query",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "768",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query"
+      },
+      {
+        "role": "query",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "769",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query"
+      },
+      {
+        "role": "query",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "770",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "771",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw"
+      },
+      {
+        "role": "query",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "772",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query"
+      },
+      {
+        "role": "raw",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "774",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw"
+      },
+      {
+        "role": "query",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "773",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query"
+      },
+      {
+        "role": "query",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "775",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query",
+        "code": "42501"
+      },
+      {
+        "role": "query",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "776",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query",
+        "code": "42501"
+      },
+      {
+        "role": "query",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "777",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query",
+        "code": "42501"
+      },
+      {
+        "role": "query",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "778",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query",
+        "code": "42501"
+      },
+      {
+        "role": "query",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "779",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query",
+        "code": "42501"
+      },
+      {
+        "role": "query",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "780",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query",
+        "code": "42501"
+      },
+      {
+        "role": "query",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "781",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query",
+        "code": "42501"
+      },
+      {
+        "role": "query",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "782",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query",
+        "code": "42501"
+      },
+      {
+        "role": "query",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "783",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query",
+        "code": "42501"
+      },
+      {
+        "role": "query",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "784",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query",
+        "code": "42501"
+      },
+      {
+        "role": "query",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "785",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query",
+        "code": "42501"
+      },
+      {
+        "role": "query",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "786",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query",
+        "code": "42501"
+      },
+      {
+        "role": "query",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "787",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query",
+        "code": "42501"
+      },
+      {
+        "role": "query",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "788",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query",
+        "code": "42501"
+      },
+      {
+        "role": "query",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "789",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query",
+        "code": "42501"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "790",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw",
+        "code": "42501"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "791",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw",
+        "code": "42501"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "792",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw",
+        "code": "42501"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "793",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw",
+        "code": "42501"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "794",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw",
+        "code": "42501"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "795",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw",
+        "code": "42501"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "796",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw",
+        "code": "42501"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "797",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw",
+        "code": "42501"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "798",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw",
+        "code": "42501"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "799",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw",
+        "code": "42501"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "800",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw",
+        "code": "42501"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "801",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw",
+        "code": "42501"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "802",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw",
+        "code": "42501"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "803",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw",
+        "code": "42501"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "804",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "806",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw"
+      },
+      {
+        "role": "raw",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "807",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw",
+        "code": "42501"
+      },
+      {
+        "role": "raw",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "808",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw",
+        "code": "42501"
+      },
+      {
+        "role": "raw",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "809",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw",
+        "code": "42501"
+      },
+      {
+        "role": "query",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "810",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query",
+        "code": "42501"
+      },
+      {
+        "role": "query",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "811",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query",
+        "code": "42501"
+      },
+      {
+        "role": "query",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "812",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query",
+        "code": "42501"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "813",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw"
+      },
+      {
+        "role": "raw",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "814",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "815",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw",
+        "code": "22012"
+      },
+      {
+        "role": "raw",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "816",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw"
+      },
+      {
+        "role": "query",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "817",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query"
+      },
+      {
+        "role": "query",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "818",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query"
+      },
+      {
+        "role": "query",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "819",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query",
+        "code": "22012"
+      },
+      {
+        "role": "query",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "820",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "821",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "822",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw",
+        "code": "22012"
+      },
+      {
+        "role": "query",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "823",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query",
+        "code": "22012"
+      },
+      {
+        "role": "raw",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "824",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw"
+      },
+      {
+        "role": "raw",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "825",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw",
+        "code": "22012"
+      },
+      {
+        "role": "query",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "826",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query",
+        "code": "22012"
+      },
+      {
+        "role": "raw",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "827",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw"
+      },
+      {
+        "role": "query",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "828",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "829",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "830",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw",
+        "code": "22012"
+      },
+      {
+        "role": "query",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "831",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query",
+        "code": "22012"
+      },
+      {
+        "role": "raw",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "832",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw"
+      },
+      {
+        "role": "raw",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "833",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw",
+        "code": "22012"
+      },
+      {
+        "role": "query",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "834",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query",
+        "code": "22012"
+      },
+      {
+        "role": "raw",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "835",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw"
+      },
+      {
+        "role": "query",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "836",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "837",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw"
+      },
+      {
+        "role": "raw",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "838",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw",
+        "code": "22012"
+      },
+      {
+        "role": "query",
+        "sandbox": "11111111-1111-4111-8111-111111111111",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "839",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query",
+        "code": "22012"
+      },
+      {
+        "role": "raw",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "840",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw"
+      },
+      {
+        "role": "raw",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "841",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw",
+        "code": "22012"
+      },
+      {
+        "role": "query",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "rollback",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "842",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query",
+        "code": "22012"
+      },
+      {
+        "role": "raw",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 113,
+        "xid": "843",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_raw"
+      },
+      {
+        "role": "query",
+        "sandbox": "22222222-2222-4222-8222-222222222222",
+        "outcome": "commit",
+        "discarded": false,
+        "initialContextEmpty": true,
+        "cleanupContextEmpty": true,
+        "pid": 111,
+        "xid": "844",
+        "cleanupStatementTimeout": "5s",
+        "cleanupLockTimeout": "0",
+        "cleanupSearchPath": "pg_catalog, public",
+        "cleanupRole": "proof_query"
+      }
+    ],
+    "runtime": {
+      "node": "v22.23.2",
+      "platform": "linux",
+      "architecture": "arm64",
+      "nodeAbi": "127",
+      "uid": 1000,
+      "glibc": {
+        "runtime": "2.36",
+        "compiler": "2.28"
+      },
+      "sdk": {
+        "version": "0.56.1",
+        "packageRoot": "/app",
+        "entry": "/app/dist/index.js"
+      },
+      "betterSqlite3": {
+        "version": "12.11.1",
+        "packageRoot": "/app/node_modules/better-sqlite3",
+        "entry": "/app/node_modules/better-sqlite3/lib/index.js",
+        "sqliteVersion": "3.53.2",
+        "probe": "PASS"
+      },
+      "imagePackageLock": {
+        "path": "/app/demo/playground/package-lock.json",
+        "sha256": "461918bb6cc66170b76dcce1d194d019e71720afc712b83ae427996030aff54b"
+      },
+      "sqlite": ":memory:",
+      "sqliteDriver": "better-sqlite3",
+      "storageOwnership": "callerOwned",
+      "poolOwnership": "workerOwned/shared",
+      "identity": "locally generated did:key owners and real Ed25519-signed credentials; no human login",
+      "limitations": [
+        "The proof wrapper rejects new work and drains tracked operations; SDK AgentScope.query itself has no closed-state guard.",
+        "SDK close does not close injected storage or pools; this caller closes SQLite explicitly and the worker closes process pools.",
+        "Only caller-owned master, session-MAC, and owner-private-key buffers are explicitly overwritten and checked.",
+        "Opaque agent signers, SDK-loaded column keys, temporary crypto copies, and immutable credential/env strings cannot be proven erased by these public APIs.",
+        "Process-global JWT imported-key caches can retain keys after runtime close (currently bounded to 256 entries per cache).",
+        "Audit verifyRecord checks JWT signatures and matches signed payload fields to the supplied record; the proof also compares covered fields and checks unfiltered chains.",
+        "For the query/rejection records exercised here, audit signatures do not cover previousHash/version/status/reason/reasonCode; hash-chain validation is separate and cannot prove absence of deleted rows.",
+        "The fixed workload serializes each runtime and separates audit timestamps; same-millisecond concurrent chain-head ordering is outside this proof.",
+        "Memory slopes and resource snapshots are observational; garbage collection, native allocators, and key-cache warmup prevent a universal RSS threshold.",
+        "Restart non-recovery requires the orchestrator to observe SIGKILL and launch restart against the same PostgreSQL fixture."
+      ],
+      "sources": [
+        "https://github.com/abaxxlabs/agents/blob/main/src/sql/agent-scope.ts",
+        "https://github.com/abaxxlabs/agents/blob/main/src/audit/logger.ts",
+        "https://github.com/abaxxlabs/agents/blob/main/src/crypto/jwt.ts",
+        "https://node-postgres.com/apis/pool",
+        "https://nodejs.org/api/process.html#processversions",
+        "https://nodejs.org/api/report.html#reportgetreporterr"
+      ]
+    },
+    "runtimeModuleSha256": "b785092d71ee51d7eb1082c96e74bd8c18e6f595e43310a0b0410ec3e3bd662a",
+    "imageModules": {
+      "../../src/direct-sql-policy.mjs": "99ee28d517408d87fabcc75df0edf532bebe991b8b246e05f722b421b61f8d61",
+      "../migration-config.mjs": "9de07d20bda0c3ea2edb4159df948af7a1ef0144696a64c5da03ba3a42c28ff2"
+    },
+    "evidence": {
+      "matrix": [
+        {
+          "name": "query cannot read private rows outside scoped transaction",
+          "layer": "postgres-role + context",
+          "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "raw cannot read private rows outside scoped transaction",
+          "layer": "postgres-role + context",
+          "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "qualified plaintext read is scoped to A",
+          "layer": "sql-policy + postgres-rls",
+          "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 2
+        },
+        {
+          "name": "qualified plaintext read is scoped to B",
+          "layer": "sql-policy + postgres-rls",
+          "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 2
+        },
+        {
+          "name": "A explicit B read returns zero rows",
+          "layer": "postgres-rls",
+          "sql": "SELECT * FROM public.orders_plaintext WHERE sandbox_id = '22222222-2222-4222-8222-222222222222'",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 0
+        },
+        {
+          "name": "A update affects exactly its own row",
+          "layer": "sql-policy + postgres-rls",
+          "sql": "UPDATE public.orders_plaintext SET instrument = 'A-changed', quantity = 77, price = 99, counterparty = 'A-updated' WHERE id = 1",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 1
+        },
+        {
+          "name": "A explicit B update affects zero rows",
+          "layer": "postgres-rls",
+          "sql": "UPDATE public.orders_plaintext SET quantity = 0 WHERE sandbox_id = '22222222-2222-4222-8222-222222222222'",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 0
+        },
+        {
+          "name": "A delete affects exactly its own row",
+          "layer": "sql-policy + postgres-rls",
+          "sql": "DELETE FROM public.orders_plaintext WHERE id = 2",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 1
+        },
+        {
+          "name": "A explicit B delete affects zero rows",
+          "layer": "postgres-rls",
+          "sql": "DELETE FROM public.orders_plaintext WHERE sandbox_id = '22222222-2222-4222-8222-222222222222'",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 0
+        },
+        {
+          "name": "reset reseeds A without truncating shared state",
+          "layer": "trusted-control",
+          "sql": "SELECT proof_private.reset_sandbox($1::uuid)",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 1
+        },
+        {
+          "name": "A real SDK narrow credential allows base projection",
+          "layer": "sdk",
+          "sql": "SELECT id, instrument, quantity, price FROM orders ORDER BY id",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 2
+        },
+        {
+          "name": "A narrow credential denies broader projection",
+          "layer": "sdk",
+          "sql": "SELECT id, instrument, quantity, price, counterparty FROM orders ORDER BY id",
+          "expected": "SCOPE_VIOLATION",
+          "observed": "SCOPE_VIOLATION",
+          "sqlstate": null
+        },
+        {
+          "name": "A identical SQL succeeds with broader signed credential",
+          "layer": "sdk",
+          "sql": "SELECT id, instrument, quantity, price, counterparty FROM orders ORDER BY id",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 2
+        },
+        {
+          "name": "B real SDK narrow credential allows base projection",
+          "layer": "sdk",
+          "sql": "SELECT id, instrument, quantity, price FROM orders ORDER BY id",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 2
+        },
+        {
+          "name": "B narrow credential denies broader projection",
+          "layer": "sdk",
+          "sql": "SELECT id, instrument, quantity, price, counterparty FROM orders ORDER BY id",
+          "expected": "SCOPE_VIOLATION",
+          "observed": "SCOPE_VIOLATION",
+          "sqlstate": null
+        },
+        {
+          "name": "B identical SQL succeeds with broader signed credential",
+          "layer": "sdk",
+          "sql": "SELECT id, instrument, quantity, price, counterparty FROM orders ORDER BY id",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 2
+        },
+        {
+          "name": "A rawBytes contains only its private rows",
+          "layer": "postgres-rls + encrypted-read",
+          "sql": [
+            {
+              "role": "raw",
+              "sql": "SELECT id, instrument, price, counterparty FROM public.orders_plaintext ORDER BY id LIMIT 4"
+            },
+            {
+              "role": "query",
+              "sql": "SELECT id, instrument, price, counterparty FROM public.orders ORDER BY id LIMIT 4"
+            }
+          ],
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 4,
+          "components": [
+            {
+              "role": "raw",
+              "rowCount": 2
+            },
+            {
+              "role": "query",
+              "rowCount": 2
+            }
+          ]
+        },
+        {
+          "name": "B rawBytes contains only its private rows",
+          "layer": "postgres-rls + encrypted-read",
+          "sql": [
+            {
+              "role": "raw",
+              "sql": "SELECT id, instrument, price, counterparty FROM public.orders_plaintext ORDER BY id LIMIT 4"
+            },
+            {
+              "role": "query",
+              "sql": "SELECT id, instrument, price, counterparty FROM public.orders ORDER BY id LIMIT 4"
+            }
+          ],
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 4,
+          "components": [
+            {
+              "role": "raw",
+              "rowCount": 2
+            },
+            {
+              "role": "query",
+              "rowCount": 2
+            }
+          ]
+        },
+        {
+          "name": "query database denies private registry without parser",
+          "layer": "postgres-role",
+          "sql": "SELECT * FROM proof_private.sandboxes",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "query database denies private signing key without parser",
+          "layer": "postgres-role",
+          "sql": "SELECT * FROM proof_private.context_secret",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "query database denies private DELETE observer without parser",
+          "layer": "postgres-role",
+          "sql": "SELECT * FROM proof_private.delete_events",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "query database denies shared table truncation without parser",
+          "layer": "postgres-role",
+          "sql": "TRUNCATE public.orders_plaintext",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "query database denies privileged role catalog without parser",
+          "layer": "postgres-role",
+          "sql": "SELECT * FROM pg_catalog.pg_authid",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "query database denies context signer without parser",
+          "layer": "postgres-role",
+          "sql": "SELECT proof_private.issue_context('11111111-1111-4111-8111-111111111111'::uuid, pg_backend_pid(), txid_current()::text, current_user::text)",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "query database denies sandbox reset without parser",
+          "layer": "postgres-role",
+          "sql": "SELECT proof_private.reset_sandbox('22222222-2222-4222-8222-222222222222'::uuid)",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "query database denies private snapshot without parser",
+          "layer": "postgres-role",
+          "sql": "SELECT proof_private.snapshot() AS snapshot",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "query database denies test-only RLS oracle without parser",
+          "layer": "postgres-role",
+          "sql": "SELECT proof_private.probe_with_check('11111111-1111-4111-8111-111111111111'::uuid, '22222222-2222-4222-8222-222222222222'::uuid)",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "query database denies role escalation without parser",
+          "layer": "postgres-role",
+          "sql": "SET ROLE proof_control",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "query database denies session identity escalation without parser",
+          "layer": "postgres-role",
+          "sql": "SET SESSION AUTHORIZATION proof_control",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "query database denies private function in subquery without parser",
+          "layer": "postgres-role",
+          "sql": "SELECT (SELECT proof_private.snapshot())",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "query cannot update sandbox ownership",
+          "layer": "postgres-column-grant",
+          "sql": "UPDATE public.orders_plaintext SET sandbox_id = '22222222-2222-4222-8222-222222222222' WHERE id = 1",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "query cannot insert another sandbox row",
+          "layer": "postgres-role",
+          "sql": "INSERT INTO public.orders_plaintext (sandbox_id,id,instrument,quantity,price,counterparty) VALUES ('22222222-2222-4222-8222-222222222222',3,'forged',1,1,'forged')",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "query subquery cannot expose B",
+          "layer": "postgres-role",
+          "sql": "SELECT stolen FROM (SELECT (SELECT counterparty FROM public.orders_plaintext WHERE sandbox_id = '22222222-2222-4222-8222-222222222222' LIMIT 1) AS stolen) AS nested",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "raw parser rejects private registry",
+          "layer": "sql-policy",
+          "sql": "SELECT * FROM proof_private.sandboxes",
+          "expected": "SQL_POLICY_REJECTED",
+          "observed": "SQL_POLICY_REJECTED",
+          "sqlstate": null
+        },
+        {
+          "name": "raw database denies private registry without parser",
+          "layer": "postgres-role",
+          "sql": "SELECT * FROM proof_private.sandboxes",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "raw parser rejects private signing key",
+          "layer": "sql-policy",
+          "sql": "SELECT * FROM proof_private.context_secret",
+          "expected": "SQL_POLICY_REJECTED",
+          "observed": "SQL_POLICY_REJECTED",
+          "sqlstate": null
+        },
+        {
+          "name": "raw database denies private signing key without parser",
+          "layer": "postgres-role",
+          "sql": "SELECT * FROM proof_private.context_secret",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "raw parser rejects private DELETE observer",
+          "layer": "sql-policy",
+          "sql": "SELECT * FROM proof_private.delete_events",
+          "expected": "SQL_POLICY_REJECTED",
+          "observed": "SQL_POLICY_REJECTED",
+          "sqlstate": null
+        },
+        {
+          "name": "raw database denies private DELETE observer without parser",
+          "layer": "postgres-role",
+          "sql": "SELECT * FROM proof_private.delete_events",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "raw parser rejects shared table truncation",
+          "layer": "sql-policy",
+          "sql": "TRUNCATE public.orders_plaintext",
+          "expected": "SQL_POLICY_REJECTED",
+          "observed": "SQL_POLICY_REJECTED",
+          "sqlstate": null
+        },
+        {
+          "name": "raw database denies shared table truncation without parser",
+          "layer": "postgres-role",
+          "sql": "TRUNCATE public.orders_plaintext",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "raw parser rejects privileged role catalog",
+          "layer": "sql-policy",
+          "sql": "SELECT * FROM pg_catalog.pg_authid",
+          "expected": "SQL_POLICY_REJECTED",
+          "observed": "SQL_POLICY_REJECTED",
+          "sqlstate": null
+        },
+        {
+          "name": "raw database denies privileged role catalog without parser",
+          "layer": "postgres-role",
+          "sql": "SELECT * FROM pg_catalog.pg_authid",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "raw parser rejects context signer",
+          "layer": "sql-policy",
+          "sql": "SELECT proof_private.issue_context('11111111-1111-4111-8111-111111111111'::uuid, pg_backend_pid(), txid_current()::text, current_user::text)",
+          "expected": "SQL_POLICY_REJECTED",
+          "observed": "SQL_POLICY_REJECTED",
+          "sqlstate": null
+        },
+        {
+          "name": "raw database denies context signer without parser",
+          "layer": "postgres-role",
+          "sql": "SELECT proof_private.issue_context('11111111-1111-4111-8111-111111111111'::uuid, pg_backend_pid(), txid_current()::text, current_user::text)",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "raw parser rejects sandbox reset",
+          "layer": "sql-policy",
+          "sql": "SELECT proof_private.reset_sandbox('22222222-2222-4222-8222-222222222222'::uuid)",
+          "expected": "SQL_POLICY_REJECTED",
+          "observed": "SQL_POLICY_REJECTED",
+          "sqlstate": null
+        },
+        {
+          "name": "raw database denies sandbox reset without parser",
+          "layer": "postgres-role",
+          "sql": "SELECT proof_private.reset_sandbox('22222222-2222-4222-8222-222222222222'::uuid)",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "raw parser rejects private snapshot",
+          "layer": "sql-policy",
+          "sql": "SELECT proof_private.snapshot() AS snapshot",
+          "expected": "SQL_POLICY_REJECTED",
+          "observed": "SQL_POLICY_REJECTED",
+          "sqlstate": null
+        },
+        {
+          "name": "raw database denies private snapshot without parser",
+          "layer": "postgres-role",
+          "sql": "SELECT proof_private.snapshot() AS snapshot",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "raw parser rejects test-only RLS oracle",
+          "layer": "sql-policy",
+          "sql": "SELECT proof_private.probe_with_check('11111111-1111-4111-8111-111111111111'::uuid, '22222222-2222-4222-8222-222222222222'::uuid)",
+          "expected": "SQL_POLICY_REJECTED",
+          "observed": "SQL_POLICY_REJECTED",
+          "sqlstate": null
+        },
+        {
+          "name": "raw database denies test-only RLS oracle without parser",
+          "layer": "postgres-role",
+          "sql": "SELECT proof_private.probe_with_check('11111111-1111-4111-8111-111111111111'::uuid, '22222222-2222-4222-8222-222222222222'::uuid)",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "raw parser rejects role escalation",
+          "layer": "sql-policy",
+          "sql": "SET ROLE proof_control",
+          "expected": "SQL_POLICY_REJECTED",
+          "observed": "SQL_POLICY_REJECTED",
+          "sqlstate": null
+        },
+        {
+          "name": "raw database denies role escalation without parser",
+          "layer": "postgres-role",
+          "sql": "SET ROLE proof_control",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "raw parser rejects session identity escalation",
+          "layer": "sql-policy",
+          "sql": "SET SESSION AUTHORIZATION proof_control",
+          "expected": "SQL_POLICY_REJECTED",
+          "observed": "SQL_POLICY_REJECTED",
+          "sqlstate": null
+        },
+        {
+          "name": "raw database denies session identity escalation without parser",
+          "layer": "postgres-role",
+          "sql": "SET SESSION AUTHORIZATION proof_control",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "raw parser rejects private function in subquery",
+          "layer": "sql-policy",
+          "sql": "SELECT (SELECT proof_private.snapshot())",
+          "expected": "SQL_POLICY_REJECTED",
+          "observed": "SQL_POLICY_REJECTED",
+          "sqlstate": null
+        },
+        {
+          "name": "raw database denies private function in subquery without parser",
+          "layer": "postgres-role",
+          "sql": "SELECT (SELECT proof_private.snapshot())",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "parser rejects sandbox reassignment",
+          "layer": "sql-policy",
+          "sql": "UPDATE public.orders_plaintext SET sandbox_id = '22222222-2222-4222-8222-222222222222' WHERE id = 1",
+          "expected": "SQL_POLICY_REJECTED",
+          "observed": "SQL_POLICY_REJECTED",
+          "sqlstate": null
+        },
+        {
+          "name": "raw cannot update sandbox ownership",
+          "layer": "postgres-column-grant",
+          "sql": "UPDATE public.orders_plaintext SET sandbox_id = '22222222-2222-4222-8222-222222222222' WHERE id = 1",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "raw cannot insert another sandbox row",
+          "layer": "postgres-role",
+          "sql": "INSERT INTO public.orders_plaintext (sandbox_id,id,instrument,quantity,price,counterparty) VALUES ('22222222-2222-4222-8222-222222222222',3,'forged',1,1,'forged')",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "parser rejects derived relation subquery",
+          "layer": "sql-policy",
+          "sql": "SELECT stolen FROM (SELECT (SELECT counterparty FROM public.orders_plaintext WHERE sandbox_id = '22222222-2222-4222-8222-222222222222' LIMIT 1) AS stolen) AS nested",
+          "expected": "SQL_POLICY_REJECTED",
+          "observed": "SQL_POLICY_REJECTED",
+          "sqlstate": null
+        },
+        {
+          "name": "raw subquery cannot expose B",
+          "layer": "postgres-rls",
+          "sql": "SELECT stolen FROM (SELECT (SELECT counterparty FROM public.orders_plaintext WHERE sandbox_id = '22222222-2222-4222-8222-222222222222' LIMIT 1) AS stolen) AS nested",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 1
+        },
+        {
+          "name": "parser rejects context-mutating function",
+          "layer": "sql-policy",
+          "sql": "SELECT set_config('proof.sandbox_token', 'forged', true) FROM public.orders_plaintext",
+          "expected": "SQL_POLICY_REJECTED",
+          "observed": "SQL_POLICY_REJECTED",
+          "sqlstate": null
+        },
+        {
+          "name": "test-only nonowner oracle exercises real INSERT WITH CHECK",
+          "layer": "postgres-rls-test-only-oracle",
+          "sql": "SELECT proof_private.probe_with_check($1::uuid, $2::uuid) AS probe",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 1
+        },
+        {
+          "name": "test-only cross-sandbox INSERT fails actual WITH CHECK",
+          "layer": "postgres-rls-test-only-oracle",
+          "sql": "INSERT INTO public.orders_plaintext VALUES (other_sandbox, 90, 'PROBE', 1, 1, 'probe')",
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501",
+          "affectedRows": 0
+        },
+        {
+          "name": "raw forged custom GUC cannot establish authenticated context",
+          "layer": "postgres-context",
+          "sql": [
+            {
+              "role": "raw",
+              "sql": "SELECT set_config('proof.sandbox_token', $1, true)"
+            },
+            {
+              "role": "raw",
+              "sql": "SELECT proof_guard.current_sandbox()"
+            }
+          ],
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "raw prior transaction token replay cannot establish authenticated context",
+          "layer": "postgres-context",
+          "sql": [
+            {
+              "role": "raw",
+              "sql": "SELECT set_config('proof.sandbox_token', $1, true)"
+            },
+            {
+              "role": "raw",
+              "sql": "SELECT proof_guard.current_sandbox()"
+            }
+          ],
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "raw invalid signature with current context cannot establish authenticated context",
+          "layer": "postgres-context",
+          "sql": [
+            {
+              "role": "raw",
+              "sql": "SELECT pg_backend_pid() AS pid, txid_current()::text AS xid, session_user::text AS session_user, proof_guard.current_sandbox() AS sandbox, current_setting('proof.sandbox_token') AS token"
+            },
+            {
+              "role": "raw",
+              "sql": "SELECT set_config('proof.sandbox_token', $1, true)"
+            },
+            {
+              "role": "raw",
+              "sql": "SELECT proof_guard.current_sandbox()"
+            }
+          ],
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "query forged custom GUC cannot establish authenticated context",
+          "layer": "postgres-context",
+          "sql": [
+            {
+              "role": "query",
+              "sql": "SELECT set_config('proof.sandbox_token', $1, true)"
+            },
+            {
+              "role": "query",
+              "sql": "SELECT proof_guard.current_sandbox()"
+            }
+          ],
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "query prior transaction token replay cannot establish authenticated context",
+          "layer": "postgres-context",
+          "sql": [
+            {
+              "role": "query",
+              "sql": "SELECT set_config('proof.sandbox_token', $1, true)"
+            },
+            {
+              "role": "query",
+              "sql": "SELECT proof_guard.current_sandbox()"
+            }
+          ],
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "query invalid signature with current context cannot establish authenticated context",
+          "layer": "postgres-context",
+          "sql": [
+            {
+              "role": "query",
+              "sql": "SELECT pg_backend_pid() AS pid, txid_current()::text AS xid, session_user::text AS session_user, proof_guard.current_sandbox() AS sandbox, current_setting('proof.sandbox_token') AS token"
+            },
+            {
+              "role": "query",
+              "sql": "SELECT set_config('proof.sandbox_token', $1, true)"
+            },
+            {
+              "role": "query",
+              "sql": "SELECT proof_guard.current_sandbox()"
+            }
+          ],
+          "expected": "42501",
+          "observed": "42501",
+          "sqlstate": "42501"
+        },
+        {
+          "name": "raw persistent poisoning on commit",
+          "layer": "postgres-session-defense",
+          "sql": [
+            {
+              "role": "raw",
+              "sql": "SELECT set_config('proof.sandbox_token',current_setting('proof.sandbox_token'),false), set_config('search_path','pg_catalog',false), set_config('statement_timeout','9000',false), set_config('lock_timeout','8000',false), set_config('idle_in_transaction_session_timeout','7000',false)"
+            }
+          ],
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 1
+        },
+        {
+          "name": "raw B receives clean authenticated context after poisoning",
+          "layer": "postgres-context",
+          "sql": "SELECT proof_guard.current_sandbox() AS sandbox",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 1
+        },
+        {
+          "name": "raw persistent poisoning on rollback",
+          "layer": "postgres-session-defense",
+          "sql": [
+            {
+              "role": "raw",
+              "sql": "SELECT set_config('proof.sandbox_token',current_setting('proof.sandbox_token'),false), set_config('search_path','pg_catalog',false), set_config('statement_timeout','9000',false), set_config('lock_timeout','8000',false), set_config('idle_in_transaction_session_timeout','7000',false)"
+            },
+            {
+              "role": "raw",
+              "sql": "SELECT 1 / 0"
+            }
+          ],
+          "expected": "22012",
+          "observed": "22012",
+          "sqlstate": "22012"
+        },
+        {
+          "name": "raw B receives clean authenticated context after poisoning",
+          "layer": "postgres-context",
+          "sql": "SELECT proof_guard.current_sandbox() AS sandbox",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 1
+        },
+        {
+          "name": "query persistent poisoning on commit",
+          "layer": "postgres-session-defense",
+          "sql": [
+            {
+              "role": "query",
+              "sql": "SELECT set_config('proof.sandbox_token',current_setting('proof.sandbox_token'),false), set_config('search_path','pg_catalog',false), set_config('statement_timeout','9000',false), set_config('lock_timeout','8000',false), set_config('idle_in_transaction_session_timeout','7000',false)"
+            }
+          ],
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 1
+        },
+        {
+          "name": "query B receives clean authenticated context after poisoning",
+          "layer": "postgres-context",
+          "sql": "SELECT proof_guard.current_sandbox() AS sandbox",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 1
+        },
+        {
+          "name": "query persistent poisoning on rollback",
+          "layer": "postgres-session-defense",
+          "sql": [
+            {
+              "role": "query",
+              "sql": "SELECT set_config('proof.sandbox_token',current_setting('proof.sandbox_token'),false), set_config('search_path','pg_catalog',false), set_config('statement_timeout','9000',false), set_config('lock_timeout','8000',false), set_config('idle_in_transaction_session_timeout','7000',false)"
+            },
+            {
+              "role": "query",
+              "sql": "SELECT 1 / 0"
+            }
+          ],
+          "expected": "22012",
+          "observed": "22012",
+          "sqlstate": "22012"
+        },
+        {
+          "name": "query B receives clean authenticated context after poisoning",
+          "layer": "postgres-context",
+          "sql": "SELECT proof_guard.current_sandbox() AS sandbox",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 1
+        },
+        {
+          "name": "A alternating reuse scoped read 0",
+          "layer": "postgres-rls",
+          "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 2
+        },
+        {
+          "name": "A parser rejection before checkout 0",
+          "layer": "sql-policy",
+          "sql": "SELECT pg_sleep(1)",
+          "expected": "SQL_POLICY_REJECTED",
+          "observed": "SQL_POLICY_REJECTED",
+          "sqlstate": null
+        },
+        {
+          "name": "A SDK rejection during reuse 0",
+          "layer": "sdk",
+          "sql": "SELECT id, instrument, quantity, price, counterparty FROM orders ORDER BY id",
+          "expected": "SCOPE_VIOLATION",
+          "observed": "SCOPE_VIOLATION",
+          "sqlstate": null
+        },
+        {
+          "name": "raw A real transaction abort 0",
+          "layer": "postgres-execution",
+          "sql": "SELECT 1 / 0",
+          "expected": "22012",
+          "observed": "22012",
+          "sqlstate": "22012"
+        },
+        {
+          "name": "query A real transaction abort 0",
+          "layer": "postgres-execution",
+          "sql": "SELECT 1 / 0",
+          "expected": "22012",
+          "observed": "22012",
+          "sqlstate": "22012"
+        },
+        {
+          "name": "B alternating reuse scoped read 0",
+          "layer": "postgres-rls",
+          "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 2
+        },
+        {
+          "name": "B parser rejection before checkout 0",
+          "layer": "sql-policy",
+          "sql": "SELECT pg_sleep(1)",
+          "expected": "SQL_POLICY_REJECTED",
+          "observed": "SQL_POLICY_REJECTED",
+          "sqlstate": null
+        },
+        {
+          "name": "B SDK rejection during reuse 0",
+          "layer": "sdk",
+          "sql": "SELECT id, instrument, quantity, price, counterparty FROM orders ORDER BY id",
+          "expected": "SCOPE_VIOLATION",
+          "observed": "SCOPE_VIOLATION",
+          "sqlstate": null
+        },
+        {
+          "name": "raw B real transaction abort 0",
+          "layer": "postgres-execution",
+          "sql": "SELECT 1 / 0",
+          "expected": "22012",
+          "observed": "22012",
+          "sqlstate": "22012"
+        },
+        {
+          "name": "query B real transaction abort 0",
+          "layer": "postgres-execution",
+          "sql": "SELECT 1 / 0",
+          "expected": "22012",
+          "observed": "22012",
+          "sqlstate": "22012"
+        },
+        {
+          "name": "B survives failed operations 0",
+          "layer": "postgres-rls",
+          "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 2
+        },
+        {
+          "name": "B SDK query survives failed transactions 0",
+          "layer": "sdk",
+          "sql": "SELECT id, instrument, quantity, price FROM orders ORDER BY id",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 2
+        },
+        {
+          "name": "A alternating reuse scoped read 1",
+          "layer": "postgres-rls",
+          "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 2
+        },
+        {
+          "name": "A parser rejection before checkout 1",
+          "layer": "sql-policy",
+          "sql": "SELECT pg_sleep(1)",
+          "expected": "SQL_POLICY_REJECTED",
+          "observed": "SQL_POLICY_REJECTED",
+          "sqlstate": null
+        },
+        {
+          "name": "A SDK rejection during reuse 1",
+          "layer": "sdk",
+          "sql": "SELECT id, instrument, quantity, price, counterparty FROM orders ORDER BY id",
+          "expected": "SCOPE_VIOLATION",
+          "observed": "SCOPE_VIOLATION",
+          "sqlstate": null
+        },
+        {
+          "name": "raw A real transaction abort 1",
+          "layer": "postgres-execution",
+          "sql": "SELECT 1 / 0",
+          "expected": "22012",
+          "observed": "22012",
+          "sqlstate": "22012"
+        },
+        {
+          "name": "query A real transaction abort 1",
+          "layer": "postgres-execution",
+          "sql": "SELECT 1 / 0",
+          "expected": "22012",
+          "observed": "22012",
+          "sqlstate": "22012"
+        },
+        {
+          "name": "B alternating reuse scoped read 1",
+          "layer": "postgres-rls",
+          "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 2
+        },
+        {
+          "name": "B parser rejection before checkout 1",
+          "layer": "sql-policy",
+          "sql": "SELECT pg_sleep(1)",
+          "expected": "SQL_POLICY_REJECTED",
+          "observed": "SQL_POLICY_REJECTED",
+          "sqlstate": null
+        },
+        {
+          "name": "B SDK rejection during reuse 1",
+          "layer": "sdk",
+          "sql": "SELECT id, instrument, quantity, price, counterparty FROM orders ORDER BY id",
+          "expected": "SCOPE_VIOLATION",
+          "observed": "SCOPE_VIOLATION",
+          "sqlstate": null
+        },
+        {
+          "name": "raw B real transaction abort 1",
+          "layer": "postgres-execution",
+          "sql": "SELECT 1 / 0",
+          "expected": "22012",
+          "observed": "22012",
+          "sqlstate": "22012"
+        },
+        {
+          "name": "query B real transaction abort 1",
+          "layer": "postgres-execution",
+          "sql": "SELECT 1 / 0",
+          "expected": "22012",
+          "observed": "22012",
+          "sqlstate": "22012"
+        },
+        {
+          "name": "B survives failed operations 1",
+          "layer": "postgres-rls",
+          "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 2
+        },
+        {
+          "name": "B SDK query survives failed transactions 1",
+          "layer": "sdk",
+          "sql": "SELECT id, instrument, quantity, price FROM orders ORDER BY id",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 2
+        },
+        {
+          "name": "A alternating reuse scoped read 2",
+          "layer": "postgres-rls",
+          "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 2
+        },
+        {
+          "name": "A parser rejection before checkout 2",
+          "layer": "sql-policy",
+          "sql": "SELECT pg_sleep(1)",
+          "expected": "SQL_POLICY_REJECTED",
+          "observed": "SQL_POLICY_REJECTED",
+          "sqlstate": null
+        },
+        {
+          "name": "A SDK rejection during reuse 2",
+          "layer": "sdk",
+          "sql": "SELECT id, instrument, quantity, price, counterparty FROM orders ORDER BY id",
+          "expected": "SCOPE_VIOLATION",
+          "observed": "SCOPE_VIOLATION",
+          "sqlstate": null
+        },
+        {
+          "name": "raw A real transaction abort 2",
+          "layer": "postgres-execution",
+          "sql": "SELECT 1 / 0",
+          "expected": "22012",
+          "observed": "22012",
+          "sqlstate": "22012"
+        },
+        {
+          "name": "query A real transaction abort 2",
+          "layer": "postgres-execution",
+          "sql": "SELECT 1 / 0",
+          "expected": "22012",
+          "observed": "22012",
+          "sqlstate": "22012"
+        },
+        {
+          "name": "B alternating reuse scoped read 2",
+          "layer": "postgres-rls",
+          "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 2
+        },
+        {
+          "name": "B parser rejection before checkout 2",
+          "layer": "sql-policy",
+          "sql": "SELECT pg_sleep(1)",
+          "expected": "SQL_POLICY_REJECTED",
+          "observed": "SQL_POLICY_REJECTED",
+          "sqlstate": null
+        },
+        {
+          "name": "B SDK rejection during reuse 2",
+          "layer": "sdk",
+          "sql": "SELECT id, instrument, quantity, price, counterparty FROM orders ORDER BY id",
+          "expected": "SCOPE_VIOLATION",
+          "observed": "SCOPE_VIOLATION",
+          "sqlstate": null
+        },
+        {
+          "name": "raw B real transaction abort 2",
+          "layer": "postgres-execution",
+          "sql": "SELECT 1 / 0",
+          "expected": "22012",
+          "observed": "22012",
+          "sqlstate": "22012"
+        },
+        {
+          "name": "query B real transaction abort 2",
+          "layer": "postgres-execution",
+          "sql": "SELECT 1 / 0",
+          "expected": "22012",
+          "observed": "22012",
+          "sqlstate": "22012"
+        },
+        {
+          "name": "B survives failed operations 2",
+          "layer": "postgres-rls",
+          "sql": "SELECT sandbox_id, id, instrument, quantity, price, counterparty FROM public.orders_plaintext ORDER BY id",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 2
+        },
+        {
+          "name": "B SDK query survives failed transactions 2",
+          "layer": "sdk",
+          "sql": "SELECT id, instrument, quantity, price FROM orders ORDER BY id",
+          "expected": "accepted",
+          "observed": "accepted",
+          "affectedRows": 2
+        }
+      ],
+      "acceptance": {
+        "privateOperations": true,
+        "protectedBehavior": true,
+        "hostileSql": true,
+        "rowPolicies": true,
+        "physicalReuse": true
+      },
+      "reuse": {
+        "raw": {
+          "pid": 113,
+          "successful": 23,
+          "rolledBack": 24,
+          "residualToken": false,
+          "role": "proof_raw",
+          "statementTimeout": "5s",
+          "lockTimeout": "0",
+          "idleTimeout": "0"
+        },
+        "query": {
+          "pid": 111,
+          "successful": 16,
+          "rolledBack": 25,
+          "residualToken": false,
+          "role": "proof_query",
+          "statementTimeout": "5s",
+          "lockTimeout": "0",
+          "idleTimeout": "0"
+        }
+      },
+      "state": {
+        "beforeFingerprint": "38d93fa7ea317060f85c3111952e69f326a79ad5d11041f1cc9dc141708bb5e8",
+        "afterFingerprint": "38d93fa7ea317060f85c3111952e69f326a79ad5d11041f1cc9dc141708bb5e8",
+        "privateFixtureRestored": true,
+        "policyFacts": [
+          {
+            "name": "sandbox_boundary",
+            "table": "orders_plaintext",
+            "using": "(sandbox_id = proof_guard.current_sandbox())",
+            "forced": true,
+            "enabled": true,
+            "withCheck": "(sandbox_id = proof_guard.current_sandbox())"
+          }
+        ],
+        "roleFacts": [
+          {
+            "name": "proof_control",
+            "owner": false,
+            "createDb": false,
+            "bypassRls": false,
+            "superuser": false,
+            "createRole": false
+          },
+          {
+            "name": "proof_probe",
+            "owner": false,
+            "createDb": false,
+            "bypassRls": false,
+            "superuser": false,
+            "createRole": false
+          },
+          {
+            "name": "proof_query",
+            "owner": false,
+            "createDb": false,
+            "bypassRls": false,
+            "superuser": false,
+            "createRole": false
+          },
+          {
+            "name": "proof_raw",
+            "owner": false,
+            "createDb": false,
+            "bypassRls": false,
+            "superuser": false,
+            "createRole": false
+          }
+        ]
+      },
+      "decision": {
+        "privilegedControl": "Disposable fixture only; never exposed to either executor role",
+        "writeCheck": "Control-only test oracle uses separate nonowner role; visitor INSERT and sandbox reassignment stay denied",
+        "catalogVisibility": "Private control relations are denied; ordinary PostgreSQL system metadata is not claimed hidden"
+      }
+    },
+    "cleanup": [
+      {
+        "resource": "runtime-A",
+        "status": "PASS",
+        "summary": {
+          "live": 0,
+          "created": 1,
+          "closed": 1,
+          "scopesCreated": 1,
+          "storesCreated": 1,
+          "storesClosed": 1,
+          "inFlight": 0,
+          "callerOwnedBuffersZeroed": true
+        }
+      },
+      {
+        "resource": "runtime-B",
+        "status": "PASS",
+        "summary": {
+          "live": 0,
+          "created": 1,
+          "closed": 1,
+          "scopesCreated": 1,
+          "storesCreated": 1,
+          "storesClosed": 1,
+          "inFlight": 0,
+          "callerOwnedBuffersZeroed": true
+        }
+      },
+      {
+        "resource": "pool-query",
+        "status": "PASS",
+        "total": 0
+      },
+      {
+        "resource": "pool-raw",
+        "status": "PASS",
+        "total": 0
+      },
+      {
+        "resource": "pool-control",
+        "status": "PASS",
+        "total": 0
+      }
+    ]
+  },
+  "cleanup": {
+    "status": "PASS",
+    "resources": [
+      {
+        "resource": "agents-sandbox-proof-32743-1832ca53-worker",
+        "status": "PASS",
+        "removeExit": 0
+      },
+      {
+        "resource": "agents-sandbox-proof-32743-1832ca53-fixture",
+        "status": "PASS",
+        "removeExit": 0
+      },
+      {
+        "resource": "agents-sandbox-proof-32743-1832ca53-postgres",
+        "status": "PASS",
+        "removeExit": 0
+      },
+      {
+        "resource": "agents-sandbox-proof-32743-1832ca53",
+        "status": "PASS"
+      }
+    ]
+  },
+  "finishedAt": "2026-11-05T16:08:49.696Z",
+  "recordedProvenance": {
+    "mergedRuntimeCommit": "4cd858556bb46e4c0d7350b85c4ab6a7fdc7a1c9",
+    "runtimeImageBuild": "Canonical demo/playground/Dockerfile built from the merged checkout; no archived WIP dependency",
+    "isolationSource": "Source revision and working-tree state plus hostRunnerSha256, hostCommandModuleSha256, mounted module hashes and image-module hashes identify the executed integration",
+    "scope": "Bounded SQL isolation proof only; not production migration, fencing/routing or capacity approval"
+  },
+  "regressionVerification": {
+    "typecheck": "PASS",
+    "build": "PASS (ESM, CJS and shim)",
+    "playgroundTests": {
+      "passed": 194,
+      "failed": 0
+    },
+    "rootTests": {
+      "passed": 1918,
+      "failed": 0,
+      "skipped": 41,
+      "todo": 3,
+      "status": "PASS"
+    }
+  },
+  "historicalIntegrationVerification": {
+    "recordedAt": "2026-11-05T14:43:44.421Z",
+    "imageId": "sha256:49a33217c63de2d034e3855bded32e58bef4f6364e9344aa59d3ce70499c6b1e",
+    "scope": "Earlier merged-runtime integration run, not rerun as part of this current-context HMAC coverage change",
+    "results": {
+      "explicitImage": {
+        "status": "PASS",
+        "imageId": "sha256:49a33217c63de2d034e3855bded32e58bef4f6364e9344aa59d3ce70499c6b1e",
+        "checks": 143,
+        "matrixCases": 113,
+        "cleanup": "PASS"
+      },
+      "sqliteRuntimeProof": {
+        "status": "PASS",
+        "cycles": 200,
+        "warmup": 20,
+        "imageId": "sha256:49a33217c63de2d034e3855bded32e58bef4f6364e9344aa59d3ce70499c6b1e",
+        "phases": {
+          "fixture": "PASS",
+          "run": "PASS",
+          "kill": "PASS",
+          "restart": "PASS",
+          "postgres": "PASS",
+          "cleanup": "PASS"
+        }
+      },
+      "readinessFaultInjection": {
+        "method": "Disposable organizer copy executes a failing readiness command against real isolated PostgreSQL with a one-second poll deadline; no repository source injection",
+        "status": "FAIL",
+        "failure": {
+          "stage": "private-postgres",
+          "code": "POSTGRES_READY_TIMEOUT"
+        },
+        "cleanup": "PASS"
+      }
+    }
+  },
+  "hmacMutationVerification": {
+    "status": "PASS",
+    "method": "Disposable fixture copies remove only the HMAC signature comparison; real PostgreSQL, SDK, role grants and context-binding checks remain active",
+    "imageId": "sha256:2c40fd90e8dfad58f4353c7427b7c43d1260dc4912a2bc1506128eb87fe8ad10",
+    "beforeRegressionCase": {
+      "gateStatus": "PASS",
+      "checks": 143,
+      "matrixCases": 113,
+      "cleanup": "PASS"
+    },
+    "afterRegressionCase": [
+      {
+        "role": "raw",
+        "gateStatus": "FAIL",
+        "failedCheck": "raw invalid signature with current context cannot establish authenticated context",
+        "expected": "42501",
+        "observed": "accepted",
+        "affectedRows": 1,
+        "currentContextPrecondition": "PASS",
+        "workerCleanup": "PASS",
+        "containerNetworkCleanup": "PASS",
+        "fixtureSha256": "3067608045a9497eac154bb72ae82bfe133ec5d12deb4ffac98545ac042e2135",
+        "scenariosSha256": "04efb2aaf12c4161520ee750f612951086c2075416e78b57741f49d3403f64dd",
+        "roleOrder": [
+          "raw",
+          "query"
+        ]
+      },
+      {
+        "role": "query",
+        "gateStatus": "FAIL",
+        "failedCheck": "query invalid signature with current context cannot establish authenticated context",
+        "expected": "42501",
+        "observed": "accepted",
+        "affectedRows": 1,
+        "currentContextPrecondition": "PASS",
+        "workerCleanup": "PASS",
+        "containerNetworkCleanup": "PASS",
+        "fixtureSha256": "3067608045a9497eac154bb72ae82bfe133ec5d12deb4ffac98545ac042e2135",
+        "scenariosSha256": "9edc269ae83f143732a086a22e4da149171e2294061df1097f2520b397f9e7f7",
+        "roleOrder": [
+          "query",
+          "raw"
+        ]
+      }
+    ],
+    "successCriterion": "Both role-specific mutants fail because a well-formed bad signature with matching live context is accepted; the normal guard rejects each with SQLSTATE42501",
+    "repositoryFixtureChanged": false
+  }
+}

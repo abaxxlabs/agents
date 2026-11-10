@@ -1,5 +1,176 @@
 # Changelog
 
+## [0.60.0] - 2026-11-10
+
+### Added
+
+- .github, packages: internal changes.
+
+## [0.59.3] - 2026-11-10
+
+### Fixed
+
+- scripts: changes; .github, scripts, test: internal changes.
+
+## [0.59.2] - 2026-11-10
+
+### Fixed
+
+- **vendor:** adapt id-sdk-mcp queue imports to libp2p 3.x
+
+## [0.59.1] - 2026-11-10
+
+### Fixed
+
+- **release-gate:** pin consumer smoke install to pg 8.23.1
+
+## [0.59.0] - 2026-11-10
+
+### Added
+
+- docs, repository: changes; docs-site, test: internal changes.
+
+## [0.58.0] - 2026-11-05
+
+### Added
+
+- repository: changes; .github, packages: internal changes.
+
+## [0.57.0] - 2026-11-05
+
+### Added
+
+- docs-site: internal changes.
+
+## [0.56.1] - 2026-11-04
+
+### Fixed
+
+- repository, src, test: changes; docs: internal changes.
+
+## [0.56.0] - 2026-11-04
+
+### Added
+
+- demo, repository: internal changes.
+
+
+### Fixed
+
+- demo: internal changes.
+
+## [0.55.0] - 2026-11-03
+
+### Added
+
+- docs: changes; docs-site: internal changes.
+- packages: internal connector runtime and retrieval improvements.
+
+### Fixed
+
+- packages: keep confirmed removals independent from unrelated ingestion failures.
+- packages: prevent sensitive subprocess diagnostics from entering smoke evidence logs.
+- packages: isolate invalid content and report partial normalized documents without blocking unrelated synchronization.
+
+## [0.54.0] - 2026-11-03
+
+### Added
+
+- add message audit trail events
+
+## [0.53.2] - 2026-10-30
+
+### Fixed
+
+- publish release notes manually
+
+## [0.53.1] - 2026-10-30
+
+### Fixed
+
+- **deps:** adapt checks to libpg-query 18
+
+## [0.53.0] - 2026-10-30
+
+### Added
+
+- demo: internal changes.
+
+## [0.52.0] - 2026-10-29
+
+### Added
+
+- scripts: changes; .github, demo, scripts: internal changes.
+
+## [0.51.2] - 2026-10-28
+
+### Fixed
+
+- packages: internal changes.
+
+## [0.51.1] - 2026-10-28
+
+### Fixed
+
+- **deps:** retain Node 20 support for SQLite builds
+
+## [0.51.0] - 2026-10-28
+
+### Added
+
+- api, src: changes; test: internal changes.
+
+
+### Fixed
+
+- api, src: changes; packages, scripts, test: internal changes.
+- **identity:** move resource scope to private package
+- packages, test: internal changes.
+- src: changes; scripts, test: internal changes.
+
+## [0.50.9] - 2026-10-28
+
+### Fixed
+
+- **deps:** use patched Zod and refresh MCP schema snapshot
+- docs-site: internal changes.
+
+## [0.50.8] - 2026-10-28
+
+### Fixed
+
+- .github: internal changes.
+
+## [0.50.7] - 2026-10-28
+
+### Fixed
+
+- **deps:** keep CommonJS exports compatible with uuid
+
+## [0.50.6] - 2026-10-28
+
+### Fixed
+
+- **deps:** use named pako exports for status lists
+
+## [0.50.5] - 2026-10-27
+
+### Fixed
+
+- repository: changes; packages: internal changes.
+
+## [0.50.4] - 2026-10-27
+
+### Fixed
+
+- demo: internal changes.
+
+## [0.50.3] - 2026-10-27
+
+### Fixed
+
+- demo: internal changes.
+
 ## [0.50.2] - 2026-10-27
 
 ### Fixed

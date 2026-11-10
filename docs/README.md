@@ -9,6 +9,7 @@ The public sections in this directory contain the documentation published for Ag
 - [Overview](overview.md)
 - [Installation](guides/installation.md)
 - [Quick start](guides/quick-start.md)
+- [Playground (local)](guides/playground.md)
 - [Security and storage boundaries](guides/security-and-storage-boundaries.md)
 - [Core concepts](concepts/overview.md)
 - [Identity model](concepts/identity-model.md)

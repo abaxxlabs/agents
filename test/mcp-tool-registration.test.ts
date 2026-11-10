@@ -145,11 +145,11 @@ describe('MCP tool registration contract', () => {
       const { tools } = await client.listTools();
       expect(tools.map((tool) => tool.name)).toEqual([...CORE_TOOL_NAMES, ...IDENTITY_TOOL_NAMES]);
       expect(tools.map((tool) => JSON.stringify(tool).length)).toEqual([
-        957, 447, 912, 323, 1052, 336, 445, 362, 383, 287, 369, 284, 430,
+        957, 447, 893, 323, 1033, 336, 445, 362, 383, 287, 369, 284, 430,
       ]);
-      expect(JSON.stringify({ tools }).length).toBe(6611);
+      expect(JSON.stringify({ tools }).length).toBe(6573);
       expect(createHash('sha256').update(JSON.stringify({ tools })).digest('hex')).toBe(
-        'bbe12eeebd62adde323e4bcc9b5875c354493dbe069e7850365fa9d6053ab486',
+        'de5f8d7053b9565324096790c75c8bca505dadb543106568cfc7151204969104',
       );
     } finally {
       await client.close();

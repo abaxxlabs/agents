@@ -61,11 +61,11 @@ Commit subjects must follow [Conventional Commits](https://www.conventionalcommi
 
 ## Releases
 
-Releases are published to npm from this repository by the `Publish` workflow (`.github/workflows/publish.yml`):
+Releases are published to npm from the public mirror repository (`abaxxlabs/agents`) by the `Publish` workflow (`.github/workflows/publish.yml`), which is kept in sync from this repository:
 
-- Each merge to `main` that carries a new `package.json` version builds, tests, and publishes that version with npm provenance under the `next` dist-tag, promotes it to `latest`, and creates its GitHub release from `CHANGELOG.md`.
+- When a synced version merge lands on the mirror's `main`, the workflow builds, tests, and publishes it with npm provenance directly under the `latest` dist-tag (trusted publishing, no token), then creates its GitHub release. Release notes are extracted from `CHANGELOG.md` into the `release-candidate` artifact (retained 7 days) and attached to the release manually, as the run summary reminds.
 - Versions already on npm are skipped, so reruns are safe.
-- Manual runs move `latest` only when `promote_latest` is enabled; alternatively, a package owner can run `npm dist-tag add @abaxxlabs/agents@<version> latest`.
+- A manually dispatched run publishes under its `dist_tag` (default `next`); `promote_latest` moves an already-published version to `latest` and marks its GitHub release latest, which requires the mirror's `NPM_TOKEN` secret because trusted publishing cannot move dist-tags.
 - Maintainers can publish an existing release tag or supply curated release notes by running the workflow manually with `ref` and `notes`. Manual runs default to a dry run.
 
 ## Reporting Issues

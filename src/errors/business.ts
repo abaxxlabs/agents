@@ -22,14 +22,17 @@ export class ParentCredentialRequestFailedError extends AgentScopeError {
   constructor(
     public readonly tenantUrl: string,
     public readonly httpStatus: number | undefined,
-    recoveryHint?: string,
+    /** Safe to show an end user: names no host and no status code. */
+    public readonly recoveryHint?: string,
+    /** Raw upstream response, truncated, for diagnostics. */
+    upstreamBody?: string,
   ) {
     super(
       'PARENT_CREDENTIAL_REQUEST_FAILED',
       `Failed to obtain agent credential from parent instance at ${tenantUrl}` +
         (httpStatus ? ` (HTTP ${httpStatus})` : '') +
         `. ${recoveryHint ?? 'Check that the tenant URL is correct and the access token is valid.'}`,
-      { tenantUrl, httpStatus },
+      { tenantUrl, httpStatus, ...(upstreamBody !== undefined ? { upstreamBody } : {}) },
     );
     this.name = 'ParentCredentialRequestFailedError';
   }
