@@ -6,9 +6,9 @@ MCP rate limits were keyed by `parentIssuerDid`, so every human in one organizat
 
 ---
 
-## TL;DR
+## Summary {#tldr}
 
-Two things can break you:
+Two changes may require application updates:
 
 1. If you pass `rateLimitPrincipal` to `createMcpServer()` or `registerTools()`, delete that property. It no longer exists.
 2. If you mint more than 100 credentials per minute per human through MCP, that traffic now fails with `RATE_LIMITED`. It was previously unlimited.
@@ -17,7 +17,7 @@ Everything else is a tightening of existing limits, not an API change.
 
 ---
 
-## 1. `rateLimitPrincipal` is gone
+## 1. Removal of `rateLimitPrincipal` {#1-ratelimitprincipal-is-gone}
 
 ```ts
 // before
@@ -56,7 +56,7 @@ Shared means one bucket: 60 issuances plus 41 delegations in the same minute is 
 **If you run bulk provisioning** (seeding, batch onboarding, migrations) that mints more than 100 credentials per minute for one human, it will now fail partway through with `RATE_LIMITED`. Options, in order of preference:
 
 - Spread the work across the quota window, or across multiple human identities if the provisioning is genuinely on behalf of different people.
-- Inject your own `RateLimiter` implementation with limits appropriate to your deployment. `createMcpServer({ rateLimiter })` accepts any object satisfying the `RateLimiter` interface, so a permissive limiter for a trusted batch process is a few lines.
+- Inject a `RateLimiter` implementation with limits appropriate to the deployment. `createMcpServer({ rateLimiter })` accepts any object satisfying the `RateLimiter` interface, including implementations configured for a trusted batch process.
 
 Note that a consumer calling `createMcpServer()` without injecting a `rateLimiter` shares the process-wide `defaultIdentityRateLimiter` singleton. That was already true for `sign` and `challenge`; it now also applies to credential minting.
 
@@ -64,9 +64,9 @@ Note that a consumer calling `createMcpServer()` without injecting a `rateLimite
 
 The limits themselves are unchanged (100/min for sign, 30/min for challenge), but they now count per human rather than per session token. A user holding three concurrent sessions previously had an effective 300 signs per minute. They now have 100 in total.
 
-No code change is required. Expect support reports from users who relied on the old effective ceiling.
+No code change is required. Inform users who relied on the previous per-session allowance that concurrent sessions now share the per-human quota.
 
-On the other side of the ledger, MCP previously keyed by `parentIssuerDid`, so every human in one organization shared a single bucket and one user could exhaust the quota for all of their colleagues. That is fixed by the same change.
+Previously, MCP keyed quotas by `parentIssuerDid`, so all humans in one organization shared a single bucket. Keying quotas by `humanDid` prevents one human from exhausting the quota for other members of the organization.
 
 ## 4. Rejection shape is unchanged
 

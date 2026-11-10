@@ -1106,12 +1106,13 @@ async function getTableExtractor() {
       return { table: null, error: 'SQL parse error' };
     }
 
-    if (parsed.stmts.length !== 1) {
+    const statements = parsed.stmts!;
+    if (statements.length !== 1) {
       return { table: null, error: 'Only single statements allowed' };
     }
 
-    const stmt = parsed.stmts[0].stmt;
-    if (!stmt.SelectStmt) {
+    const stmt = statements[0].stmt!;
+    if (!('SelectStmt' in stmt)) {
       return { table: null, error: 'Only SELECT statements allowed' };
     }
 
@@ -1127,15 +1128,15 @@ async function getTableExtractor() {
 
     const fromItem = select.fromClause[0];
 
-    if (fromItem.JoinExpr) {
+    if ('JoinExpr' in fromItem) {
       return { table: null, error: 'JOINs are not supported in v1' };
     }
 
-    if (fromItem.RangeSubselect) {
+    if ('RangeSubselect' in fromItem) {
       return { table: null, error: 'Subqueries in FROM are not supported in v1' };
     }
 
-    const rangeVar = fromItem.RangeVar;
+    const rangeVar = 'RangeVar' in fromItem ? fromItem.RangeVar : undefined;
     if (!rangeVar) {
       return { table: null, error: 'Query must reference a simple table' };
     }

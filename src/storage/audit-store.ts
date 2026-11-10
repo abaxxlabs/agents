@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import type { AuditRecord } from '#types/audit.js';
+import type { AuditEventKind, AuditRecord, MessageDirection } from '#types/audit.js';
 
 /** Filters accepted by AuditStore.query() and AuditStore.count(). */
 export interface AuditQueryFilter {
@@ -34,6 +34,13 @@ export interface AuditQueryFilter {
   orgId?: string;
   /** Maximum records returned by the storage query. */
   limit?: number;
+  /** Restrict to queries or to message events. Records older than version 5 are queries. */
+  eventKind?: AuditEventKind;
+  /** Message events for one DWN record id. */
+  messageRecordId?: string;
+  /** Message events for any of these DWN record ids. An empty list matches nothing. */
+  messageRecordIds?: readonly string[];
+  direction?: MessageDirection;
 }
 
 /**

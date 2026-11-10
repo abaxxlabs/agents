@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { parseSync } from 'libpg-query';
+import { parseSync as parsePgQuery } from 'libpg-query';
 import {
   ensurePgQuery,
   assertReadOnlyQuery,
@@ -9,11 +9,13 @@ import {
   extractPhysicalTableRefs,
   assertSqlReadsOnlyDeclaredTable,
   type PgAstNode,
+  type PgParsed,
 } from '#sql/query-policy.js';
 import type { Did, TableName } from '#types/domain.js';
 
 const testDid = 'did:key:z6MkTest' as Did;
 const testTable = 'orders' as TableName;
+const parseSync = (sql: string): PgParsed => parsePgQuery(sql) as PgParsed;
 
 beforeAll(async () => {
   await ensurePgQuery();
@@ -143,7 +145,7 @@ describe('query-policy', () => {
       return obj;
     }
 
-    it('SELECT AST matches pinned libpg-query@17.7.3 shape', () => {
+    it('SELECT AST matches pinned libpg-query@18.1.5 shape', () => {
       const parsed = parseSync('SELECT id, name FROM patients');
       const stmt = stripLocations(parsed.stmts[0].stmt);
 
@@ -162,7 +164,7 @@ describe('query-policy', () => {
 
     it('INSERT AST top-level key is InsertStmt', () => {
       const parsed = parseSync("INSERT INTO t (a) VALUES ('x')");
-      const stmtKeys = Object.keys(parsed.stmts[0].stmt);
+      const stmtKeys = Object.keys(parsed.stmts[0].stmt as PgAstNode);
       expect(stmtKeys).toEqual(['InsertStmt']);
     });
 

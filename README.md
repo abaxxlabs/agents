@@ -19,10 +19,12 @@
   <a href="#the-problem">Why</a> &bull;
   <a href="#what-this-looks-like">Experience</a> &bull;
   <a href="#install">Install</a> &bull;
+  <a href="#playground">Playground</a> &bull;
   <a href="#quick-start">Quick start</a> &bull;
   <a href="#features">Features</a> &bull;
   <a href="#mcp">MCP</a> &bull;
   <a href="#security-model">Security</a> &bull;
+  <a href="https://abaxxtech.github.io/agents/documentation/">Docs</a> &bull;
   <a href="#free-tier-vs-abaxxone">Free vs AbaxxOne</a>
 </p>
 
@@ -90,9 +92,37 @@ Delegation works the same way down. A supervisor agent can delegate a strict sub
 npm install @abaxxlabs/agents pg@8.20.0 libpg-query@17.7.3
 ```
 
+## Playground
+
+A self-service order-book demo of Agents++: agent identity, column-scoped SQL, supervisor-to-worker delegation, columns encrypted at rest, and a signed, hash-chained audit trail. It runs entirely on your machine in Docker and needs no provider API key.
+
+Prerequisites: Docker Engine 28.3.3 or newer and Docker Compose 2.20 or newer.
+
+From `demo/playground` in a clean checkout:
+
+```bash
+docker compose up --build
+```
+
+Open [http://127.0.0.1:3100](http://127.0.0.1:3100). Compose builds the repository package, starts a dedicated PostgreSQL 16 database, runs the idempotent setup after PostgreSQL is healthy, and starts the Playground only after setup succeeds. From a second terminal, confirm readiness:
+
+```bash
+curl -fsS http://127.0.0.1:3100/readyz
+```
+
+If port 3100 is already in use, select another loopback port without changing the container:
+
+```bash
+PLAYGROUND_PORT=3110 docker compose up --build
+```
+
+Stop the stack and keep its data with `docker compose down`; remove the database and generated key with `docker compose down --volumes`. See the [Playground guide](docs/guides/playground.md) for what to try in the UI and the [full reference](demo/playground/README.md) for manual and external-PostgreSQL setups.
+
 ## Quick start
 
-The example assumes that the Agents++ PostgreSQL migrations and the `orders` table are already prepared, `orders.price` is registered for encryption, and `NODE_ENV=development` is set for the mock identity path. See the [complete SDK-direct quick start](docs/guides/quick-start.md) for database preparation.
+Prefer to start from zero? Run the [Playground](#playground): it builds the database, applies migrations, and seeds the order book in Docker with no provider key. This SDK-direct example embeds the library in your own application instead.
+
+The example assumes that the Agents++ PostgreSQL migrations and the `orders` table are already prepared, `orders.price` is registered for encryption, and `NODE_ENV=development` is set for the mock identity path. See the [complete SDK-direct quick start](https://abaxxtech.github.io/agents/documentation/guides/quick-start) for database preparation.
 
 ```typescript
 import { AgentScope } from '@abaxxlabs/agents/sql';
@@ -209,14 +239,20 @@ The open-source library is fully functional on its own -- identity, scoping, enc
 
 | | Free (this library) | AbaxxOne |
 |---|---|---|
-| **Agent identity** | `did:key` (fresh per created agent, recoverable) | `did:dht` (HSM-backed, institutional) |
-| **Credential issuer** | Human's self-issued DID | Organization's DID |
+| **Agent identity** | `did:key` (fresh per created agent, recoverable) | `did:key`, minted by this library |
+| **Human (owner) identity** | `did:key` derived from the OIDC subject | whatever the tenant issued — `did:dht`, or `did:ion` for enterprise SSO users |
+| **Credential issuer** | Human's self-issued DID | AbaxxOne, on behalf of your tenant |
 | **Trust boundary** | Single server | Cross-org, federated |
 | **Revocation** | Local (durable, cross-instance) | StatusList2021 (global, verifiable) |
 | **Agent discovery** | Local registry | AbaxxOne directory |
 | **Audit storage** | PostgreSQL | PostgreSQL + DWN (sovereign, portable) |
 
 The transition is additive. Existing code, credentials, and query patterns stay the same -- you connect AbaxxOne services and unlock the network.
+
+**On DID methods.** Agent DIDs are minted by this library as `did:key`. The *human owner* DID is
+issued by the tenant -- `did:dht`, or `did:ion` for enterprise SSO users -- and only labels the
+agent's owner: this library never resolves or verifies it. Credentials that AbaxxOne signs must
+have a `did:key` or `did:dht` issuer, because that signature is verified against a resolved key.
 
 ## Development
 
@@ -242,12 +278,19 @@ DATABASE_URL=... npm test
 
 ## Documentation
 
+The public documentation site is the canonical reference; the repository guides under `docs/` are the source it imports.
+
 | Topic | Link |
 |---|---|
-| Documentation index | [docs/README.md](docs/README.md) |
-| Security and storage boundaries | [docs/guides/security-and-storage-boundaries.md](docs/guides/security-and-storage-boundaries.md) |
-| v0.11 migration guide | [docs/migrations/v0.11.md](docs/migrations/v0.11.md) |
-| BYOK master key migration | [docs/migrations/byok.md](docs/migrations/byok.md) |
+| Documentation index | [abaxxtech.github.io/agents/documentation](https://abaxxtech.github.io/agents/documentation/) |
+| Quick start | [guides/quick-start](https://abaxxtech.github.io/agents/documentation/guides/quick-start) |
+| Installation | [guides/installation](https://abaxxtech.github.io/agents/documentation/guides/installation) |
+| Playground (local) | [guides/playground](https://abaxxtech.github.io/agents/documentation/guides/playground) |
+| Security and storage boundaries | [guides/security-and-storage-boundaries](https://abaxxtech.github.io/agents/documentation/guides/security-and-storage-boundaries) |
+| Security | [security](https://abaxxtech.github.io/agents/documentation/security) |
+| v0.11 migration | [migrations/v0.11](https://abaxxtech.github.io/agents/documentation/migrations/v0.11) |
+| BYOK master key migration | [migrations/byok](https://abaxxtech.github.io/agents/documentation/migrations/byok) |
+| Repository documentation index | [repository-documentation](https://abaxxtech.github.io/agents/documentation/repository-documentation) |
 | Security policy | [SECURITY.md](SECURITY.md) |
 | Changelog | [CHANGELOG.md](CHANGELOG.md) |
 | Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |

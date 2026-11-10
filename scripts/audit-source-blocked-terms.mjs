@@ -26,6 +26,10 @@ function getTrackedSourceFiles(rootDir, policy) {
 
 export function scanFiles(files, rootDir, options = {}) {
   const violations = [];
+  const contentOptions = {
+    ...options,
+    contentExceptions: options.policy?.contentExceptions ?? options.contentExceptions,
+  };
   for (const filePath of files) {
     let contents;
     try {
@@ -34,7 +38,7 @@ export function scanFiles(files, rootDir, options = {}) {
       violations.push({ path: filePath, reason: 'could not read source file' });
       continue;
     }
-    violations.push(...scanArtifactContentForViolations(contents, filePath, options));
+    violations.push(...scanArtifactContentForViolations(contents, filePath, contentOptions));
   }
   return violations;
 }
@@ -75,6 +79,7 @@ export function releaseContentOptions(pluginConfig, context) {
   ]);
   return {
     blockedContentTerms: policy?.blockedTerms,
+    contentExceptions: policy?.contentExceptions,
     employeeNames: corporateEmployeeNames(rootDir, pluginConfig.corporateEmailSuffix),
     privateUrlPrefixes: blockedUrls,
     ticketPrefixes: policy?.ticketPrefixes,

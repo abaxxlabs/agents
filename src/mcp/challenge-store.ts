@@ -29,7 +29,7 @@
  */
 
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { v7 as uuidv7 } from 'uuid';
+import { generateUuid7 } from '#identity/uuid7.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -149,7 +149,7 @@ export class ChallengeStore {
     const rawTtl = options?.ttlSeconds ?? DEFAULT_CHALLENGE_TTL_SECONDS;
     const ttl = Math.max(1, Math.min(rawTtl, MAX_CHALLENGE_TTL_SECONDS)); // clamp TTL
     const expiresAt = now + ttl;
-    const jti = uuidv7();
+    const jti = generateUuid7();
     const requestorDid = options?.requestorDid ?? '';
 
     const hmac = this.computeHmac(now, expiresAt, jti, requestorDid);
@@ -218,7 +218,8 @@ export class ChallengeStore {
       return { valid: false, reason: 'Challenge already consumed (replay rejected)' };
     }
 
-    if (this.dedupCache.size >= MAX_DEDUP_CACHE_SIZE) { // evict oldest (Map insertion order)
+    if (this.dedupCache.size >= MAX_DEDUP_CACHE_SIZE) {
+      // evict oldest (Map insertion order)
       const oldestKey = this.dedupCache.keys().next().value;
       if (oldestKey !== undefined) {
         this.dedupCache.delete(oldestKey);
