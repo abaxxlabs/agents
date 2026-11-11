@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agents++ Demo — Order Book Scoped Access</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="font-pg text-pg-text leading-[1.5] [background:linear-gradient(135deg,var(--playground-page-start)_2%,var(--playground-page-middle)_48%,var(--playground-page-start)_99%)_fixed]">
+    <header class="mx-auto mt-[48px] mb-[24px] flex w-[calc(100%_-_96px)] max-w-[1344px] items-start justify-between gap-[24px] p-0 [border:0] compact:mx-[24px] compact:mt-[24px] compact:w-[calc(100%_-_48px)] compact:flex-col mobile:mx-[16px] mobile:w-[calc(100%_-_32px)]">
+      <div class="flex min-w-0 flex-auto w-auto flex-col gap-[40.27px]">
+        <h1 class="flex items-center gap-[39.5px] pl-[19.75px] whitespace-nowrap font-pg-brand text-[20px] font-normal leading-[normal] text-white [font-synthesis:none] mobile:gap-[20px]">
+          <span class="brand flex shrink-0 items-center gap-[16.144964px]">
+            <img class="brand-logo block h-[32.46px] w-[39.43px] shrink-0" src="/agents-mark.svg" width="39.43" height="32.46" alt="" />
+            <span class="brand-name font-medium leading-[16.144964px]">Agents++</span>
+          </span>
+          <span class="brand-tag">Playground</span>
+        </h1>
+        <p class="subtitle text-[16px] leading-[24px] text-[rgba(255,255,255,0.8)] mobile:text-[14px] mobile:leading-[21px]">Identity, scoped access and audit for every agent.</p>
+      </div>
+      <nav class="top-nav flex w-auto items-center justify-start gap-[24px] self-start compact:w-full compact:flex-col compact:items-start compact:gap-[12px] compact:self-auto">
+        <div id="server-status" class="status-pill flex max-w-[593px] items-center gap-[10px] rounded-[32px] border border-[rgba(16,185,129,0.3)] bg-[rgba(16,185,129,0.03)] py-[12px] pr-[20px] pl-[16px] font-pg-mono text-[12px] leading-[18px] text-pg-success [overflow-wrap:anywhere] [&.err]:border-[rgba(239,68,68,0.3)] [&.err]:bg-[rgba(239,68,68,0.03)] [&.err]:text-pg-error compact:w-full compact:max-w-full">connecting…</div>
+      </nav>
+    </header>
+
+    <main class="mx-auto flex w-[calc(100%_-_96px)] max-w-[1344px] flex-col gap-[16px] p-0 compact:mx-[24px] compact:w-[calc(100%_-_48px)] mobile:mx-[16px] mobile:w-[calc(100%_-_32px)]">
+      <section class="dataset-overview rounded-[10px] border border-legacy-border bg-legacy-panel py-4 px-5" aria-labelledby="dataset-title">
+        <div class="dataset-overview-head flex items-center justify-between gap-4">
+          <h2 id="dataset-title" class="text-[1rem]">Orders</h2>
+          <span class="dataset-count whitespace-nowrap text-[0.8rem] text-legacy-muted">8 rows</span>
+        </div>
+        <div class="dataset-columns mt-[0.7rem] flex flex-wrap gap-[0.4rem]" aria-label="Queryable columns">
+          <span class="dataset-column inline-flex items-center gap-1 rounded-[4px] border border-legacy-border py-1 px-[0.55rem] text-legacy-text [font:0.68rem_var(--mono)]">instrument</span>
+          <span class="dataset-column inline-flex items-center gap-1 rounded-[4px] border border-legacy-border py-1 px-[0.55rem] text-legacy-text [font:0.68rem_var(--mono)]">side</span>
+          <span class="dataset-column inline-flex items-center gap-1 rounded-[4px] border border-legacy-border py-1 px-[0.55rem] text-legacy-text [font:0.68rem_var(--mono)]">quantity</span>
+          <span class="dataset-column inline-flex items-center gap-1 rounded-[4px] border border-legacy-border py-1 px-[0.55rem] text-legacy-text [font:0.68rem_var(--mono)]">status</span>
+          <span
+            class="dataset-column encrypted inline-flex items-center gap-1 rounded-[4px] border border-[#61413b] py-1 px-[0.55rem] text-[#e8b4a8] [font:0.68rem_var(--mono)]"
+            title="Encrypted at rest"
+            aria-label="Encrypted: price"
+            ><span aria-hidden="true">&#128274;</span>price</span
+          >
+          <span
+            class="dataset-column encrypted inline-flex items-center gap-1 rounded-[4px] border border-[#61413b] py-1 px-[0.55rem] text-[#e8b4a8] [font:0.68rem_var(--mono)]"
+            title="Encrypted at rest"
+            aria-label="Encrypted: counterparty"
+            ><span aria-hidden="true">&#128274;</span>counterparty</span
+          >
+        </div>
+      </section>
+
+      <section class="card group/step flex flex-col gap-[16px] rounded-[20px] border border-pg-border bg-pg-panel p-[24px] [transition:opacity_0.25s] [&.disabled]:pointer-events-none [&.disabled]:opacity-30 mobile:p-[20px]" id="step-login">
+        <h2 class="flex items-center gap-[12px] text-[18px] font-bold leading-[28px] text-white"><span class="step inline-flex h-[28px] w-[28px] flex-[0_0_28px] items-center justify-center rounded-[14px] bg-pg-error text-[14px] font-bold text-white group-[.disabled]/step:bg-pg-gray">1</span> Choose a demo identity</h2>
+        <p class="hint text-[14px] leading-[21px] text-pg-muted">Use a local demo identity. Production can use OIDC.</p>
+        <div id="human-did" class="identity-options grid w-auto grid-cols-[repeat(2,minmax(0,220px))] gap-[12px] mobile:w-full mobile:grid-cols-2" role="radiogroup" aria-label="Demo identity">
+          <label class="identity-card relative flex flex-col items-stretch gap-[10px] rounded-[8px] border border-pg-border bg-pg-control p-[14px] text-[13px] font-normal text-pg-text cursor-pointer hover:border-[rgba(239,68,68,0.5)] has-[input:checked]:border-pg-primary has-[input:focus-visible]:[outline:2px_solid_rgba(207,0,0,0.5)] has-[input:focus-visible]:outline-offset-2 mobile:p-[16px]">
+            <input class="absolute m-0 h-px w-px appearance-none rounded-[8px] border border-transparent bg-pg-control p-0 font-pg text-[14px] leading-[20px] text-white opacity-0 focus:border-pg-primary focus:[outline:2px_solid_rgba(207,0,0,0.35)] focus:outline-offset-1" type="radio" name="human-did" value="alice" checked />
+            <span class="identity-head flex items-center gap-[10px]">
+              <img class="identity-avatar h-[36px] w-[36px] flex-[0_0_36px] rounded-[50%]" src="/avatar-alice.png" width="36" height="36" alt="" />
+              <span class="identity-meta flex flex-col">
+                <span class="identity-name text-[14px] font-bold leading-[20px] text-white">Alice</span>
+                <span class="identity-role text-[12px] font-normal leading-[16px] text-pg-subtle">Head Trader</span>
+              </span>
+            </span>
+            <span class="identity-scope flex flex-col gap-[8px]">
+              <span class="identity-scope-label text-[9px] font-bold leading-[12px] tracking-[0.08em] text-white uppercase">Scope · all fields</span>
+              <span class="identity-chips flex flex-wrap gap-[6px]"
+                ><span class="chip inline-flex min-h-[24px] items-center gap-[4px] rounded-[4px] bg-[#1f2937] py-[6px] px-[8px] text-[10px] font-semibold leading-[12px] text-[#9ca3af]">instrument</span><span class="chip inline-flex min-h-[24px] items-center gap-[4px] rounded-[4px] bg-[#1f2937] py-[6px] px-[8px] text-[10px] font-semibold leading-[12px] text-[#9ca3af]">side</span
+                ><span class="chip inline-flex min-h-[24px] items-center gap-[4px] rounded-[4px] bg-[#1f2937] py-[6px] px-[8px] text-[10px] font-semibold leading-[12px] text-[#9ca3af]">quantity</span><span class="chip inline-flex min-h-[24px] items-center gap-[4px] rounded-[4px] bg-[#1f2937] py-[6px] px-[8px] text-[10px] font-semibold leading-[12px] text-[#9ca3af]">status</span
+                ><span class="chip inline-flex min-h-[24px] items-center gap-[4px] rounded-[4px] bg-[#1f2937] py-[6px] px-[8px] text-[10px] font-semibold leading-[12px] text-[#9ca3af]"><span aria-hidden="true">&#128274;</span> price</span
+                ><span class="chip inline-flex min-h-[24px] items-center gap-[4px] rounded-[4px] bg-[#1f2937] py-[6px] px-[8px] text-[10px] font-semibold leading-[12px] text-[#9ca3af]"
+                  ><span aria-hidden="true">&#128274;</span> counterparty</span
+                ></span
+              >
+            </span>
+          </label>
+          <label class="identity-card relative flex flex-col items-stretch gap-[10px] rounded-[8px] border border-pg-border bg-pg-control p-[14px] text-[13px] font-normal text-pg-text cursor-pointer hover:border-[rgba(239,68,68,0.5)] has-[input:checked]:border-pg-primary has-[input:focus-visible]:[outline:2px_solid_rgba(207,0,0,0.5)] has-[input:focus-visible]:outline-offset-2 mobile:p-[16px]">
+            <input class="absolute m-0 h-px w-px appearance-none rounded-[8px] border border-transparent bg-pg-control p-0 font-pg text-[14px] leading-[20px] text-white opacity-0 focus:border-pg-primary focus:[outline:2px_solid_rgba(207,0,0,0.35)] focus:outline-offset-1" type="radio" name="human-did" value="bob" />
+            <span class="identity-head flex items-center gap-[10px]">
+              <img class="identity-avatar h-[36px] w-[36px] flex-[0_0_36px] rounded-[50%]" src="/avatar-bob.png" width="36" height="36" alt="" />
+              <span class="identity-meta flex flex-col">
+                <span class="identity-name text-[14px] font-bold leading-[20px] text-white">Bob</span>
+                <span class="identity-role text-[12px] font-normal leading-[16px] text-pg-subtle">Junior Trader</span>
+              </span>
+            </span>
+            <span class="identity-scope flex flex-col gap-[8px]">
+              <span class="identity-scope-label text-[9px] font-bold leading-[12px] tracking-[0.08em] text-white uppercase">Scope · 4 fields</span>
+              <span class="identity-chips flex flex-wrap gap-[6px]"
+                ><span class="chip inline-flex min-h-[24px] items-center gap-[4px] rounded-[4px] bg-[#1f2937] py-[6px] px-[8px] text-[10px] font-semibold leading-[12px] text-[#9ca3af]">instrument</span><span class="chip inline-flex min-h-[24px] items-center gap-[4px] rounded-[4px] bg-[#1f2937] py-[6px] px-[8px] text-[10px] font-semibold leading-[12px] text-[#9ca3af]">side</span
+                ><span class="chip inline-flex min-h-[24px] items-center gap-[4px] rounded-[4px] bg-[#1f2937] py-[6px] px-[8px] text-[10px] font-semibold leading-[12px] text-[#9ca3af]">quantity</span><span class="chip inline-flex min-h-[24px] items-center gap-[4px] rounded-[4px] bg-[#1f2937] py-[6px] px-[8px] text-[10px] font-semibold leading-[12px] text-[#9ca3af]">status</span></span
+              >
+            </span>
+          </label>
+        </div>
+        <div class="row flex flex-wrap items-center gap-[12px] mobile:flex-col mobile:items-stretch">
+          <button id="btn-login" class="inline-flex min-h-[42px] min-w-[130px] cursor-pointer items-center justify-center gap-[8px] rounded-[4px] border border-transparent bg-pg-cta bg-size-[100%_100%] bg-origin-border bg-no-repeat py-[8px] px-[16px] font-pg-cta text-[16px] font-bold leading-[24px] text-white [font-synthesis:none] mobile:w-full">Authenticate</button>
+          <span id="login-result" class="result min-w-0 basis-full text-[13px] leading-[20px] text-pg-muted [&.ok]:text-pg-success [&.err]:text-pg-error [&.err]:block [&.err]:rounded-[8px] [&.err]:border [&.err]:border-[rgba(239,68,68,0.25)] [&.err]:bg-[rgba(239,68,68,0.06)] [&.err]:py-[10px] [&.err]:px-[12px]"></span>
+        </div>
+      </section>
+
+      <section class="card disabled group/step flex flex-col gap-[16px] rounded-[20px] border border-pg-border bg-pg-panel p-[24px] [transition:opacity_0.25s] [&.disabled]:pointer-events-none [&.disabled]:opacity-30 mobile:p-[20px]" id="step-agent">
+        <h2 class="flex items-center gap-[12px] text-[18px] font-bold leading-[28px] text-white"><span class="step inline-flex h-[28px] w-[28px] flex-[0_0_28px] items-center justify-center rounded-[14px] bg-pg-error text-[14px] font-bold text-white group-[.disabled]/step:bg-pg-gray">2</span> Create your agent identity</h2>
+        <p class="hint text-[14px] leading-[21px] text-pg-muted">
+          Give your assistant a name. In the next step, you decide exactly what it can access.
+        </p>
+        <div class="row flex flex-wrap items-center gap-[12px] mobile:flex-col mobile:items-stretch">
+          <input id="agent-name" class="h-[40px] w-[220px] rounded-[8px] border border-transparent bg-pg-control py-[8px] px-[12px] font-pg text-[14px] leading-[20px] text-white focus:border-pg-primary focus:[outline:2px_solid_rgba(207,0,0,0.35)] focus:outline-offset-1 mobile:w-full" value="trading-assistant" placeholder="agent name" />
+          <button id="btn-create-agent" class="inline-flex min-h-[42px] min-w-[130px] cursor-pointer items-center justify-center gap-[8px] rounded-[4px] border border-transparent bg-pg-cta bg-size-[100%_100%] bg-origin-border bg-no-repeat py-[8px] px-[16px] font-pg-cta text-[16px] font-bold leading-[24px] text-white [font-synthesis:none] mobile:w-full">Create agent identity</button>
+        </div>
+        <div id="agent-result" class="result mono text-[13px] leading-[20px] text-pg-muted [&.mono]:m-0 [&.mono]:font-pg-mono [&.mono]:text-[12px] [&.mono]:break-all [&.ok]:text-pg-success [&.err]:text-pg-error [&.err]:block [&.err]:rounded-[8px] [&.err]:border [&.err]:border-[rgba(239,68,68,0.25)] [&.err]:bg-[rgba(239,68,68,0.06)] [&.err]:py-[10px] [&.err]:px-[12px]"></div>
+        <details class="implementation-details group/details border-t border-t-pg-border pt-[0.75rem]">
+          <summary class="flex min-h-[2.75rem] cursor-pointer items-center text-[13px] font-bold text-pg-blue before:mr-[0.5rem] before:inline-block before:text-[1.1rem] before:content-['›'] before:[transform:rotate(0deg)] before:[transition:transform_0.15s_ease] group-open/details:before:[transform:rotate(90deg)]">Technical details</summary>
+          <div class="agent-tech-grid" id="agent-tech-grid">
+            <p class="result text-[13px] leading-[20px] text-pg-muted">create an agent to see its identity</p>
+          </div>
+          <pre class="mt-[8px] overflow-x-auto rounded-[8px] border border-pg-border bg-pg-control p-[16px] font-pg-mono text-[12px] font-normal leading-[18px] text-pg-subtle"><code id="agent-sdk-code">const agent = await scope.createAgentIdentity({
+  name: 'trading-assistant',
+  ownerDid: session.humanDid,
+});</code></pre>
+        </details>
+      </section>
+
+      <section class="card disabled group/step flex flex-col gap-[16px] rounded-[20px] border border-pg-border bg-pg-panel p-[24px] [transition:opacity_0.25s] [&.disabled]:pointer-events-none [&.disabled]:opacity-30 mobile:p-[20px]" id="step-credential">
+        <h2 class="flex items-center gap-[12px] text-[18px] font-bold leading-[28px] text-white"><span class="step inline-flex h-[28px] w-[28px] flex-[0_0_28px] items-center justify-center rounded-[14px] bg-pg-error text-[14px] font-bold text-white group-[.disabled]/step:bg-pg-gray">3</span> Issue scoped credential</h2>
+        <p class="hint text-[14px] leading-[21px] text-pg-muted">Issue a signed credential that defines what this agent can read.</p>
+        <div class="columns-grid grid grid-cols-3 gap-x-[12px] gap-y-[10px] compact:grid-cols-2 mobile:grid-cols-[1fr]" id="columns-picker"></div>
+        <div id="scope-preview" class="scope-preview flex flex-col gap-[8px]" hidden></div>
+        <div class="row flex flex-wrap items-center gap-[12px] mobile:flex-col mobile:items-stretch">
+          <label class="text-[13px] font-bold text-pg-muted"
+            >TTL:
+            <select id="credential-ttl" class="ml-[8px] h-[40px] w-[120px] appearance-none rounded-[8px] border border-transparent bg-pg-control bg-select-arrow bg-no-repeat py-[8px] pr-[34px] pl-[12px] font-pg text-[14px] leading-[20px] text-white [background-position:right_12px_center] focus:border-pg-primary focus:[outline:2px_solid_rgba(207,0,0,0.35)] focus:outline-offset-1 mobile:w-full">
+              <option value="15m">15 min</option>
+              <option value="1h" selected>1 hour</option>
+              <option value="4h">4 hours</option>
+            </select>
+          </label>
+          <span class="ttl-hint text-[11px] font-normal leading-[18px] text-pg-muted">Access expires automatically</span>
+        </div>
+        <div class="row flex flex-wrap items-center gap-[12px] mobile:flex-col mobile:items-stretch">
+          <button id="btn-issue" class="inline-flex min-h-[42px] min-w-[130px] cursor-pointer items-center justify-center gap-[8px] rounded-[4px] border border-transparent bg-pg-cta bg-size-[100%_100%] bg-origin-border bg-no-repeat py-[8px] px-[16px] font-pg-cta text-[16px] font-bold leading-[24px] text-white [font-synthesis:none] mobile:w-full">Issue credential</button>
+        </div>
+        <div id="credential-result" class="result text-[13px] leading-[20px] text-pg-muted [&.ok]:text-pg-success [&.err]:text-pg-error [&.err]:block [&.err]:rounded-[8px] [&.err]:border [&.err]:border-[rgba(239,68,68,0.25)] [&.err]:bg-[rgba(239,68,68,0.06)] [&.err]:py-[10px] [&.err]:px-[12px] [&.err]:font-semibold"></div>
+        <article id="credential-card" class="credential-card flex max-w-[520px] items-center gap-[20px] rounded-[20px] bg-[#142236] py-[20px] px-[24px] mobile:max-w-none mobile:flex-col mobile:items-start mobile:gap-[8px] mobile:p-[16px]" hidden aria-live="polite">
+          <div class="credential-card-icon flex h-[76px] w-[76px] flex-[0_0_76px] items-center justify-center mobile:h-[64px] mobile:w-[64px] mobile:basis-[64px]" aria-hidden="true">
+            <img class="h-[116px] w-[116px] max-w-none mobile:h-[100px] mobile:w-[100px]" src="/credential-icon.png" width="76" height="76" alt="" />
+          </div>
+          <div class="credential-card-body flex min-w-0 flex-col gap-[8px]">
+            <span class="credential-card-kicker text-[9px] font-bold leading-[14px] tracking-[0.04em] text-[#9eb0c7]">CREDENTIAL SUBJECT</span>
+            <strong id="credential-card-title" class="text-[16px] font-bold leading-[24px] text-white [overflow-wrap:anywhere]">Credential for trading-assistant</strong>
+            <span id="credential-card-scope" class="credential-card-scope text-[9px] font-bold leading-[14px] text-white">READ · 0 FIELDS</span>
+            <div id="credential-card-columns" class="credential-card-columns flex flex-wrap gap-[6px]"></div>
+            <span id="credential-card-expiry" class="credential-card-expiry text-[10px] leading-[16px] text-[#9eb0c7]"></span>
+          </div>
+        </article>
+        <details class="implementation-details group/details border-t border-t-pg-border pt-[0.75rem]">
+          <summary class="flex min-h-[2.75rem] cursor-pointer items-center text-[13px] font-bold text-pg-blue before:mr-[0.5rem] before:inline-block before:text-[1.1rem] before:content-['›'] before:[transform:rotate(0deg)] before:[transition:transform_0.15s_ease] group-open/details:before:[transform:rotate(90deg)]">Technical details</summary>
+          <pre class="mt-[8px] overflow-x-auto rounded-[8px] border border-pg-border bg-pg-control p-[16px] font-pg-mono text-[12px] font-normal leading-[18px] text-pg-subtle"><code id="credential-sdk-code">const credential = await session.issueCredential({
+  agent: agent.did,
+  columns: ['orders.instrument', 'orders.status'],
+  actions: ['read'],
+  expiresIn: '1h',
+});</code></pre>
+        </details>
+      </section>
+
+      <section class="card disabled group/step flex flex-col gap-[24px] rounded-[20px] border border-pg-border bg-pg-panel p-[32px] [transition:opacity_0.25s] [&.disabled]:pointer-events-none [&.disabled]:opacity-30 compact:p-[24px] mobile:p-[20px]" id="step-query">
+        <h2 class="flex items-center gap-[12px] text-[18px] font-bold leading-[28px] text-white"><span class="step inline-flex h-[28px] w-[28px] flex-[0_0_28px] items-center justify-center rounded-[14px] bg-pg-error text-[14px] font-bold text-white group-[.disabled]/step:bg-pg-gray">4</span> Query protected data as an agent</h2>
+        <div class="presets flex flex-wrap gap-[8px]" id="query-presets" role="group" aria-label="Query presets"></div>
+        <textarea id="sql-input" class="min-h-[96px] w-full resize-y rounded-[8px] border border-transparent bg-pg-control p-[16px] font-pg text-[14px] leading-[20px] text-white focus:border-pg-primary focus:[outline:2px_solid_rgba(207,0,0,0.35)] focus:outline-offset-1" rows="3" spellcheck="false">
+SELECT instrument, price, counterparty FROM orders</textarea
+        >
+        <div class="row flex flex-wrap items-center gap-[12px] mobile:flex-col mobile:items-stretch">
+          <button id="btn-run" class="primary inline-flex min-h-[42px] min-w-[130px] cursor-pointer items-center justify-center gap-[8px] rounded-[4px] border border-transparent bg-pg-cta bg-size-[100%_100%] bg-origin-border bg-no-repeat py-[8px] px-[16px] font-pg-cta text-[16px] font-bold leading-[24px] text-white [font-synthesis:none] mobile:w-full">Compare access</button>
+        </div>
+        <section
+          id="query-comparison"
+          class="query-comparison w-full min-w-0 p-0 text-comparison-text font-pg [border:0]"
+          aria-label="Access comparison"
+          hidden
+        >
+          <p id="comparison-status" class="comparison-announcement comparison-sr-only absolute h-px w-px overflow-hidden whitespace-nowrap p-0 text-[12px] font-normal leading-[18px] text-comparison-muted [clip-path:inset(50%)] [overflow-wrap:anywhere] [border:0] bg-none bg-transparent mb-[12px] empty:hidden" role="status"></p>
+          <div class="comparison-grid grid min-w-0 grid-cols-2 items-stretch gap-[12px] pt-[8px] px-[12px] pb-[10px] compact:grid-cols-[minmax(0,1fr)] compact:p-0">
+            <article class="comparison-panel comparison-direct flex min-w-0 flex-col gap-[12px] rounded-[8px] border border-comparison-border bg-comparison-surface p-[15px] [--comparison-accent:var(--comparison-red)] [--comparison-tint:rgba(255,72,72,0.08)] [--comparison-edge:rgba(255,72,72,0.3)]" aria-label="Without Agents++">
+              <header class="comparison-panel-heading m-0 flex min-h-[32px] min-w-0 flex-row flex-wrap items-center justify-between gap-[8px] p-0 [border:0]">
+                <h3 class="text-[14px] font-bold leading-[20px] tracking-[0] text-comparison-accent [font-family:inherit]">WITHOUT AGENTS++</h3>
+                <span id="comparison-direct-title" class="comparison-status-pill ml-auto inline-flex max-w-full rounded-[999px] border border-transparent bg-comparison-tint py-[3px] px-[8px] text-[10px] font-semibold leading-[14px] tracking-[0] text-comparison-accent [font-family:inherit] [overflow-wrap:anywhere]"></span>
+              </header>
+              <div id="comparison-direct-path" class="comparison-path flex h-[58px] min-w-0 flex-[0_0_58px] items-center gap-[8px] text-comparison-accent" aria-hidden="true"></div>
+              <dl id="comparison-direct-metrics" class="comparison-metrics grid min-w-0 grid-cols-3 gap-[6px]"></dl>
+              <div id="comparison-direct-result" class="comparison-result flex min-h-[265px] min-w-0 flex-auto flex-col gap-[8px] overflow-visible text-[12px] leading-[18px] text-comparison-text [font-family:inherit]"></div>
+            </article>
+            <article class="comparison-panel comparison-protected flex min-w-0 flex-col gap-[12px] rounded-[8px] border border-comparison-border bg-comparison-surface p-[15px] [--comparison-accent:var(--comparison-teal)] [--comparison-tint:rgba(85,229,195,0.06)] [--comparison-edge:rgba(85,229,195,0.24)] data-[state=error]:[--comparison-accent:var(--comparison-red)] data-[state=error]:[--comparison-tint:rgba(255,72,72,0.08)] data-[state=error]:[--comparison-edge:rgba(255,72,72,0.3)]" aria-label="With Agents++">
+              <header class="comparison-panel-heading m-0 flex min-h-[32px] min-w-0 flex-row flex-wrap items-center justify-between gap-[8px] p-0 [border:0]">
+                <h3 class="text-[14px] font-bold leading-[20px] tracking-[0] text-comparison-teal [font-family:inherit]">WITH AGENTS++</h3>
+                <span id="comparison-agent-title" class="comparison-status-pill ml-auto inline-flex max-w-full rounded-[999px] border border-transparent bg-comparison-tint py-[3px] px-[8px] text-[10px] font-semibold leading-[14px] tracking-[0] text-comparison-accent [font-family:inherit] [overflow-wrap:anywhere]"></span>
+              </header>
+              <div id="comparison-agent-path" class="comparison-path flex h-[58px] min-w-0 flex-[0_0_58px] items-center gap-[8px] text-comparison-accent" aria-hidden="true"></div>
+              <dl id="comparison-agent-metrics" class="comparison-metrics grid min-w-0 grid-cols-3 gap-[6px]"></dl>
+              <div id="comparison-agent-result" class="comparison-result flex min-h-[265px] min-w-0 flex-auto flex-col gap-[8px] overflow-visible text-[12px] leading-[18px] text-comparison-text [font-family:inherit]"></div>
+            </article>
+          </div>
+          <details class="implementation-details group/details mt-[16px] border-t border-t-pg-border pt-[0.75rem]" id="query-implementation">
+            <summary class="flex min-h-[2.75rem] cursor-pointer items-center text-[13px] font-bold text-pg-blue before:mr-[0.5rem] before:inline-block before:text-[1.1rem] before:content-['›'] before:[transform:rotate(0deg)] before:[transition:transform_0.15s_ease] group-open/details:before:[transform:rotate(90deg)]">Technical details</summary>
+            <div class="implementation-section">
+              <h4 class="mb-[0.45rem] text-[0.7rem] tracking-[0.04em] text-pg-muted uppercase">SDK request</h4>
+              <pre class="mt-[8px] overflow-x-auto rounded-[8px] border border-pg-border bg-pg-control p-[16px] font-pg-mono text-[12px] font-normal leading-[18px] text-pg-subtle"><code id="sdk-flow-code"></code></pre>
+            </div>
+            <div class="implementation-section mt-4">
+              <h4 class="mb-[0.45rem] text-[0.7rem] tracking-[0.04em] text-pg-muted uppercase">Decision path</h4>
+              <div id="decision-trace-output" class="decision-trace grid gap-[0.3rem] [font:0.68rem_var(--mono)]"></div>
+            </div>
+            <div class="implementation-section mt-4">
+              <h4 class="mb-[0.45rem] text-[0.7rem] tracking-[0.04em] text-pg-muted uppercase">Evidence</h4>
+              <div id="request-evidence-output" class="evidence-summary"></div>
+            </div>
+          </details>
+        </section>
+      </section>
+
+      <section class="card group/step flex flex-col gap-[24px] rounded-[20px] border border-pg-border bg-pg-panel p-[32px] [transition:opacity_0.25s] [&.disabled]:pointer-events-none [&.disabled]:opacity-30 compact:p-[24px] mobile:p-[20px]" id="step-audit">
+        <h2 class="flex items-center gap-[12px] text-[18px] font-bold leading-[28px] text-white"><span class="step inline-flex h-[28px] w-[28px] flex-[0_0_28px] items-center justify-center rounded-[14px] bg-pg-error text-[14px] font-bold text-white group-[.disabled]/step:bg-pg-gray">5</span> Accountable audit trail</h2>
+        <p class="hint text-[14px] leading-[21px] text-pg-muted">
+          Recorded queries and policy decisions appear in an append-only audit trail.
+        </p>
+        <div class="row flex flex-wrap items-center gap-[12px] mobile:flex-col mobile:items-stretch">
+          <button id="btn-refresh-audit" class="min-h-[40px] cursor-pointer rounded-[4px] border border-pg-gray bg-transparent py-[8px] px-[16px] font-pg text-[16px] font-semibold leading-[24px] text-white [transition:background_0.15s] hover:bg-[rgba(255,255,255,0.06)] mobile:w-full">Refresh</button>
+          <button id="btn-verify-chain" class="min-h-[40px] cursor-pointer rounded-[4px] border border-pg-gray bg-transparent py-[8px] px-[16px] font-pg text-[16px] font-semibold leading-[24px] text-white [transition:background_0.15s] hover:bg-[rgba(255,255,255,0.06)] mobile:w-full">Verify chain</button>
+          <span id="chain-result" class="result text-[13px] leading-[20px] text-pg-muted [&.ok]:text-pg-success [&.err]:text-pg-error [&.err]:block [&.err]:rounded-[8px] [&.err]:border [&.err]:border-[rgba(239,68,68,0.25)] [&.err]:bg-[rgba(239,68,68,0.06)] [&.err]:py-[10px] [&.err]:px-[12px]"></span>
+        </div>
+        <div id="audit-output" class="audit-list flex flex-col gap-[12px]"></div>
+        <details class="implementation-details group/details border-t border-t-pg-border pt-[0.75rem]">
+          <summary class="flex min-h-[2.75rem] cursor-pointer items-center text-[13px] font-bold text-pg-blue before:mr-[0.5rem] before:inline-block before:text-[1.1rem] before:content-['›'] before:[transform:rotate(0deg)] before:[transition:transform_0.15s_ease] group-open/details:before:[transform:rotate(90deg)]">Technical details</summary>
+          <pre class="mt-[8px] overflow-x-auto rounded-[8px] border border-pg-border bg-pg-control p-[16px] font-pg-mono text-[12px] font-normal leading-[18px] text-pg-subtle"><code>const result =
+  await scope.auditLoggerInstance.verifyAuditChain();</code></pre>
+        </details>
+      </section>
+
+      <details class="known-limitations rounded-[12px] border border-pg-border bg-[rgba(255,255,255,0.01)] py-[16px] px-[20px] text-[13px] leading-[20px] text-pg-muted">
+        <summary class="cursor-pointer text-[13px] font-bold text-pg-text">Known limitations</summary>
+        <ul class="mt-[12px] ml-[20px] grid gap-[4px]">
+          <li>Local demo only. Authentication uses mock identities.</li>
+          <li>Demo views are not tenant-isolated production views.</li>
+          <li>
+            Credential and signature data shown here is not independently verified by the browser.
+          </li>
+          <li>
+            Audit chain verification checks hash links, not signatures, completeness or
+            deleted-record detection.
+          </li>
+          <li>No LLM or external agent runtime is used by this Playground.</li>
+        </ul>
+      </details>
+    </main>
+
+    <footer class="mx-auto mt-[24px] w-[calc(100%_-_96px)] max-w-[1344px] border-t border-pg-border pt-[24px] px-0 pb-[40px] text-center text-[13px] leading-[20px] text-pg-muted compact:mx-[24px] compact:w-[calc(100%_-_48px)] mobile:mx-[16px] mobile:w-[calc(100%_-_32px)]">
+      <p>
+        Real integration with <code class="rounded-[4px] bg-pg-control py-[2px] px-[6px] font-pg-mono text-[12px] text-pg-text">@abaxxlabs/agents</code> ·
+        <a class="text-[13px] font-bold text-pg-blue no-underline" href="https://github.com/abaxxlabs/agents">github.com/abaxxlabs/agents</a>
+      </p>
+    </footer>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

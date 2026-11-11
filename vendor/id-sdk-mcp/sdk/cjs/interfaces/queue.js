@@ -2,9 +2,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Queue = void 0;
 const libp2p_1 = require("libp2p");
-const circuit_relay_1 = require("libp2p/circuit-relay");
+const circuit_relay_1 = require("@libp2p/circuit-relay-v2");
 const libp2p_gossipsub_1 = require("@chainsafe/libp2p-gossipsub");
-const identify_1 = require("libp2p/identify");
+const identify_1 = require("@libp2p/identify");
 const kad_dht_1 = require("@libp2p/kad-dht");
 const mplex_1 = require("@libp2p/mplex");
 const libp2p_noise_1 = require("@chainsafe/libp2p-noise");
@@ -49,7 +49,7 @@ class Queue {
                     enabled: true,
                     emitSelf: true,
                 }),
-                identify: (0, identify_1.identifyService)(),
+                identify: (0, identify_1.identify)(),
                 dht: (0, kad_dht_1.kadDHT)({
                     clientMode: true,
                 }),

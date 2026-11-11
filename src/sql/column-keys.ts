@@ -20,7 +20,7 @@
  */
 
 import type { Pool } from 'pg';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
 import type { MasterKey } from '#crypto/master-key.js';
 import type { ColumnKeyRecord } from '#types/index.js';
 import {
@@ -392,7 +392,7 @@ export async function rotateColumnKey(opts: {
           org_id, version, status, reason, reason_code)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
         [
-          uuidv4(),
+          randomUUID(),
           rotatedAt.toISOString(),
           agentDid,
           agentDid,
@@ -509,7 +509,7 @@ export async function rewrapColumnKey(opts: {
           org_id, version, status, reason, reason_code)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
         [
-          uuidv4(),
+          randomUUID(),
           rewrappedAt.toISOString(),
           agentDid,
           agentDid,

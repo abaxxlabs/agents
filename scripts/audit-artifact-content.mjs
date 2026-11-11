@@ -181,34 +181,61 @@ function isBlockedTermAllowlisted(allowlist, artifactPath, line, term) {
   });
 }
 
-function databaseCredentialViolations(contents, artifactPath) {
+function hasCompleteDatabaseUrlBoundary(contents, match) {
+  const end = match.index + match[0].length;
+  const opening = contents[match.index - 1];
+  const closing = contents[end];
+  if (['"', "'", '`'].includes(opening)) {
+    return closing === opening && !(closing === "'" && contents[end + 1] === "'");
+  }
+  if (opening === '<') return closing === '>';
+  return closing === undefined || /\s/u.test(closing);
+}
+
+function databaseCredentialViolations(contents, artifactPath, contentExceptions = []) {
   const violations = [];
   const urlPattern = /\b(?:postgres(?:ql)?|mongodb(?:\+srv)?|mysql|redis):\/\/[^\s"'`<>]+/gi;
   const localHosts = new Set(['localhost', '127.0.0.1', '::1', 'h', 'host', 'example.com']);
   for (const match of contents.matchAll(urlPattern)) {
+    let url;
     try {
-      const url = new URL(match[0]);
-      if (!url.username || !url.password || localHosts.has(url.hostname.toLowerCase())) continue;
-      violations.push({
-        path: artifactPath,
-        reason: 'contains high-confidence secret pattern: database URL with embedded password',
-      });
-      break;
+      url = new URL(match[0]);
     } catch {
       // Malformed example URLs are not high-confidence secrets.
+      continue;
     }
+    if (!url.username || !url.password || localHosts.has(url.hostname.toLowerCase())) continue;
+    if (
+      contentExceptions.some(
+        (entry) =>
+          entry.rule === 'database-url-with-password' &&
+          entry.path === artifactPath &&
+          entry.value === match[0],
+      ) &&
+      hasCompleteDatabaseUrlBoundary(contents, match)
+    ) {
+      continue;
+    }
+    violations.push({
+      path: artifactPath,
+      reason: 'contains high-confidence secret pattern: database URL with embedded password',
+    });
+    break;
   }
   return violations;
 }
 
-function secretContentViolations(contents, artifactPath) {
+function secretContentViolations(contents, artifactPath, contentExceptions) {
   const patternViolations = SECRET_CONTENT_PATTERNS.filter(({ pattern }) =>
     pattern.test(contents),
   ).map(({ name }) => ({
     path: artifactPath,
     reason: `contains high-confidence secret pattern: ${name}`,
   }));
-  return [...patternViolations, ...databaseCredentialViolations(contents, artifactPath)];
+  return [
+    ...patternViolations,
+    ...databaseCredentialViolations(contents, artifactPath, contentExceptions),
+  ];
 }
 
 function normalizeSensitiveText(value) {
@@ -278,12 +305,37 @@ function maskCodeownerHandles(contents) {
   );
 }
 
-function blockedPatternViolations(contents, artifactPath, terms) {
+function privateDemoReferenceExcepted(line, artifactPath, pattern, contentExceptions) {
+  const values = contentExceptions
+    .filter(
+      (entry) =>
+        entry.rule === 'private-demo-reference' &&
+        entry.path === artifactPath &&
+        line.includes(entry.value),
+    )
+    .map((entry) => entry.value);
+  if (values.length === 0) return false;
+
+  let remainder = line;
+  for (const value of values) {
+    remainder = remainder.replace(new RegExp(`${escapeRegExp(value)}(?![A-Za-z0-9._/-])`, 'g'), '');
+  }
+  pattern.lastIndex = 0;
+  return !pattern.test(remainder);
+}
+
+function blockedPatternViolations(contents, artifactPath, terms, contentExceptions = []) {
   const violations = [];
   contents.split(/\r?\n/).forEach((line, index) => {
     for (const { term, pattern } of terms) {
       pattern.lastIndex = 0;
       if (!pattern.test(line)) continue;
+      if (
+        term === 'private demo reference' &&
+        privateDemoReferenceExcepted(line, artifactPath, pattern, contentExceptions)
+      ) {
+        continue;
+      }
       violations.push({
         path: artifactPath,
         line: index + 1,
@@ -311,8 +363,13 @@ function ticketIdViolations(contents, artifactPath, includeTicketIds, ticketPref
 
 export function scanReleaseContentForViolations(contents, artifactPath, options = {}) {
   return [
-    ...secretContentViolations(contents, artifactPath),
-    ...blockedPatternViolations(contents, artifactPath, options.blockedContentTerms ?? []),
+    ...secretContentViolations(contents, artifactPath, options.contentExceptions),
+    ...blockedPatternViolations(
+      contents,
+      artifactPath,
+      options.blockedContentTerms ?? [],
+      options.contentExceptions ?? [],
+    ),
     ...blockedReleaseTermViolations(contents, artifactPath, options.ticketPrefixes ?? []),
     ...blockedLiteralViolations(
       contents,
@@ -335,8 +392,13 @@ export function scanArtifactContentForViolations(contents, artifactPath, options
     options.scanBlockedTerms !== false &&
     RELEASE_TERM_EXTENSIONS.has(path.extname(artifactPath).toLowerCase());
   return [
-    ...secretContentViolations(contents, artifactPath),
-    ...blockedPatternViolations(contents, artifactPath, options.blockedContentTerms ?? []),
+    ...secretContentViolations(contents, artifactPath, options.contentExceptions),
+    ...blockedPatternViolations(
+      contents,
+      artifactPath,
+      options.blockedContentTerms ?? [],
+      options.contentExceptions ?? [],
+    ),
     ...(scanBlockedTerms
       ? blockedReleaseTermViolations(contents, artifactPath, options.ticketPrefixes ?? [])
       : []),

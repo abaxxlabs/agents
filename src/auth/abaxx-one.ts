@@ -42,11 +42,18 @@ import {
   type JsonObject,
 } from './oidc-payload.js';
 
-// Only did:key and did:dht are valid DID methods in this stack.
-// Accept no others from tokens or userinfo responses.
-const VALID_DID_PREFIXES = ['did:key:', 'did:dht:'] as const;
-function isValidDid(did: string): boolean {
-  return VALID_DID_PREFIXES.some((prefix) => did.startsWith(prefix));
+// Issuer DIDs: their signatures are verified against a resolved key.
+const VERIFIABLE_DID_PREFIXES = ['did:key:', 'did:dht:'] as const;
+
+// Owner DIDs are recorded, never resolved; AbaxxOne issues did:ion to enterprise-SSO users.
+const OWNER_DID_PREFIXES = [...VERIFIABLE_DID_PREFIXES, 'did:ion:'] as const;
+
+function isVerifiableDid(did: string): boolean {
+  return VERIFIABLE_DID_PREFIXES.some((prefix) => did.startsWith(prefix));
+}
+
+function isOwnerDid(did: string): boolean {
+  return OWNER_DID_PREFIXES.some((prefix) => did.startsWith(prefix));
 }
 
 export interface AbaxxOneConfig {
@@ -77,11 +84,7 @@ interface AbaxxOneDiscovery {
   code_challenge_methods_supported?: string[];
 }
 
-function readRequiredDiscoveryString(
-  doc: JsonObject,
-  field: string,
-  discoveryUrl: string,
-): string {
+function readRequiredDiscoveryString(doc: JsonObject, field: string, discoveryUrl: string): string {
   const value = readOptionalString(doc, field);
   if (!value) {
     throw new AuthUnavailableError(
@@ -100,11 +103,18 @@ function parseAbaxxOneDiscovery(payload: unknown, discoveryUrl: string): AbaxxOn
 
   return {
     issuer: readOptionalString(payload, 'issuer'),
-    authorization_endpoint: readRequiredDiscoveryString(payload, 'authorization_endpoint', discoveryUrl),
+    authorization_endpoint: readRequiredDiscoveryString(
+      payload,
+      'authorization_endpoint',
+      discoveryUrl,
+    ),
     token_endpoint: readRequiredDiscoveryString(payload, 'token_endpoint', discoveryUrl),
     userinfo_endpoint: readRequiredDiscoveryString(payload, 'userinfo_endpoint', discoveryUrl),
     jwks_uri: readRequiredDiscoveryString(payload, 'jwks_uri', discoveryUrl),
-    code_challenge_methods_supported: readOptionalStringArray(payload, 'code_challenge_methods_supported'),
+    code_challenge_methods_supported: readOptionalStringArray(
+      payload,
+      'code_challenge_methods_supported',
+    ),
   };
 }
 
@@ -303,13 +313,14 @@ export class AbaxxOneOidcProvider implements OidcProvider {
       idTokenClaims = parseJwtPayloadClaims(tokenResponse.id_token);
     }
 
-    // Only accept did:key and did:dht — reject all other DID methods.
+    // AbaxxOne's id_token names this claim `dwn_did`; `did` stays first for other providers.
     const rawDid =
       (idTokenClaims.did as string | undefined) ??
+      (idTokenClaims.dwn_did as string | undefined) ??
       (typeof idTokenClaims.sub === 'string' && idTokenClaims.sub.startsWith('did:')
         ? idTokenClaims.sub
         : undefined);
-    const did = rawDid && isValidDid(rawDid) ? rawDid : undefined;
+    const did = rawDid && isOwnerDid(rawDid) ? rawDid : undefined;
 
     if (!did) {
       return { claims: idTokenClaims }; // older tenant — fall back to fetchUserInfo()
@@ -345,9 +356,9 @@ export class AbaxxOneOidcProvider implements OidcProvider {
     if (!rawHumanDid) {
       throw new AuthUnavailableError('AbaxxOne userinfo returned no DID or sub');
     }
-    if (!isValidDid(rawHumanDid)) {
+    if (!isOwnerDid(rawHumanDid)) {
       throw new AuthUnavailableError(
-        `AbaxxOne userinfo returned unsupported DID method: ${rawHumanDid.split(':').slice(0, 2).join(':')} — only did:key and did:dht are accepted`,
+        `AbaxxOne userinfo returned unsupported DID method: ${rawHumanDid.split(':').slice(0, 2).join(':')} — only did:key, did:dht and did:ion are accepted`,
       );
     }
     const humanDid = rawHumanDid;
@@ -373,7 +384,12 @@ export class AbaxxOneOidcProvider implements OidcProvider {
   async requestAgentCredential(
     accessToken: string,
     agentDid: string,
-    options: { columns: string[]; actions: string[]; expiresIn: string | number; maxDepth?: number },
+    options: {
+      columns: string[];
+      actions: string[];
+      expiresIn: string | number;
+      maxDepth?: number;
+    },
   ): Promise<{ jwt: string; issuerDid: string }> {
     const url = `${this.config.tenantUrl}/api/v1/credentials/agent`;
 
@@ -408,16 +424,37 @@ export class AbaxxOneOidcProvider implements OidcProvider {
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       // Truncate to prevent large server internals from appearing in error messages.
-      const truncatedBody =
-        typeof body === 'string' && body.length > 200 ? body.slice(0, 200) + '...' : body;
+      const truncate = (text: string): string =>
+        text.length > 200 ? text.slice(0, 200) + '...' : text;
+      const truncatedBody = truncate(body);
+      // AbaxxOne refuses with { error, excessColumns, excessActions }; render that as a sentence.
+      const detail = ((): string => {
+        try {
+          const parsed = JSON.parse(body) as {
+            error?: string;
+            excessColumns?: string[];
+            excessActions?: string[];
+          };
+          if (!parsed?.error) return truncatedBody;
+          const excess = [...(parsed.excessColumns ?? []), ...(parsed.excessActions ?? [])];
+          return truncate(
+            excess.length > 0 ? `${parsed.error} — ${excess.join(', ')}` : parsed.error,
+          );
+        } catch {
+          return truncatedBody;
+        }
+      })();
       throw new ParentCredentialRequestFailedError(
         this.config.tenantUrl,
         res.status,
         res.status === 401
           ? 'Access token expired or invalid. Re-authenticate with the parent instance.'
           : res.status === 403
-            ? 'Human is not authorized to create agents in this tenant. Contact your AbaxxOne administrator.'
-            : `Unexpected error: ${truncatedBody}`,
+            ? detail
+              ? `Your organization refused to issue this credential: ${detail}`
+              : 'Your organization refused to issue this credential. Contact your AbaxxOne administrator.'
+            : 'AbaxxOne could not issue the credential. Try again later or contact your administrator.',
+        truncatedBody,
       );
     }
 
@@ -437,7 +474,7 @@ export class AbaxxOneOidcProvider implements OidcProvider {
       const parts = data.jwt.split('.');
       const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
       issuerDid = payload.iss;
-      if (!issuerDid || !isValidDid(issuerDid)) {
+      if (!issuerDid || !isVerifiableDid(issuerDid)) {
         throw new Error(`Invalid issuer DID: ${issuerDid}`);
       }
     } catch (err) {
@@ -507,13 +544,43 @@ export class AbaxxOneOidcProvider implements OidcProvider {
       throw new AuthUnavailableError(`Authorize did not redirect (HTTP ${authRes.status})`);
     }
 
-    const callbackUrl = new URL(location, this.config.tenantUrl);
-    const code = callbackUrl.searchParams.get('code');
+    const code = extractAuthorizationCode(location, this.config.tenantUrl);
     if (!code) {
-      const error = callbackUrl.searchParams.get('error');
+      let error: string | null = null;
+      try {
+        error = new URL(location, this.config.tenantUrl).searchParams.get('error');
+      } catch {
+        // Unparseable Location — report it verbatim instead.
+      }
       throw new AuthUnavailableError(`No code in redirect: ${error ?? location}`);
     }
 
     return this._exchangeCodeWithToken(code, state, codeVerifier);
+  }
+}
+
+/**
+ * Read the authorization code from an `/auth/authorize` redirect, including one nested in the
+ * `next` param of an intermediate page. `next` is parsed, never fetched, and followed one hop.
+ */
+export function extractAuthorizationCode(location: string, baseUrl: string): string | null {
+  let redirect: URL;
+  try {
+    redirect = new URL(location, baseUrl);
+  } catch {
+    return null;
+  }
+
+  const direct = redirect.searchParams.get('code');
+  if (direct) return direct;
+
+  const next = redirect.searchParams.get('next');
+  if (!next) return null;
+
+  try {
+    // Absolute only — AbaxxOne always builds `next` from the registered redirect_uri.
+    return new URL(next).searchParams.get('code');
+  } catch {
+    return null;
   }
 }

@@ -10,8 +10,7 @@ import path, { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 // Validates one exact path or compact glob from forbiddenPaths.
-function assertValidPolicyRule(rule, index) {
-  const label = `forbiddenPaths[${index}]`;
+function assertValidPolicyRule(rule, label) {
   if (typeof rule !== 'string') throw new Error(`${label} must be a string`);
   if (!rule || rule !== rule.trim()) {
     throw new Error(`${label} must be a non-empty path without surrounding whitespace`);
@@ -66,6 +65,58 @@ function parseBlockedTerms(value = []) {
   });
 }
 
+function assertDatabaseUrlExceptionValue(value, label) {
+  if (
+    typeof value !== 'string' ||
+    !/^(?:postgres(?:ql)?|mongodb(?:\+srv)?|mysql|redis):\/\/[^\s"'`<>]+$/i.test(value)
+  ) {
+    throw new Error(`${label} must be a literal database URL`);
+  }
+  try {
+    const url = new URL(value);
+    if (!url.username || !url.password) throw new Error('missing credentials');
+  } catch {
+    throw new Error(`${label} must be a database URL with a username and password`);
+  }
+}
+
+function assertPrivateDemoReferenceExceptionValue(value, label) {
+  if (
+    typeof value !== 'string' ||
+    !/^cd[ \t]+(?:\.\/)?demo\/[A-Za-z0-9._-]+$/u.test(value)
+  ) {
+    throw new Error(`${label} must be a cd command targeting a demo subpath`);
+  }
+}
+
+const CONTENT_EXCEPTION_VALIDATORS = new Map([
+  ['database-url-with-password', assertDatabaseUrlExceptionValue],
+  ['private-demo-reference', assertPrivateDemoReferenceExceptionValue],
+]);
+
+function parseContentExceptions(value = []) {
+  if (!Array.isArray(value)) throw new Error('contentExceptions must be an array');
+  const seen = new Set();
+  return value.map((entry, index) => {
+    const label = `contentExceptions[${index}]`;
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new Error(`${label} must be an object`);
+    }
+    if (Object.keys(entry).some((field) => !['rule', 'path', 'value'].includes(field))) {
+      throw new Error(`${label} contains an unknown field`);
+    }
+    const validateValue = CONTENT_EXCEPTION_VALIDATORS.get(entry.rule);
+    if (!validateValue) throw new Error(`${label}.rule must be a supported content rule`);
+    assertValidPolicyRule(entry.path, `${label}.path`);
+    if (entry.path.includes('*')) throw new Error(`${label}.path must be an exact file path`);
+    validateValue(entry.value, `${label}.value`);
+    const key = JSON.stringify([entry.rule, entry.path, entry.value]);
+    if (seen.has(key)) throw new Error(`${label} duplicates a content exception`);
+    seen.add(key);
+    return Object.freeze({ rule: entry.rule, path: entry.path, value: entry.value });
+  });
+}
+
 /** Parses and validates the public repository policy schema. */
 export function parsePublicRepoPolicy(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -76,6 +127,7 @@ export function parsePublicRepoPolicy(value) {
     'licenseSourceDirectories',
     'ticketPrefixes',
     'blockedTerms',
+    'contentExceptions',
   ]);
   for (const field of Object.keys(value)) {
     if (!supportedFields.has(field)) {
@@ -90,7 +142,7 @@ export function parsePublicRepoPolicy(value) {
 
   const seen = new Set();
   value.forbiddenPaths.forEach((rule, index) => {
-    assertValidPolicyRule(rule, index);
+    assertValidPolicyRule(rule, `forbiddenPaths[${index}]`);
     if (seen.has(rule)) throw new Error(`forbiddenPaths contains duplicate rule "${rule}"`);
     seen.add(rule);
   });
@@ -101,6 +153,7 @@ export function parsePublicRepoPolicy(value) {
     ),
     ticketPrefixes: Object.freeze(assertStringArray(value.ticketPrefixes ?? [], 'ticketPrefixes')),
     blockedTerms: Object.freeze(parseBlockedTerms(value.blockedTerms)),
+    contentExceptions: Object.freeze(parseContentExceptions(value.contentExceptions)),
   });
 }
 

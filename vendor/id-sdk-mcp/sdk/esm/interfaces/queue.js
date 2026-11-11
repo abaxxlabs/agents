@@ -8,9 +8,9 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 import { createLibp2p } from 'libp2p';
-import { circuitRelayTransport } from 'libp2p/circuit-relay';
+import { circuitRelayTransport } from '@libp2p/circuit-relay-v2';
 import { gossipsub } from '@chainsafe/libp2p-gossipsub';
-import { identifyService } from 'libp2p/identify';
+import { identify } from '@libp2p/identify';
 import { kadDHT } from '@libp2p/kad-dht';
 import { mplex } from '@libp2p/mplex';
 import { noise } from '@chainsafe/libp2p-noise';
@@ -56,7 +56,7 @@ export class Queue {
                         enabled: true,
                         emitSelf: true,
                     }),
-                    identify: identifyService(),
+                    identify: identify(),
                     dht: kadDHT({
                         clientMode: true,
                     }),

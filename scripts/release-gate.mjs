@@ -199,8 +199,8 @@ async function smokeInstallTarball() {
         '--no-fund',
         '--package-lock=false',
         tarball,
-        'pg@8.20.0',
-        'libpg-query@17.7.3',
+        'pg@8.23.1',
+        'libpg-query@18.1.5',
       ],
       { cwd: consumerDir },
     );

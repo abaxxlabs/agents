@@ -3,16 +3,16 @@
 **Audience:** anyone upgrading `@abaxxlabs/agents` from v0.9.6.0–v0.9.9.x to v0.9.10.0.
 **Why this document exists:** v0.9.10.0 is a breaking change with two distinct axes:
 
-1. **API shape**: `AgentScope.create(config, injections)` is now a two-parameter factory. The master key moves from `config.encryption.masterKey` (a hex string) to `injections.masterKey` (a 32-byte branded `MasterKey` Buffer). This is the BYOK ("bring your own key") boundary — the library no longer reads `AGENTS_MASTER_KEY` from the environment; consumers thread the key in.
-2. **Revocation enforcement** (drift correction). Pre-v0.9.10.0, the `IRevocationStore` interface and three adapters shipped, but `AgentScope.create` had no way to receive an injected store. Every deployment ran on `InMemoryRevocationStore` regardless of what the JSDoc claimed. Multi-instance and durability-sensitive deployments were silently enforcing revocation only inside one process lifetime. This release wires the injection path and structurally prevents recurrence.
+1. **API shape**: `AgentScope.create(config, injections)` is now a two-parameter factory. The master key moves from `config.encryption.masterKey` (a hex string) to `injections.masterKey` (a 32-byte branded `MasterKey` Buffer). This is the BYOK ("bring your own key") boundary: the library no longer reads `AGENTS_MASTER_KEY` from the environment; consumers supply the key explicitly.
+2. **Revocation enforcement** (drift correction). Pre-v0.9.10.0, the `IRevocationStore` interface and three adapters were available, but `AgentScope.create` could not receive an injected store. Every deployment used `InMemoryRevocationStore`, so revocation state was limited to a single process lifetime. This release adds the injection path so deployments can use a durable revocation store.
 
-You read this doc top-to-bottom on first migration. On subsequent migrations of additional consumer projects, jump straight to the **decision tree** to find the relevant worked example.
+For the first migration, read this guide in full. For additional consumer projects, use the **decision tree** to identify the relevant worked example.
 
 ---
 
-## TL;DR
+## Summary {#tldr}
 
-If you are running `@abaxxlabs/agents` today and you read `AGENTS_MASTER_KEY` from the environment, the smallest possible diff is:
+For applications that read `AGENTS_MASTER_KEY` from the environment, the minimum required change is:
 
 ```ts
 // before (v0.9.9.x)
@@ -45,12 +45,12 @@ Six questions. Answer the applicable ones in order. Each leaf maps to one of the
 | Q2 | Do you set `encryption.masterKey` in `AgentScopeConfig` (config-file or inline) today? | go to Q3 | **No key source** — see "If you currently have neither" in case #1 before migrating |
 | Q3 | Are you planning to **change the key value** as part of this upgrade (KMS migration, key rotation, fresh key)? | go to Q4 | go to Q5 |
 | Q4 | Are you currently env-only and keeping env as the key source? | **case #3** (env-only / new key) | **case #4** (config-sourced or moving to KMS / new key) |
-| Q5 | Do you have **both** env reads AND `encryption.masterKey` set in config today? | **environment audit first** — env was silently winning, audit which key value is yours; then you are case #1 or case #2 | go to Q6 |
+| Q5 | Do you have **both** env reads AND `encryption.masterKey` set in config today? | **environment audit first** — the environment value took precedence; confirm the active key source, then follow case #1 or case #2 | go to Q6 |
 | Q6 | Do you set `encryption.masterKey` in `AgentScopeConfig`? | **case #2** (config-hex / same-key) | **case #1** (env-only / same-key) |
 
 Each case below stands alone — read only the one that applies.
 
-If you are in **case #4**, also read the [`rewrapColumnKey` migration protocol](#rewrapcolumnkey-migration-protocol) section. It is not a one-liner.
+If you are in **case #4**, also read the complete [`rewrapColumnKey` migration protocol](#rewrapcolumnkey-migration-protocol).
 
 If you operate **multi-instance** or rely on **cross-restart revocation durability**, also read the [revocation-store injection](#revocation-store-injection-required-for-multi-instance) section regardless of which case you are in.
 
@@ -58,7 +58,7 @@ If you operate **multi-instance** or rely on **cross-restart revocation durabili
 
 ## Environment audit (do this first)
 
-Before applying any worked example, audit the actual key material your codebase references. v0.9.6.0–v0.9.9.x had a subtle "env was silently winning" trap: if a consumer set both `process.env.AGENTS_MASTER_KEY` AND `config.encryption.masterKey`, the env var won and the config field was ignored. Post-v0.9.10.0, only what you pass into `injections.masterKey` is the key — so if you copy from the wrong source, you get a wrong-key boot.
+Before applying any worked example, audit the key material your codebase references. In v0.9.6.0–v0.9.9.x, `process.env.AGENTS_MASTER_KEY` took precedence over `config.encryption.masterKey` when both were set. From v0.9.10.0, only `injections.masterKey` supplies the key. Migrating from the wrong source can cause the application to start with an incorrect master key.
 
 ### Step 1 — grep the codebase
 
@@ -81,20 +81,20 @@ Classify each hit:
 
 ### Step 2 — if you see hits in BOTH env-read AND config-write paths
 
-**This is the silently-winning trap.** Pre-v0.9.10.0 your env var was authoritative; the config field was dead code. Before you migrate, decide which value is the one you actually run with:
+**Confirm the active key source.** Before v0.9.10.0, the environment variable was authoritative and the configuration field was ignored. Identify the key used by the deployed application before migrating:
 
 1. In a deployment shell, print **just the length** of the env var (never the value):
    ```bash
    node -e "console.log(process.env.AGENTS_MASTER_KEY?.length ?? 'unset')"
    ```
 2. Compare against the config field's length. If they match in length but you are unsure they match byte-for-byte, treat the **env var** as canonical (that is what was actually wrapping your column keys) and discard the config field.
-3. If they do not match in length, **stop**. Migrating with the wrong key will corrupt every encrypted column on first boot. Recover the env-var value from your secret manager, your `.env` history, or your deployment template — that is your live key. The config field was never the live key.
+3. If the lengths differ, **do not proceed**. Recover the active environment value from your secret manager, retained environment configuration, or deployment template before migrating. This is the key used to wrap existing column keys; the configuration value was ignored.
 
 Once you have the canonical key value identified, proceed to the worked example matching your starting state.
 
 ### Step 3 — automate it (optional)
 
-Run the diagnostic CLI to get a categorized report instead of eyeballing grep output:
+Run the diagnostic CLI to generate a categorized report instead of reviewing search results manually:
 
 ```bash
 npx @abaxxlabs/agents migrate-check
@@ -148,19 +148,19 @@ const scope = await AgentScope.create(
 
 ### Things to know
 
-- `resolveMasterKeyFromEnv()` is the new sanctioned site for reading `AGENTS_MASTER_KEY`. Do not read it again later — thread the resulting `MasterKey` (which is a `Buffer` at runtime) through your application as a normal value.
-- Strict 64-hex-char validation happens at this boundary. A truncated, padded, base64, or whitespace-contaminated env var throws an explicit error here, not silently as a wrong-key boot inside the library.
+- `resolveMasterKeyFromEnv()` is the designated entry point for reading `AGENTS_MASTER_KEY`. Read it once at startup and pass the resulting `MasterKey` (a `Buffer` at runtime) explicitly through the application.
+- Strict 64-hex-character validation occurs at this boundary. Truncated, padded, base64-encoded, or whitespace-contaminated environment values produce an explicit validation error before the library uses the key.
 - If you also call `deriveSessionMacKey(...)` in your bootstrap (server consumers), pass the same `masterKey` Buffer to it. Do not call `resolveMasterKeyFromEnv()` twice.
 
 ### If you currently have neither (no env read, no config write)
 
-You were running with an undefined master key. Pre-v0.9.10.0 this either crashed at the first encrypt operation or worked accidentally because no encrypted columns were registered. v0.9.10.0 fails fast at construction (`MasterKeyMissingError`). Generate a key:
+The application was running with an undefined master key. Before v0.9.10.0, this could fail at the first encryption operation or remain undetected if no encrypted columns were registered. v0.9.10.0 rejects the configuration at construction with `MasterKeyMissingError`. Generate a key:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-Set it in your environment (`AGENTS_MASTER_KEY=<the hex>`) and follow case #1 above. Save the value — losing it bricks every encrypted column.
+Set it in your environment (`AGENTS_MASTER_KEY=<the hex>`) and follow case #1 above. Store the key securely; losing it prevents decryption of existing encrypted columns.
 
 ---
 
@@ -205,7 +205,7 @@ const scope = await AgentScope.create(cleanConfig, { masterKey });
 
 ### Things to know
 
-- `AgentScopeConfig.encryption.masterKey` is no longer a valid type. TypeScript will fail to compile if you leave it on a config object passed to `AgentScope.create`. The runtime ignores extra properties so you get a type error, not a silent runtime divergence — fix the type error and you are migrated.
+- `AgentScopeConfig.encryption.masterKey` is no longer part of the configuration type. TypeScript rejects it on a config object passed to `AgentScope.create`, while the runtime ignores extra properties. Update each affected call site to use the injection parameter.
 - If your config file format includes the master key as a string field (YAML / JSON / TOML), you do not have to remove it from the file. Strip it at the consumer boundary right before calling `AgentScope.create`. The library never sees it.
 - If you eventually move to KMS, `parseMasterKeyHex` is the helper you keep — it accepts a hex string from any source. KMS APIs that return raw bytes go through `asMasterKey(buf)` instead (see case #4).
 
@@ -215,7 +215,7 @@ const scope = await AgentScope.create(cleanConfig, { masterKey });
 
 **You are here if:** you read `AGENTS_MASTER_KEY` from env today, and you are changing the key value at the same time as the upgrade.
 
-**Stop.** Do not migrate the API shape and rotate the key in one step. Master-key rotation requires re-wrapping every encrypted column key under the new master key — the library cannot guess the old key from the new one. If you ship a new env value with no rewrap, the library boots, fails to unwrap any column key under the new master, and throws `MasterKeyMismatchError`. Your application is down.
+Do not migrate the API shape and rotate the key in one step. Master-key rotation requires re-wrapping every encrypted column key under the new master key. Replacing the environment value without re-wrapping causes column-key loading to fail with `MasterKeyMismatchError`, preventing application startup.
 
 The correct sequence:
 
@@ -223,7 +223,7 @@ The correct sequence:
 2. **Then run the rewrap migration** to move from old key to new key. See [the `rewrapColumnKey` migration protocol](#rewrapcolumnkey-migration-protocol) below.
 3. **Then update the env var (or move to KMS) in your bootstrap.**
 
-If your operational reality is "we cannot deploy twice" (e.g. you discovered the key is compromised and you need to rotate now), you can do steps 1-3 inside a single maintenance window, but you still execute them as three sequential phases against a quiesced application — not as a single deploy.
+If separate deployments are not feasible, for example during an urgent response to a compromised key, complete steps 1–3 as sequential phases within one maintenance window while the application is quiesced.
 
 The full procedure is documented in [the `rewrapColumnKey` migration protocol](#rewrapcolumnkey-migration-protocol). Read it before you start.
 
@@ -268,18 +268,18 @@ If KMS returns hex (some HSMs do), use `parseMasterKeyHex(hex)` instead — same
 
 ## `rewrapColumnKey` migration protocol
 
-Re-wrapping a column key under a new master key is a five-step, write-quiesced procedure. The library exposes the primitive (`rewrapColumnKey`) but does not run the protocol — write quiescence is a deployment concern, not a library concern.
+Re-wrapping a column key under a new master key is a six-step, write-quiesced procedure. The library exposes the primitive (`rewrapColumnKey`) but does not run the protocol; write quiescence is a deployment responsibility.
 
 **Why quiesce writes:** during the rewrap window, the `agent_keys` row for a column is locked (`SELECT ... FOR UPDATE`). New writes against the encrypted column would block on the lock, but more importantly: if you concurrently rotate AND rewrap the same column, the wrapped key swap order matters and you want the system idle while you do this work.
 
-### The five steps
+### The six steps {#the-five-steps}
 
-1. **Quiesce writes** to encrypted columns. Maintenance flag, read-only mode, advisory lock at the application layer, queue pause — your choice. Reads during this window are fine; writes against the encrypted columns must stop.
+1. **Quiesce writes** to encrypted columns. Use a maintenance flag, read-only mode, an application-level advisory lock, or a queue pause. Reads may continue during this window, but writes to encrypted columns must stop.
 2. **Snapshot** `agent_keys` (mandatory). The wrapped-key bytes and the `agent_did` / `table_name` / `column_name` triple are the only authoritative record of which column-key wraps which column. A failed rewrap mid-pass is recoverable from snapshot; a failure with no snapshot is not.
    ```bash
    psql "$DATABASE_URL" -c "\\copy (SELECT * FROM agent_keys) TO 'agent_keys_pre_rewrap_$(date +%Y%m%d_%H%M).csv' CSV HEADER"
    ```
-3. **Verify-old.** Confirm the OLD master key actually unwraps every column key listed in `agent_keys`. If any unwrap fails here, your pre-rewrap state is already broken — stop and recover before proceeding.
+3. **Verify-old.** Confirm the OLD master key unwraps every column key listed in `agent_keys`. Resolve any verification failure before proceeding with the rewrap.
    ```ts
    import { verifyAllColumnKeys } from '@abaxxlabs/agents/sql';
    import { parseMasterKeyHex } from '@abaxxlabs/agents/bootstrap';
@@ -322,8 +322,8 @@ Re-wrapping a column key under a new master key is a five-step, write-quiesced p
      });
    }
    ```
-   Each call is its own transaction — `SELECT ... FOR UPDATE` on the `agent_keys` row, `unwrapColumnKey(oldMasterKey, ...)`, `wrapColumnKey(newMasterKey, ...)`, `UPDATE agent_keys SET encrypted_key = ...`, audit append, commit. If any single call throws, that row is unchanged. The remaining rows are still on the OLD key. The system is in a mixed state and that is OK as long as you do not let the application boot under the new master while mixed.
-5. **Verify-new.** Confirm the NEW master key now unwraps every column key. If any row still unwraps under the OLD key, you missed it in step 4 — re-run the rewrap loop or call `rewrapColumnKey` manually for that row. Do not advance to step 6 until verify-new is 100% green.
+   Each call is its own transaction: `SELECT ... FOR UPDATE` on the `agent_keys` row, `unwrapColumnKey(oldMasterKey, ...)`, `wrapColumnKey(newMasterKey, ...)`, `UPDATE agent_keys SET encrypted_key = ...`, audit append, and commit. If a call throws, that row is unchanged and remains wrapped under the OLD key. Do not start the application with the new master key while rows remain wrapped under different keys.
+5. **Verify-new.** Confirm the NEW master key unwraps every column key. If a row still requires the OLD key, re-run the rewrap loop or call `rewrapColumnKey` for that row. Proceed to step 6 only after verification succeeds for every registered column key.
    ```ts
    const newMasterKey = parseMasterKeyHex(process.env.AGENTS_MASTER_KEY_NEW!);
    const after = await verifyAllColumnKeys(pool, newMasterKey);
@@ -335,18 +335,18 @@ Re-wrapping a column key under a new master key is a five-step, write-quiesced p
      // report is empty.
    }
    ```
-6. **Cutover.** Update the bootstrap to source the NEW master key. Restart all instances. Resume writes. Done.
+6. **Cutover.** Update the bootstrap to source the NEW master key. Restart all instances and resume writes.
 
 ### Failure modes
 
-- **`KeyRotationFailedError` thrown mid-step-4 with `phase: 'unwrap-old-key'`**: the OLD master key in your hand does not match what was actually wrapping the column key in `agent_keys`. Either the env-was-silently-winning audit was wrong, or someone rotated this column out-of-band since your snapshot. Compare with the pre-rewrap CSV.
+- **`KeyRotationFailedError` thrown mid-step-4 with `phase: 'unwrap-old-key'`**: the supplied OLD master key does not match the key used to wrap the column key in `agent_keys`. Review the environment-source audit and check for column-key rotations performed after the snapshot. Compare the current state with the pre-rewrap CSV.
 - **`KeyRotationFailedError` with `phase: 'wrap-new-key'`**: the NEW master key failed length validation. Check `asMasterKey` is being called with a 32-byte Buffer.
-- **`KeyRotationFailedError` with `phase: 'update-agent-keys'`**: a database write failure. Almost always transient (network blip, deadlock with concurrent writers — the latter shouldn't happen if you quiesced). Re-run the loop; rows already rewrapped are idempotent in the sense that running rewrap again on an already-new-key row will fail at `phase: 'unwrap-old-key'` — which is the correct safety behavior, not data loss.
-- **System half-rewrapped at end of window**: rows with the new key are unreadable under the old master key, rows with the old key are unreadable under the new master key. **You cannot serve traffic in this state.** Either complete the rewrap loop on the remaining rows (preferred) OR roll back the rows you already rewrapped using the snapshot from step 2. Decide based on which is faster and which carries less risk. Do not improvise.
+- **`KeyRotationFailedError` with `phase: 'update-agent-keys'`**: a database write failure, which may result from a transient network interruption or a deadlock with concurrent writers. Confirm that writes are quiesced before retrying. Retrying a row already wrapped under the new key fails at `phase: 'unwrap-old-key'` without modifying that row.
+- **Incomplete rewrap at the end of the maintenance window**: rows wrapped under the new key cannot be read with the old master key, and rows wrapped under the old key cannot be read with the new master key. **Do not resume traffic in this state.** Complete the rewrap for the remaining rows (preferred), or restore the affected rows using the snapshot from step 2. Select the recovery procedure based on operational risk and recovery time.
 
 ### What this protocol is NOT
 
-- **Not online.** v0.9.10.0 does not support a dual-key transition window where the same column simultaneously accepts old-key and new-key reads. That is a future feature requiring a `generation` column on `agent_keys` and dual-key crypto plumbing. For now, the rewrap window is a maintenance window.
+- **Not online.** v0.9.10.0 does not support a dual-key transition window where the same column simultaneously accepts old-key and new-key reads. That capability would require key-generation tracking and dual-key cryptographic support. Re-wrapping therefore requires a maintenance window.
 - **Not cross-application.** If multiple applications share the same Postgres database and the same encrypted columns (atypical but possible), all of them must restart against the new master key in the same window. Otherwise the application that is still on the old master will throw `MasterKeyMismatchError` on first decrypt.
 - **Not partial.** Do not rewrap "the important columns" and leave the rest. The library expects a single master key per process. A column-by-column phased migration requires per-column master-key isolation, which the v0.9.10.0 surface does not expose.
 
@@ -358,13 +358,13 @@ This concerns server deployments that persist sessions via `PostgresSessionStore
 
 The session-envelope MAC key is HKDF-derived from the master key (`HKDF_CONTEXT_SESSION_MAC` context string). Changing the master key changes the MAC key. Any session envelope written under the OLD master key has a MAC tag derived from the OLD MAC key — and will fail integrity verification when re-read under the NEW master key.
 
-**This is not a bug.** Sessions are short-lived (default 4h TTL) and the failed-integrity path is well-defined: the request is rejected with `401 SESSION_INTEGRITY_FAILED` and the user re-authenticates. The session table still has the row; it is just dead-on-read.
+This is expected behavior. Sessions are short-lived (default 4h TTL). Integrity verification rejects the request with `401 SESSION_INTEGRITY_FAILED`, and the user must authenticate again. The stored row remains present but cannot be used to restore a session.
 
-**Operational implication during BYOK rotation:** at the moment you cut over to the new master key, every existing session in the durable store becomes unreadable. Your users re-authenticate. Plan for it:
+**Operational implication during BYOK rotation:** switching to the new master key invalidates existing sessions in the durable store. Account for the resulting re-authentication requirements:
 
-- **Single-instance deployments**: a brief auth blip at restart. Most users will not notice unless they are mid-flow.
-- **Multi-instance deployments with sticky sessions**: same as single-instance — sticky sessions die with their instance during the rolling restart anyway.
-- **Multi-instance deployments without sticky sessions, expecting cross-instance rehydrate**: the rehydrate path returns 401 for every pre-cutover envelope. Users re-auth. If this is unacceptable, schedule the BYOK cutover during low-traffic hours or behind a scheduled maintenance window.
+- **Single-instance deployments**: authentication may be interrupted during restart, including for users with an active workflow.
+- **Multi-instance deployments with sticky sessions**: session invalidation affects users as their assigned instance restarts during the rolling deployment.
+- **Multi-instance deployments without sticky sessions, expecting cross-instance rehydrate**: session restoration returns 401 for pre-cutover envelopes, requiring users to authenticate again. If this interruption is not acceptable, schedule the BYOK cutover during low-traffic hours or a maintenance window.
 
 There is no MAC-key versioning in v0.9.10.0. Sessions written before the cutover and sessions written after live under different MAC keys with no way for the new instance to verify the old envelopes.
 
@@ -446,10 +446,10 @@ const scope = await AgentScope.create(config, { masterKey, storage });
 
 The most complex in-repo consumer was used as the migration dry run for this release. Six call sites wrote `process.env.AGENTS_MASTER_KEY` as a control channel for per-session and per-org key switching. Findings that informed this guide:
 
-- **Plan-doc counts can be stale.** The original spec described nine env-write sites but the actual count at migration time was six because earlier work had already removed some. **Verify against current code, not plan-doc claims**, before scoping each consumer's migration.
-- **Env-as-control-channel is the worst pattern to migrate.** The consumer used env writes to switch keys mid-process between organizations. Every read site read the env at request time, so the implicit invariant was "whatever the most recent write was." Untangling this required tracing each write to its corresponding read and replacing both with explicit `Buffer` arguments to `AgentScope.create`. If your consumer has any pattern resembling this — env writes after startup, env reads inside hot paths — budget more time.
-- **Type errors are your friend.** Once `AgentScopeConfig.encryption.masterKey` is removed at the type level, every stale call site fails to compile. Walk the type errors top-to-bottom; each is a structurally identical fix.
-- **Dev keys with all-zero hex are a smell.** `'00'.repeat(32)` was a fixture pattern. It is technically valid (passes `parseMasterKeyHex`) but it should never appear in any code path that runs against real consumer data. The migration is a good moment to grep for it and either delete or move it explicitly behind a `NODE_ENV !== 'production'` gate.
+- **Validate migration scope against current code.** Specifications can become outdated as call sites change. Confirm the current key-read and key-write locations before estimating each application's migration work.
+- **Environment-based key switching requires additional migration work.** The consumer changed environment values at runtime to switch keys between organizations. Each request used the most recently assigned value. Migrating this pattern required tracing each write to its corresponding read and replacing both with explicit `Buffer` arguments to `AgentScope.create`. Allow additional migration time for environment writes after startup or environment reads in request-handling code.
+- **Use compiler errors to identify outdated call sites.** Removing `AgentScopeConfig.encryption.masterKey` from the type causes remaining references to fail compilation. Resolve each reported call site using the applicable migration example.
+- **Restrict placeholder keys to test fixtures.** An all-zero value such as `'00'.repeat(32)` passes `parseMasterKeyHex` but must not be used with real consumer data. Review these values during migration and remove them from production code paths or place them behind an explicit `NODE_ENV !== 'production'` gate.
 
 ---
 
@@ -458,7 +458,7 @@ The most complex in-repo consumer was used as the migration dry run for this rel
 1. **Verify the application boots cleanly.** The first boot under v0.9.10.0 with the same key value should be silent (no warnings, no errors). A `MasterKeyMismatchError` on first boot means the key value you threaded into `injections.masterKey` does not match what was wrapping your column keys at rest. Recover the correct value (almost always: re-check the env-vs-config audit from above) before continuing.
 2. **Verify revocation enforcement.** If you operate multi-instance, revoke a test JTI on instance A and immediately verify it on instance B. Pre-v0.9.10.0 this would have silently passed verification. Post-v0.9.10.0 with `PostgresRevocationStore` injected, it should reject within `pollIntervalMs` (default 30s). If it does not reject, your revocation store injection is not wired correctly — re-read the [revocation-store injection](#revocation-store-injection-required-for-multi-instance) section.
 3. **Lint cleanup (library scope).** The library ships ESLint trust-boundary rules for library core (`src/**/*.ts`, excluding bootstrap and CLI boundaries). Consumer projects do NOT inherit these rules automatically — they apply to library development, not your codebase. If you want the same protection in your consumer code, copy the relevant `no-restricted-syntax` selectors from the library's `eslint.config.ts` into your own ESLint configuration. The rules shipped as `warn` in v0.9.10.0 and are now enforced as `error`.
-4. **Rotate documentation.** README, `.env.example`, deployment templates, and any internal docs that referenced the old config-field pattern need to point at the new injection pattern.
+4. **Update documentation.** README, `.env.example`, deployment templates, and any internal docs that referenced the old config-field pattern need to point at the new injection pattern.
 
 ---
 
