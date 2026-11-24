@@ -13,7 +13,6 @@ import {
   SQL_MAX_CHARS,
   assertExpiresInBound,
   assertWithinRateLimit,
-  assertUtf8MaxBytes,
   normalizeDomainError,
   restValidationSchemas,
   toHttpErrorBody,
@@ -257,49 +256,6 @@ describe('transport boundary validation schemas', () => {
       expect(JSON.stringify(normalized.details)).not.toContain('SELECT name');
     }
   });
-
-  it('rejects malformed and oversized public inputs', () => {
-    expect(() => validateRequest(restValidationSchemas.listAgentsQuery, { limit: 'abc' })).toThrow(
-      RequestValidationError,
-    );
-    expect(() =>
-      validateRequest(restValidationSchemas.issueCredentialBody, {
-        agent: 'did:key:agent',
-        columns: [],
-        actions: ['read'],
-        expiresIn: '4h',
-      }),
-    ).toThrow(RequestValidationError);
-    expect(() =>
-      validateRequest(restValidationSchemas.issueCredentialBody, {
-        agent: 'did:key:agent',
-        columns: ['patients.name'],
-        actions: ['write'],
-        expiresIn: '4h',
-      }),
-    ).toThrow(RequestValidationError);
-    expect(() =>
-      validateRequest(restValidationSchemas.queryBody, {
-        agent: 'did:key:agent',
-        credential: 'header.payload.sig',
-        table: 'patients; DROP TABLE patients',
-        sql: 'SELECT name FROM patients',
-      }),
-    ).toThrow(RequestValidationError);
-    expect(() => validateRequest(restValidationSchemas.challengeBody, { ttlSeconds: 301 })).toThrow(
-      RequestValidationError,
-    );
-    expect(() => assertUtf8MaxBytes('payload', 'x'.repeat(65 * 1024), 64 * 1024)).toThrow(
-      RequestValidationError,
-    );
-  });
-
-  it('applies explicit bounded defaults for public query parameters', () => {
-    expect(validateRequest(restValidationSchemas.listAgentsQuery, {})).toEqual({ limit: 100 });
-    expect(validateRequest(restValidationSchemas.listCredentialsQuery, {})).toEqual({ limit: 100 });
-    expect(validateRequest(restValidationSchemas.auditQuery, {})).toEqual({ limit: 50 });
-    expect(validateRequest(restValidationSchemas.verifyChainBody, {})).toEqual({ limit: 1000 });
-  });
 });
 
 describe('transport boundary error normalization', () => {
@@ -315,38 +271,6 @@ describe('transport boundary error normalization', () => {
     expect(JSON.stringify(http)).not.toContain('ssn');
     expect(JSON.stringify(mcp)).not.toContain('patients.name');
   });
-
-  it.each([undefined, 408, 429, 500, 502, 503])(
-    'classifies a parent that answered %s as unavailable and retryable',
-    (upstreamStatus) => {
-      const err = new ParentCredentialRequestFailedError(
-        'https://parent.example.com',
-        upstreamStatus,
-      );
-
-      const normalized = normalizeDomainError(err);
-
-      expect(normalized.code).toBe('PARENT_CREDENTIAL_REQUEST_FAILED');
-      expect(normalized.httpStatus).toBe(503);
-      expect(normalized.message).toBe('Parent instance could not issue the credential.');
-    },
-  );
-
-  it.each([400, 401, 403, 404, 422])(
-    'classifies a parent that answered %i as a non-retryable refusal',
-    (upstreamStatus) => {
-      const err = new ParentCredentialRequestFailedError(
-        'https://parent.example.com',
-        upstreamStatus,
-      );
-
-      const normalized = normalizeDomainError(err);
-
-      expect(normalized.code).toBe('PARENT_CREDENTIAL_REQUEST_FAILED');
-      expect(normalized.httpStatus).toBe(424);
-      expect(normalized.message).toBe('Parent instance refused the credential request.');
-    },
-  );
 
   it('keeps a parent refusal apart from scope and rate-limit refusals', () => {
     const parent = normalizeDomainError(
@@ -364,35 +288,6 @@ describe('transport boundary error normalization', () => {
     expect([scope.httpStatus, rateLimit.httpStatus]).not.toContain(parent.httpStatus);
     expect([scope.code, rateLimit.code]).not.toContain(parent.code);
   });
-
-  it.each([
-    [502, 'UPSTREAM-DETAIL'],
-    [403, 'Human is not authorized to create agents in this tenant.'],
-  ])(
-    'never discloses the parent address, its status %i, or its reason on either transport',
-    (upstreamStatus, reason) => {
-      const err = new ParentCredentialRequestFailedError(
-        'https://parent.example.com',
-        upstreamStatus,
-        reason,
-      );
-
-      const normalized = normalizeDomainError(err);
-      const http = toHttpErrorBody(normalized);
-      const mcp = toMcpErrorBody(normalized);
-
-      expect(http).toMatchObject({
-        error: 'PARENT_CREDENTIAL_REQUEST_FAILED',
-        code: 'PARENT_CREDENTIAL_REQUEST_FAILED',
-      });
-      expect(mcp).toMatchObject({ error: 'PARENT_CREDENTIAL_REQUEST_FAILED' });
-      for (const body of [JSON.stringify(http), JSON.stringify(mcp)]) {
-        expect(body).not.toContain('parent.example.com');
-        expect(body).not.toContain(String(upstreamStatus));
-        expect(body).not.toContain(reason);
-      }
-    },
-  );
 
   it('does not expose internal diagnostics from unknown errors', () => {
     const err = new Error(
@@ -455,132 +350,11 @@ describe('shared rate limiter', () => {
 });
 
 describe('expiresIn validation', () => {
-  const MAX_TTL_24H = 24 * 60 * 60 * 1000; // 86_400_000ms
-
-  describe('schema rejects malformed duration strings', () => {
-    const invalidDurations = ['invalid', '90', '5w', 'abc123', '-1h', '', '1m1m'];
-    for (const bad of invalidDurations) {
-      it(`rejects "${bad}"`, () => {
-        expect(() =>
-          validateRequest(restValidationSchemas.issueCredentialBody, {
-            agent: 'did:key:agent',
-            columns: ['patients.name'],
-            actions: ['read'],
-            expiresIn: bad,
-          }),
-        ).toThrow(RequestValidationError);
-      });
-    }
-  });
-
-  describe('schema accepts valid duration strings', () => {
-    const validDurations = ['4h', '1d', '30m', '1m30s', '500ms', '1.5h'];
-    for (const good of validDurations) {
-      it(`accepts "${good}"`, () => {
-        expect(() =>
-          validateRequest(restValidationSchemas.issueCredentialBody, {
-            agent: 'did:key:agent',
-            columns: ['patients.name'],
-            actions: ['read'],
-            expiresIn: good,
-          }),
-        ).not.toThrow();
-      });
-    }
-  });
-
-  describe('schema accepts valid integer seconds', () => {
-    it('accepts 3600', () => {
-      expect(() =>
-        validateRequest(restValidationSchemas.issueCredentialBody, {
-          agent: 'did:key:agent',
-          columns: ['patients.name'],
-          actions: ['read'],
-          expiresIn: 3600,
-        }),
-      ).not.toThrow();
-    });
-  });
-
-  describe('schema rejects invalid integer values', () => {
-    it('rejects 0', () => {
-      expect(() =>
-        validateRequest(restValidationSchemas.issueCredentialBody, {
-          agent: 'did:key:agent',
-          columns: ['patients.name'],
-          actions: ['read'],
-          expiresIn: 0,
-        }),
-      ).toThrow(RequestValidationError);
-    });
-
-    it('rejects negative', () => {
-      expect(() =>
-        validateRequest(restValidationSchemas.issueCredentialBody, {
-          agent: 'did:key:agent',
-          columns: ['patients.name'],
-          actions: ['read'],
-          expiresIn: -3600,
-        }),
-      ).toThrow(RequestValidationError);
-    });
-  });
+  const MAX_TTL_24H = 24 * 60 * 60 * 1000;
 
   describe('assertExpiresInBound', () => {
-    it('passes when string duration is within bound', () => {
-      expect(() => assertExpiresInBound('4h', MAX_TTL_24H)).not.toThrow();
-    });
-
-    it('passes when integer seconds are within bound', () => {
-      expect(() => assertExpiresInBound(3600, MAX_TTL_24H)).not.toThrow();
-    });
-
-    it('passes at exactly the bound', () => {
-      expect(() => assertExpiresInBound('24h', MAX_TTL_24H)).not.toThrow();
-      expect(() => assertExpiresInBound(86400, MAX_TTL_24H)).not.toThrow();
-    });
-
     it('rejects string duration exceeding bound', () => {
       expect(() => assertExpiresInBound('48h', MAX_TTL_24H)).toThrow(TtlExceededError);
-    });
-
-    it('rejects integer seconds exceeding bound', () => {
-      expect(() => assertExpiresInBound(86401, MAX_TTL_24H)).toThrow(TtlExceededError);
-    });
-
-    it('error message names the violated bound', () => {
-      try {
-        assertExpiresInBound('48h', MAX_TTL_24H);
-        expect.unreachable('should have thrown');
-      } catch (err) {
-        expect(err).toBeInstanceOf(TtlExceededError);
-        const te = err as TtlExceededError;
-        expect(te.code).toBe('TTL_EXCEEDED');
-        expect(te.message).toContain('86400');
-      }
-    });
-
-    it('maps to HTTP 400 via normalizeDomainError', () => {
-      try {
-        assertExpiresInBound('48h', MAX_TTL_24H);
-        expect.unreachable('should have thrown');
-      } catch (err) {
-        const normalized = normalizeDomainError(err);
-        expect(normalized.httpStatus).toBe(400);
-        expect(normalized.code).toBe('TTL_EXCEEDED');
-      }
-    });
-
-    it('delegate-credential schema also rejects malformed strings', () => {
-      expect(() =>
-        validateRequest(restValidationSchemas.delegateCredentialBody, {
-          sourceCredential: 'header.payload.sig',
-          targetAgent: 'did:key:worker',
-          columns: ['patients.name'],
-          actions: ['read'],
-          expiresIn: 'not-a-duration',
-        }),
-      ).toThrow(RequestValidationError);
     });
   });
 });

@@ -14,7 +14,11 @@ import {
   normalizeArtifactPaths,
   parsePublicRepoPolicy,
 } from './assert-package-artifacts.mjs';
-import { corporateEmployeeNames, normalizePrivateUrlPrefixes } from './audit-sensitive-values.mjs';
+import {
+  corporateEmployeeNames,
+  normalizePrivateUrlPrefixes,
+  privateUrlPrefixesForPolicy,
+} from './audit-sensitive-values.mjs';
 import {
   auditArtifactLicenses,
   selectOriginalLicenseFiles,
@@ -136,6 +140,7 @@ export function auditPublicRepoFiles(paths, options = {}) {
       blockedContentTerms: policy?.blockedTerms ?? options.blockedContentTerms,
       contentExceptions: policy?.contentExceptions ?? options.contentExceptions,
       ticketPrefixes: policy?.ticketPrefixes ?? options.ticketPrefixes,
+      privateUrlPrefixes: privateUrlPrefixesForPolicy(policy, options.privateUrlPrefixes),
       validatePublishedLinks: true,
     },
   );
@@ -225,8 +230,12 @@ function printResult(name, result) {
 function usage() {
   return `
 Usage:
-  node scripts/audit-public-artifacts.mjs [package|public-repo] [--public-root <path>] [--public-list <path|-|git>]
+  node scripts/audit-public-artifacts.mjs package [--policy <path>]
+  node scripts/audit-public-artifacts.mjs public-repo [--public-root <path>] [--public-list <path|-|git>] [--policy <path>]
   node scripts/audit-public-artifacts.mjs policy-evaluate --policy <path>
+
+  package          Audit the npm pack file list. With --policy, also apply the policy's blocked
+                   terms.
 
   policy-evaluate  Read a JSON path array from stdin and write policy decisions as JSON.
 
@@ -275,9 +284,6 @@ function parseArgs(argv) {
   if (!['package', 'public-repo', 'policy-evaluate'].includes(command)) {
     throw new Error(`Unknown audit command: ${command}`);
   }
-  if (policyPath && command === 'package') {
-    throw new Error('--policy is only supported by public-repo and policy-evaluate');
-  }
   if (command === 'policy-evaluate' && !policyPath) {
     throw new Error('policy-evaluate requires --policy <path>');
   }
@@ -298,6 +304,13 @@ function evaluatePolicyInput(policyPath) {
     throw new Error('policy evaluator input must be an array of path strings');
   }
   return paths.map((filePath) => evaluatePublicRepoPath(filePath, policy));
+}
+
+// The package audit applies a policy's blocked terms when one is given. A policy that was asked
+// for and cannot be read fails the audit.
+function packagePolicy(policyPath) {
+  if (!policyPath) return undefined;
+  return loadPublicRepoPolicy(path.resolve(ROOT_DIR, policyPath));
 }
 
 function publicRepoAuditInput(args) {
@@ -346,7 +359,12 @@ function runCli(argv) {
   };
   if (args.command === 'package') {
     const paths = npmPackDryRunFiles();
-    const result = auditPackageFiles(paths, { ...sensitiveOptions, requireExistingFiles: true });
+    const policy = packagePolicy(args.policyPath);
+    const result = auditPackageFiles(paths, {
+      ...sensitiveOptions,
+      requireExistingFiles: true,
+      blockedContentTerms: policy?.blockedTerms,
+    });
     const packageFileContents = new Map(
       paths.map((filePath) => [filePath, readFileSync(path.resolve(ROOT_DIR, filePath))]),
     );

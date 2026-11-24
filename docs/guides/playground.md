@@ -7,52 +7,76 @@ sidebar_position: 3
 
 # Playground
 
-The Playground is a self-service demo of Agents++ on an order book: agent identity, column-scoped SQL, supervisor-to-worker delegation, columns encrypted at rest, and a signed, hash-chained audit trail. It runs entirely on your machine in Docker and needs no provider API key.
+The Playground is an interactive demo that shows how Agents++ controls which order book data an agent can read. You can sign in as a demo user, create an agent with its own identity, and choose which columns its credential allows it to query.
+
+Use the SQL console to test those permissions or delegate the same or a narrower set of permissions from a supervisor agent to a worker. The demo also shows how selected columns are encrypted at rest and lets you inspect a signed, hash-chained audit trail.
+
+The Playground runs entirely on your machine in Docker. No provider API key is required.
 
 ## Prerequisites
 
 - Docker Engine 28.3.3 or newer
 - Docker Compose 2.20 or newer
 
-Older Docker Engine releases do not provide the same loopback-publishing guarantees.
+The Playground relies on Docker Engine 28.3.3 or newer to keep its published port accessible only from your machine.
 
-## Run it locally
+## Run the playground locally {#run-it-locally}
 
-From `demo/playground` in a clean checkout:
+From `demo/playground` directory in a clean checkout of the agents++ repository, run:
 
 ```bash
 docker compose up --build
 ```
 
-Open [http://127.0.0.1:3100](http://127.0.0.1:3100). Compose builds the repository package, starts a dedicated PostgreSQL 16 database, runs the idempotent setup after PostgreSQL is healthy, and starts the Playground only after setup succeeds. From a second terminal, confirm readiness:
+Docker Compose builds the agents++ package from the repository and starts a dedicated PostgreSQL 16 database. Once the database is healthy, Compose runs the setup and starts the Playground. Setup can run more than once, and the Playground starts only after setup succeeds.
+
+Open the Playground at [http://127.0.0.1:3100](http://127.0.0.1:3100). To check readiness from a second terminal, run:
 
 ```bash
 curl -fsS http://127.0.0.1:3100/readyz
 ```
 
-### Port already in use
+### Use a different port {#port-already-in-use}
 
-The application port is published on host loopback only; PostgreSQL is not published to the host. Select another loopback port without changing the container:
+The Playground publishes its application port only on the host’s loopback interface. PostgreSQL stays on the Docker network. If port 3100 is already in use, set `PLAYGROUND_PORT` to another available port:
 
 ```bash
 PLAYGROUND_PORT=3110 docker compose up --build
 ```
 
-### Stop and reset
+With this setting, open the Playground at [http://127.0.0.1:3110](http://127.0.0.1:3110).
 
-`docker compose down` stops the stack and keeps the database and generated master key in named volumes. `docker compose down --volumes` removes them; the next `docker compose up --build` creates a fresh database and key.
+### Stop and reset the Playground {#stop-and-reset}
 
-## What to try
+To stop the Playground and keep the database and generated master key in their named volumes, run:
 
-1. Authenticate as `alice` (unrestricted ceiling) or `bob` (ceiling `[instrument, side, quantity, status]` assigned server-side, as it would come from IdP groups in production).
-2. Create an agent; it receives a `did:key` DID and a private key encrypted with the master key.
-3. Issue a credential by checking columns. As `bob`, checking `price` returns `ScopeExceedsCeilingError`.
-4. Delegate from a supervisor to a worker a subset no wider than the source credential; the chain cannot widen the scope.
-5. In the SQL console, `SELECT *`, `DELETE`, and hidden mutations in CTEs are rejected before execution.
-6. Inspect the audit trail: records are signed and chained to the previous record.
+```bash
+docker compose down
+```
+
+To reset the Playground, delete the volumes containing the database and master key:
+
+```bash
+docker compose down --volumes
+```
+
+The next time you run `docker compose up --build`, the Playground creates a fresh database and master key.
+
+## Test agent permissions {#what-to-try}
+
+1. Sign in as a demo user. Choose `alice` for an unrestricted permission ceiling or `bob` for a ceiling limited to instrument, side, quantity, and status. The server assigns bob’s ceiling, as it would in production using identity provider groups.
+2. Set up an agent with a `did:key` decentralized identifier (DID) and a private key encrypted using the master key.
+3. Issue a credential and select the columns the agent can query. If you’re signed in as `bob`, selecting the `price` column returns a `ScopeExceedsCeilingError`.
+4. Delegate permissions to a worker agent. Grant the worker some or all of the column permissions from the supervisor’s source credential. Delegation is limited to one hop: the worker cannot redelegate the credential.
+5. Test the SQL policy in the SQL console by trying `SELECT *`, a `DELETE` statement, or a query that modifies data inside a common table expression (CTE). The policy rejects each query before execution.
+6. Inspect the access comparison's Audit record metric to see whether the query or policy rejection has a saved record.
 
 ## Local boundaries
 
-`alice` and `bob` are fixed local mock identities, not production authentication. Each browser login creates an isolated visitor session backed by its own database. The Playground owns the HTTP and network boundary and validates request input; Agents++ validates credentials and enforces agent ownership and query scope.
+The Playground uses Alice and Bob as fixed, local mock identities for demonstration authentication. Signing in through the browser creates an opaque visitor session.
 
-For manual Node.js/PostgreSQL setup, external PostgreSQL, and verification commands, see the Playground reference at `demo/playground/README.md`.
+Scoped queries access a shared, read-only orders dataset through a single PostgreSQL connection pool used throughout the process. Each visitor’s agent identities, credentials, and audit chain are maintained in a private, in-memory SQLite store. The direct-SQL comparison routes execute against a disposable per-request copy of the plaintext fixture, so their mutations never persist.
+
+The Playground manages the HTTP and network boundary and validates incoming requests. agents++ validates credentials and enforces agent ownership and query scope.
+
+For instructions on manually setting up Node.js and PostgreSQL, using an external PostgreSQL database, or running verification commands, please refer to `demo/playground/README.md`.

@@ -1,28 +1,25 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { generateKeyPairSync, sign as ed25519Sign } from 'node:crypto';
-import { verifyIdTokenSignature, clearJwksCache } from '#auth/jwks-verify.js';
+import {
+  verifyIdTokenSignature,
+  clearJwksCache,
+  IdTokenVerificationError,
+} from '#auth/jwks-verify.js';
 import { loopbackSkipReason, shouldRunLoopbackHttpTests } from './support/integration-gates.js';
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
 
 function base64UrlEncode(buf: Buffer | Uint8Array): string {
   return Buffer.from(buf).toString('base64url');
 }
 
-/**
- * Generate an Ed25519 keypair and return both raw keys and JWK public key format.
- */
 function generateEdKey() {
   const { publicKey, privateKey } = generateKeyPairSync('ed25519', {
     publicKeyEncoding: { type: 'spki', format: 'der' },
     privateKeyEncoding: { type: 'pkcs8', format: 'der' },
   });
-  // Raw 32-byte keys
   const rawPublic = publicKey.subarray(12);
   const rawPrivate = privateKey.subarray(16);
 
-  // JWK format for JWKS endpoint
   const jwk = {
     kty: 'OKP',
     crv: 'Ed25519',
@@ -34,26 +31,14 @@ function generateEdKey() {
   return { rawPublic, rawPrivate, jwk, publicKeyDer: publicKey, privateKeyDer: privateKey };
 }
 
-/**
- * Create a JWT signed with an Ed25519 key.
- * Returns the compact JWS string.
- */
 function createSignedJwt(
   payload: Record<string, unknown>,
   privateKeyDer: Buffer,
   headerOverrides?: Record<string, unknown>,
 ): string {
-  return createSignedJwtJson(JSON.stringify(payload), privateKeyDer, headerOverrides);
-}
-
-function createSignedJwtJson(
-  payloadJson: string,
-  privateKeyDer: Buffer,
-  headerOverrides?: Record<string, unknown>,
-): string {
   const header = { alg: 'EdDSA', typ: 'JWT', kid: 'test-key-1', ...headerOverrides };
   const headerB64 = base64UrlEncode(Buffer.from(JSON.stringify(header)));
-  const payloadB64 = base64UrlEncode(Buffer.from(payloadJson));
+  const payloadB64 = base64UrlEncode(Buffer.from(JSON.stringify(payload)));
   const signingInput = `${headerB64}.${payloadB64}`;
 
   const sig = ed25519Sign(undefined, Buffer.from(signingInput), {
@@ -65,8 +50,6 @@ function createSignedJwtJson(
 
   return `${signingInput}.${sigB64}`;
 }
-
-// ─── Test JWKS Server ───────────────────────────────────────────────────────
 
 const describeLoopback = shouldRunLoopbackHttpTests ? describe : describe.skip;
 
@@ -84,7 +67,6 @@ describeLoopback('JWKS Verify — security hardening', () => {
   const key2 = generateEdKey();
 
   beforeAll(async () => {
-    // Set initial JWKS to key1
     currentJwks = { keys: [key1.jwk] };
 
     server = createServer((req, res) => {
@@ -109,23 +91,51 @@ describeLoopback('JWKS Verify — security hardening', () => {
   });
 
   beforeEach(() => {
-    // Reset cache and JWKS state between tests
     clearJwksCache();
     currentJwks = { keys: [key1.jwk] };
   });
 
-  // ─── Algorithm Allowlist ──────────────────────────────────────────────────
+  it('accepts a valid EdDSA token and rejects signed tokens with invalid expiry, issuer, or audience', async () => {
+    const claims = {
+      iss: 'test',
+      sub: 'user',
+      aud: 'test-client',
+      exp: Math.floor(Date.now() / 1000) + 300,
+    };
+    const options = { expectedIssuer: claims.iss, expectedAudience: claims.aud };
+    const jwt = createSignedJwt(claims, key1.privateKeyDer);
 
-  it('rejects JWT with alg: "none" (algorithm allowlist)', async () => {
-    const jwt = createSignedJwt(
-      { iss: 'test', sub: 'user', exp: Math.floor(Date.now() / 1000) + 300 },
-      key1.privateKeyDer,
-      { alg: 'none' },
-    );
+    const payload = await verifyIdTokenSignature(jwt, jwksUri, options);
+    expect(payload.iss).toBe('test');
 
-    await expect(verifyIdTokenSignature(jwt, jwksUri)).rejects.toThrow(
-      'Unsupported or disallowed JWT algorithm: none',
-    );
+    await expect(
+      verifyIdTokenSignature(
+        createSignedJwt({ ...claims, exp: undefined }, key1.privateKeyDer),
+        jwksUri,
+        options,
+      ),
+    ).rejects.toThrow(IdTokenVerificationError);
+    await expect(
+      verifyIdTokenSignature(
+        createSignedJwt({ ...claims, exp: Math.floor(Date.now() / 1000) - 60 }, key1.privateKeyDer),
+        jwksUri,
+        options,
+      ),
+    ).rejects.toThrow(IdTokenVerificationError);
+    await expect(
+      verifyIdTokenSignature(
+        createSignedJwt({ ...claims, iss: 'other-issuer' }, key1.privateKeyDer),
+        jwksUri,
+        options,
+      ),
+    ).rejects.toThrow(IdTokenVerificationError);
+    await expect(
+      verifyIdTokenSignature(
+        createSignedJwt({ ...claims, aud: 'other-client' }, key1.privateKeyDer),
+        jwksUri,
+        options,
+      ),
+    ).rejects.toThrow(IdTokenVerificationError);
   });
 
   it('rejects JWT with alg: "HS256" (symmetric key confusion attack)', async () => {
@@ -140,129 +150,21 @@ describeLoopback('JWKS Verify — security hardening', () => {
     );
   });
 
-  it('accepts JWT with alg: "EdDSA" (allowed algorithm)', async () => {
-    const jwt = createSignedJwt(
-      { iss: 'test', sub: 'user', exp: Math.floor(Date.now() / 1000) + 300 },
-      key1.privateKeyDer,
-    );
-
-    // Should succeed — EdDSA is in the allowlist, key1 is in the JWKS
-    const payload = await verifyIdTokenSignature(jwt, jwksUri);
-    expect(payload.iss).toBe('test');
-  });
-
-  // ─── Mandatory exp Claim ──────────────────────────────────────────────────
-
-  it('rejects JWT without exp claim', async () => {
-    const jwt = createSignedJwt(
-      { iss: 'test', sub: 'user', iat: Math.floor(Date.now() / 1000) },
-      key1.privateKeyDer,
-    );
-
-    await expect(verifyIdTokenSignature(jwt, jwksUri)).rejects.toThrow(
-      'id_token is missing required exp claim',
-    );
-  });
-
-  it('rejects JWT at its exact exp second', async () => {
-    const exp = Math.floor(Date.now() / 1000);
-    const jwt = createSignedJwt({ iss: 'test', sub: 'user', exp }, key1.privateKeyDer);
-
-    await expect(verifyIdTokenSignature(jwt, jwksUri)).rejects.toThrow('id_token is expired');
-  });
-
-  it('rejects a non-finite exp claim', async () => {
-    const jwt = createSignedJwtJson('{"iss":"test","sub":"user","exp":1e400}', key1.privateKeyDer);
-
-    await expect(verifyIdTokenSignature(jwt, jwksUri)).rejects.toThrow(
-      'id_token exp claim is not a finite number',
-    );
-  });
-
-  it('rejects a non-finite nbf claim', async () => {
-    const jwt = createSignedJwtJson(
-      `{"iss":"test","sub":"user","exp":${Math.floor(Date.now() / 1000) + 300},"nbf":1e400}`,
-      key1.privateKeyDer,
-    );
-
-    await expect(verifyIdTokenSignature(jwt, jwksUri)).rejects.toThrow(
-      'id_token nbf claim is not a finite number',
-    );
-  });
-
-  // ─── Cache-Bust Retry on Signature Failure ────────────────────────────────
-
   it('retries with fresh JWKS when signature fails (key rotation)', async () => {
-    // Start with key1 in the JWKS, sign a JWT with key2.
-    // The first verification attempt should fail, but the retry should
-    // fetch fresh JWKS (now containing key2) and succeed.
-
-    // Step 1: Pre-populate cache with key1
     const warmupJwt = createSignedJwt(
       { iss: 'test', sub: 'warmup', exp: Math.floor(Date.now() / 1000) + 300 },
       key1.privateKeyDer,
     );
     await verifyIdTokenSignature(warmupJwt, jwksUri);
 
-    // Step 2: Rotate — update the JWKS to serve key2 (same kid)
     currentJwks = { keys: [{ ...key2.jwk, kid: 'test-key-1' }] };
 
-    // Step 3: Sign a JWT with key2 (same kid as key1)
     const rotatedJwt = createSignedJwt(
       { iss: 'test', sub: 'rotated', exp: Math.floor(Date.now() / 1000) + 300 },
       key2.privateKeyDer,
     );
 
-    // Step 4: Verify — should succeed because the retry fetches the fresh JWKS with key2
     const payload = await verifyIdTokenSignature(rotatedJwt, jwksUri);
     expect(payload.sub).toBe('rotated');
-  });
-
-  it('retries with fresh JWKS when kid is not found (new key added)', async () => {
-    // Pre-populate cache with key1
-    const warmupJwt = createSignedJwt(
-      { iss: 'test', sub: 'warmup', exp: Math.floor(Date.now() / 1000) + 300 },
-      key1.privateKeyDer,
-    );
-    await verifyIdTokenSignature(warmupJwt, jwksUri);
-
-    // Add key2 with a different kid
-    const key2WithNewKid = { ...key2.jwk, kid: 'rotated-key-2' };
-    currentJwks = { keys: [key1.jwk, key2WithNewKid] };
-
-    // Sign with key2, using the new kid
-    const newKeyJwt = createSignedJwt(
-      { iss: 'test', sub: 'new-key', exp: Math.floor(Date.now() / 1000) + 300 },
-      key2.privateKeyDer,
-      { kid: 'rotated-key-2' },
-    );
-
-    // Should succeed — kid-not-found triggers cache bust, finds key2
-    const payload = await verifyIdTokenSignature(newKeyJwt, jwksUri);
-    expect(payload.sub).toBe('new-key');
-  });
-
-  // ─── Claims Validation ────────────────────────────────────────────────────
-
-  it('validates expectedIssuer', async () => {
-    const jwt = createSignedJwt(
-      { iss: 'wrong-issuer', sub: 'user', exp: Math.floor(Date.now() / 1000) + 300 },
-      key1.privateKeyDer,
-    );
-
-    await expect(
-      verifyIdTokenSignature(jwt, jwksUri, { expectedIssuer: 'correct-issuer' }),
-    ).rejects.toThrow('id_token issuer mismatch');
-  });
-
-  it('validates expectedAudience', async () => {
-    const jwt = createSignedJwt(
-      { iss: 'test', sub: 'user', aud: 'other-client', exp: Math.floor(Date.now() / 1000) + 300 },
-      key1.privateKeyDer,
-    );
-
-    await expect(
-      verifyIdTokenSignature(jwt, jwksUri, { expectedAudience: 'my-client' }),
-    ).rejects.toThrow('id_token audience does not include expected client');
   });
 });

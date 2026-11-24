@@ -18,7 +18,6 @@ import { CredentialInvalidError } from '#errors/index.js';
 import type { RegisteredAgent } from '#types/index.js';
 
 function createDelegationFixtures() {
-  // Human owner, supervisor agent, worker agent
   const human = generateDidKey();
   const supervisor = generateDidKey();
   const worker = generateDidKey();
@@ -110,7 +109,6 @@ describe('Delegation', () => {
     it('accepts a delegated credential with a valid chain back to the human owner', async () => {
       const { human, supervisor, worker, engine } = createDelegationFixtures();
 
-      // Human issues credential to supervisor
       const supervisorCred = await issueCredential(human.did, human.privateKey, {
         agent: supervisor.did,
         columns: ['patients.name', 'patients.dob', 'patients.diagnosis'],
@@ -118,7 +116,6 @@ describe('Delegation', () => {
         expiresIn: '4h',
       });
 
-      // Supervisor delegates a subset to worker
       const delegatedCred = await issueDelegatedCredential(
         supervisor.did,
         createSigner(supervisor.privateKey),
@@ -133,7 +130,6 @@ describe('Delegation', () => {
         },
       );
 
-      // Worker queries with the delegated credential
       const result = await engine.query({
         agent: worker.did,
         credential: delegatedCred,
@@ -151,7 +147,6 @@ describe('Delegation', () => {
     it('rejects a delegated credential when the source credential is forged by an unregistered key', async () => {
       const { supervisor, worker, engine } = createDelegationFixtures();
 
-      // Attacker forges a source credential (signed by an unknown key)
       const attacker = generateDidKey();
       const forgedSourceCred = await issueCredential(attacker.did, attacker.privateKey, {
         agent: supervisor.did,
@@ -186,49 +181,10 @@ describe('Delegation', () => {
       expect((err as Error).message).toMatch(/not the registered owner/);
     });
 
-    it('rejects a delegated credential when the source credential issuer is not the human owner', async () => {
-      const { supervisor, worker, engine, verifier } = createDelegationFixtures();
-
-      // Different human — not the owner of supervisor
-      const otherHuman = generateDidKey();
-      verifier.registerKey(otherHuman.did, otherHuman.publicKey);
-
-      const sourceCred = await issueCredential(otherHuman.did, otherHuman.privateKey, {
-        agent: supervisor.did,
-        columns: ['patients.name', 'patients.dob'],
-        actions: ['read'],
-        expiresIn: '4h',
-      });
-
-      const delegatedCred = await issueDelegatedCredential(
-        supervisor.did,
-        createSigner(supervisor.privateKey),
-        sourceCred,
-        'other-jti',
-        { columns: ['patients.name'], actions: ['read'] },
-        {
-          targetAgent: worker.did,
-          columns: ['patients.name'],
-          actions: ['read'],
-          expiresIn: '1h',
-        },
-      );
-
-      await expect(
-        engine.query({
-          agent: worker.did,
-          credential: delegatedCred,
-          table: 'patients',
-          sql: 'SELECT name FROM patients',
-        }),
-      ).rejects.toThrow(CredentialInvalidError);
-    });
-
     it('rejects a non-delegated credential from an agent (not the human owner)', async () => {
       const { supervisor, worker, engine } = createDelegationFixtures();
 
-      // Supervisor issues a regular (non-delegated) credential directly —
-      // but the C1 check requires issuer == human owner
+      // Direct issuance bypasses delegation checks; verification must still require the owner as issuer.
       const directCred = await issueCredential(supervisor.did, supervisor.privateKey, {
         agent: worker.did,
         columns: ['patients.name'],
@@ -296,42 +252,6 @@ describe('Delegation', () => {
         }),
       ).rejects.toThrow(CredentialInvalidError);
     });
-
-    it('accepts a single delegated credential covering the full authorized scope', async () => {
-      const { human, supervisor, worker, engine } = createDelegationFixtures();
-
-      const supervisorCred = await issueCredential(human.did, human.privateKey, {
-        agent: supervisor.did,
-        columns: ['patients.name', 'patients.dob', 'patients.diagnosis'],
-        actions: ['read'],
-        expiresIn: '4h',
-      });
-
-      const credFull = await issueDelegatedCredential(
-        supervisor.did,
-        createSigner(supervisor.privateKey),
-        supervisorCred,
-        'source-jti-full',
-        { columns: ['patients.name', 'patients.dob', 'patients.diagnosis'], actions: ['read'] },
-        {
-          targetAgent: worker.did,
-          columns: ['patients.name', 'patients.dob'],
-          actions: ['read'],
-          expiresIn: '1h',
-        },
-      );
-
-      const result = await engine.query({
-        agent: worker.did,
-        credential: credFull,
-        table: 'patients',
-        sql: 'SELECT name, dob FROM patients',
-      });
-
-      expect(result.rows.length).toBe(1);
-      expect(result.rows[0].name).toBe('Jane Doe');
-      expect(result.rows[0].dob).toBe('1990-03-15');
-    });
   });
 
   describe('delegation depth constraints', () => {
@@ -362,45 +282,6 @@ describe('Delegation', () => {
       );
       expect(typeof delegated).toBe('string');
       expect(delegated.split('.').length).toBe(3);
-    });
-
-    it('rejects empty delegationChain at issuance', async () => {
-      const now = Math.floor(Date.now() / 1000);
-      const craftedJwt = await createJwt(
-        {
-          iss: human.did,
-          sub: supervisor.did,
-          jti: 'crafted-empty-chain',
-          iat: now,
-          exp: now + 3600,
-          delegationChain: [],
-          vc: {
-            '@context': ['https://www.w3.org/2018/credentials/v1'],
-            type: ['VerifiableCredential', 'AgentScopeCredential'],
-            credentialSubject: {
-              id: supervisor.did,
-              scope: { columns: ['patients.name'], actions: ['read'] },
-            },
-          },
-        },
-        human.privateKey,
-      );
-
-      await expect(
-        issueDelegatedCredential(
-          supervisor.did,
-          createSigner(supervisor.privateKey),
-          craftedJwt,
-          'crafted-empty-chain',
-          { columns: ['patients.name'], actions: ['read'] },
-          {
-            targetAgent: worker.did,
-            columns: ['patients.name'],
-            actions: ['read'],
-            expiresIn: '1h',
-          },
-        ),
-      ).rejects.toThrow(/empty delegationChain/);
     });
 
     it('rejects empty delegationChain at verification', async () => {

@@ -142,12 +142,28 @@ program
     '--single-instance',
     'Acknowledge single-instance deployment; required when NODE_ENV=production with default storage',
   )
+  .option(
+    '--keystore <path>',
+    'JSON keystore for the persistent server identity (or set AGENTS_KEYSTORE_PATH)',
+  )
+  .addHelpText(
+    'after',
+    [
+      '',
+      'Environment (flags take precedence):',
+      '  AGENTS_KEYSTORE_PATH, AGENTS_TRUSTED_SERVERS (comma-separated server DIDs)',
+    ].join('\n'),
+  )
   .action(async (options) => {
     if (!options.db) {
       console.error('Error: --db <url> is required (or set DATABASE_URL env var).');
       console.error('Example: agents mcp --db postgresql://postgres:postgres@localhost:5432/mydb');
       process.exit(1);
     }
+    const { resolveMcpHostOptionsFromEnv, withMcpHostFlags } = await import('#mcp/host-env.js');
+    const hostOptions = withMcpHostFlags(resolveMcpHostOptionsFromEnv(), {
+      keystore: options.keystore,
+    });
     const { startMcpServer } = await import('#mcp/index.js');
     await startMcpServer({
       db: options.db,
@@ -159,6 +175,7 @@ program
       insecure: options.insecure,
       allowNoAuth: options.allowNoAuth,
       singleInstance: options.singleInstance,
+      ...hostOptions,
     });
   });
 

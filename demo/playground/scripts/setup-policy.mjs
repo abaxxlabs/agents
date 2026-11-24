@@ -1,5 +1,6 @@
 export const DEFAULT_DATABASE_URL = 'postgresql://postgres:postgres@localhost:54322/postgres';
 export const PLAYGROUND_OWNER = 'agents-demo-playground';
+export const PLAYGROUND_APP_ROLE = 'agents_playground_app';
 export const PLAYGROUND_NAIVE_ROLE = 'agents_playground_naive';
 export const PLAYGROUND_NAIVE_PASSWORD_ENV = 'PLAYGROUND_NAIVE_DB_PASSWORD';
 
@@ -112,20 +113,38 @@ export async function assertSetupPrivileges(pool) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const { rows: [capabilities] } = await client.query(`
+      SELECT
+        (SELECT rolcreatedb OR rolsuper FROM pg_roles WHERE rolname = current_user) AS can_create_database,
+        has_database_privilege(current_user, current_database(), 'CREATE') AS can_create_in_database
+    `);
+    if (!capabilities.can_create_database) {
+      throw new Error('CREATE DATABASE privilege probe failed: the setup role cannot create databases');
+    }
+    if (!capabilities.can_create_in_database) {
+      throw new Error('template CREATE privilege probe failed: the setup role cannot create objects in the template database');
+    }
     await client.query(`CREATE TABLE ${PRIVILEGE_PROBE_TABLE} (probe INT)`);
     await client.query(`CREATE ROLE ${PRIVILEGE_PROBE_ROLE}`);
     // ALTER ROLE does not accept a parameterized password; the dummy value
     // is fixed and the whole probe transaction is rolled back.
     await client.query(`ALTER ROLE ${PRIVILEGE_PROBE_ROLE} WITH LOGIN PASSWORD 'agents-demo-setup-probe'`);
     await client.query(`ALTER TABLE ${PRIVILEGE_PROBE_TABLE} OWNER TO ${PRIVILEGE_PROBE_ROLE}`);
+    await client.query(`
+      DO $$
+      BEGIN
+        EXECUTE format('REVOKE TEMPORARY ON DATABASE %I FROM PUBLIC', current_database());
+      END
+      $$;
+    `);
     await client.query('ROLLBACK');
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     throw new Error(
       'The setup connection lacks a required database privilege and no changes were made. ' +
       `Failed probe: ${error.message}. ` +
-      'Use a superuser, or a database owner able to create roles, set role passwords, and ' +
-      'transfer table ownership (README: "External PostgreSQL with Compose").',
+      'Use a superuser, or a database owner able to create databases, create roles, set role passwords, ' +
+      'transfer table ownership, and manage database privileges (README: "External PostgreSQL with Compose").',
     );
   } finally {
     client.release();

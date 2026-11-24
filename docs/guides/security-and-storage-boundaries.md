@@ -1,6 +1,6 @@
 # Security and Storage Boundaries
 
-This guide describes the current cryptography, trust, storage, and audit behavior of Agents++. It is the canonical public reference for these boundaries.
+This guide provides a definitive public reference to the current cryptographic, trust, storage, and audit practices of Agents++, including the boundaries governing each area.
 
 ## Cryptography Locations
 

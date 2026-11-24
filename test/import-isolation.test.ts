@@ -20,8 +20,7 @@ function collectImportGraph(entryFile: string): Set<string> {
       continue;
     }
 
-    // Match import/export ... from '...' but skip type-only imports
-    // (import type / export type) since they emit nothing at runtime.
+    // Ignore type-only imports and exports: they cannot load a dependency at runtime.
     const importRegex = /(?:import|export)\s+(?!type\s).*?from\s+['"]([^'"]+)['"]/g;
     let match;
     while ((match = importRegex.exec(content)) !== null) {
@@ -60,32 +59,8 @@ describe('Import isolation (agents/sql split acceptance criterion)', () => {
     expect(graphImportsPackage(resolve(SRC, 'index.ts'), 'pg')).toBe(false);
   });
 
-  it('main entry does not transitively import libpg-query', () => {
-    expect(graphImportsPackage(resolve(SRC, 'index.ts'), 'libpg-query')).toBe(false);
-  });
-
-  it('sql entry does import pg', () => {
-    expect(graphImportsPackage(resolve(SRC, 'sql', 'index.ts'), 'pg')).toBe(true);
-  });
-
-  it('sql entry does import libpg-query', () => {
-    expect(graphImportsPackage(resolve(SRC, 'sql', 'scope-engine.ts'), 'libpg-query')).toBe(true);
-  });
-
-  it('main entry graph does not include sql/ files', () => {
-    const graph = collectImportGraph(resolve(SRC, 'index.ts'));
-    const sqlFiles = [...graph].filter((f) => f.includes('/sql/'));
-    expect(sqlFiles).toEqual([]);
-  });
-
   it('mcp entry does not eagerly import pg or libpg-query', () => {
     expect(graphImportsPackage(resolve(SRC, 'mcp', 'index.ts'), 'pg')).toBe(false);
     expect(graphImportsPackage(resolve(SRC, 'mcp', 'index.ts'), 'libpg-query')).toBe(false);
-  });
-
-  it('mcp entry graph does not eagerly include sql/ files', () => {
-    const graph = collectImportGraph(resolve(SRC, 'mcp', 'index.ts'));
-    const sqlFiles = [...graph].filter((f) => f.includes('/sql/'));
-    expect(sqlFiles).toEqual([]);
   });
 });

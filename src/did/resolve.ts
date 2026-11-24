@@ -53,4 +53,5 @@ export function resolveDidKeyFallback(did: Did): Uint8Array {
   return decoded.slice(2);
 }
 
+/** Decodes a `did:key` to its public key bytes. Other methods throw; nothing is fetched. */
 export const resolveDidKey = resolveDidKeyFallback;

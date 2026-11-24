@@ -2,7 +2,10 @@ import { renderAgentSdkPreview, renderSdkFlow } from './sdk-previews.js';
 import { createQueryPresets } from './query-presets.js';
 import { createComparisonModel } from './comparison-model.js';
 import { renderComparison, renderAuditConfirmation } from './comparison-view.js';
-import { renderAuditRecords } from './audit-view.js';
+import { mountIcons, createSvgIcon } from './icons.js';
+import './appearance.js';
+
+mountIcons();
 
 const state = {
   userAlias: null,
@@ -25,9 +28,7 @@ const ALL_COLUMNS = [
   { name: 'price', encrypted: true },
   { name: 'counterparty', encrypted: true },
 ];
-const AUDIT_VISIBLE_LIMIT = 5;
 const AUDIT_CONFIRMATION_TIMEOUT_MS = 5000;
-let auditExpanded = false;
 let comparisonVersion = 0;
 let pendingAudit = null;
 
@@ -40,7 +41,17 @@ async function api(method, path, body, signal) {
     body: body ? JSON.stringify(body) : undefined,
     signal,
   });
-  return { status: res.status, body: await res.json() };
+  const parsed = await res.json();
+  if (res.status === 401 || res.status === 410) {
+    showSessionLost(res.status === 410 ? 'session expired or lost — authenticate again' : 'session invalid — authenticate again');
+  }
+  return { status: res.status, body: parsed };
+}
+
+function showSessionLost(message) {
+  clearUserState();
+  setResult('login-result', message, 'err');
+  $('step-login').scrollIntoView({ block: 'center' });
 }
 
 function invalidateComparison() {
@@ -56,7 +67,7 @@ function enable(stepId) {
 function setResult(id, text, cls) {
   const el = $(id);
   el.textContent = text;
-  el.classList.remove('mono', 'ok', 'err');
+  el.classList.remove('ok', 'err');
   if (cls) el.classList.add(cls);
 }
 
@@ -126,22 +137,22 @@ $('btn-login').addEventListener('click', async () => {
     ? 'ceiling: * (unrestricted)'
     : `ceiling: [${c.columns.map((x) => x.replace('orders.', '')).join(', ')}] (${c.resolvedFrom.join('/') || c.source})`;
   const result = $('login-result');
-  result.classList.remove('err', 'mono');
+  result.classList.remove('err');
   result.classList.add('ok');
   result.replaceChildren();
   const summary = document.createElement('span');
   summary.textContent = `✓ session: ${alias} (mock) · ${ceilingTxt}`;
   const didLine = document.createElement('span');
-  didLine.className = 'login-did mt-[4px] block font-pg-mono text-[12px] leading-[18px] text-pg-subtle [overflow-wrap:anywhere]';
+    didLine.className = 'login-did mt-1 block text-[12px] leading-[17px] text-pg-subtle [overflow-wrap:anywhere]';
   didLine.textContent = body.humanDid;
   result.append(summary, didLine);
   enable('step-agent');
   await refreshAgents();
-  await refreshAudit();
 });
 
 async function refreshAgents() {
-  const { body } = await api('GET', `/api/agents?ownerDid=${encodeURIComponent(state.human)}`);
+  const { status, body } = await api('GET', `/api/agents?ownerDid=${encodeURIComponent(state.human)}`);
+  if (status !== 200 || !Array.isArray(body?.agents)) return;
   if (!state.agentDid && body.agents.length) selectAgent(body.agents[0].did, body.agents[0].name);
 }
 
@@ -152,7 +163,6 @@ function selectAgent(did, name, mode = 'reused') {
     ? `✓ reusing existing agent: ${name}`
     : '✓ agent identity ready';
   setResult('agent-result', message, 'ok');
-  $('agent-result').classList.add('mono');
   enable('step-credential');
   renderAgentPreview(did);
 }
@@ -183,12 +193,12 @@ function resetAgentPreview() {
 
 function techRow(label, value) {
   const row = document.createElement('div');
-  row.className = 'tech-row mt-[10px] flex items-center gap-[10px] text-[12px] mobile:flex-wrap';
+  row.className = 'tech-row';
   const lab = document.createElement('span');
-  lab.className = 'tech-label flex-[0_0_84px] font-bold text-pg-muted';
+  lab.className = 'tech-label';
   lab.textContent = label;
   const code = document.createElement('code');
-  code.className = 'rounded-[4px] bg-pg-control py-[2px] px-[6px] font-pg-mono text-[12px] leading-[18px] text-pg-text [overflow-wrap:anywhere]';
+  code.className = 'tech-value';
   code.textContent = value;
   row.append(lab, code);
   return row;
@@ -226,16 +236,20 @@ function renderColumnPicker() {
   grid.replaceChildren();
   for (const col of ALL_COLUMNS) {
     const label = document.createElement('label');
-    label.className = 'col-chip flex min-h-[40px] cursor-pointer select-none items-center justify-between gap-[8px] rounded-[8px] bg-pg-control py-[10px] px-[12px] font-pg text-[13px] font-normal leading-[20px] text-pg-muted [border:0] has-[input:checked]:text-pg-text';
+    label.className = 'col-chip';
     const input = document.createElement('input');
-    input.className = 'relative m-0 h-[16px] w-[16px] flex-[0_0_16px] appearance-none rounded-[2px] border border-pg-gray bg-pg-control p-0 font-pg text-[14px] leading-[20px] text-white accent-legacy-accent checked:border-pg-primary checked:bg-pg-primary checked:bg-checkbox-mark checked:bg-center checked:bg-no-repeat checked:bg-size-[12px_12px] focus:[outline:2px_solid_rgba(207,0,0,0.35)] focus:outline-offset-1 focus-visible:[outline:2px_solid_rgba(207,0,0,0.5)] focus-visible:outline-offset-2';
+    input.className = 'column-checkbox';
     input.type = 'checkbox';
     input.value = col.name;
     input.checked = ['instrument', 'side', 'quantity', 'status'].includes(col.name);
+    const checkbox = document.createElement('span');
+    checkbox.className = 'relative size-4 shrink-0';
+    input.classList.add('peer');
+    checkbox.append(input, createSvgIcon('check', 'pointer-events-none absolute top-0.5 left-0.5 hidden text-white peer-checked:block'));
     const tag = document.createElement('span');
-    tag.className = `tag ml-auto rounded-[4px] py-[2px] px-[8px] text-[11px] font-bold leading-[16px] ${col.encrypted ? 'enc bg-[rgba(239,68,68,0.1)] text-pg-error' : 'plain bg-[rgba(16,185,129,0.1)] text-pg-success'}`;
+    tag.className = `column-tag ${col.encrypted ? 'enc' : 'plain'}`;
     tag.textContent = col.encrypted ? 'encrypted' : 'plain';
-    label.append(input, document.createTextNode(`orders.${col.name}`), tag);
+    label.append(checkbox, document.createTextNode(`orders.${col.name}`), tag);
     grid.appendChild(label);
   }
   renderScopePreview();
@@ -247,7 +261,7 @@ function renderScopePreview() {
   const selected = [...document.querySelectorAll('#columns-picker input:checked')].map((i) => i.value);
   if (selected.some((name) => ALL_COLUMNS.find((c) => c.name === name)?.encrypted)) {
     const warn = document.createElement('span');
-    warn.className = 'scope-warn text-[12px] font-normal leading-[18px] text-[rgba(239,68,68,0.8)]';
+    warn.className = 'scope-warn text-[12px] font-normal leading-[18px] text-pg-error';
     warn.textContent = 'Requires encrypted-data access';
     preview.appendChild(warn);
   }
@@ -262,7 +276,7 @@ function renderCredentialCard(columns, expiresAt) {
   columnList.replaceChildren();
   for (const column of columns) {
     const chip = document.createElement('span');
-    chip.className = 'rounded-[4px] bg-[#1f2937] py-[6px] px-[8px] text-[10px] font-semibold leading-[12px] text-[#9ca3af]';
+    chip.className = 'scope-chip';
     chip.textContent = column.replace('orders.', '');
     columnList.appendChild(chip);
   }
@@ -319,7 +333,7 @@ function renderDecisionTrace(body, auditConfirmed) {
   target.replaceChildren();
   for (const step of body.inspection?.decisionTrace ?? []) {
     const item = document.createElement('div');
-    item.className = 'flex justify-between gap-[0.8rem] border-b border-b-legacy-border pb-1';
+    item.className = 'flex justify-between gap-[0.8rem] border-b border-pg-border pb-1';
     item.textContent = !auditConfirmed && ['Audit recorded', 'Rejection recorded'].includes(step)
       ? 'Audit persistence not confirmed' : step;
     target.appendChild(item);
@@ -358,7 +372,6 @@ async function confirmComparisonAudit(request, direct, protectedPath, isCurrent)
     renderDecisionTrace(protectedPath.body, model.scoped.auditConfirmed);
     renderRequestEvidence(protectedPath.body, model.scoped);
     $('comparison-status').textContent = comparisonStatus(model.scoped);
-    await refreshAudit(audit.body.records);
   } finally {
     clearTimeout(timer);
     if (pendingAudit === controller) pendingAudit = null;
@@ -422,35 +435,6 @@ async function runComparison() {
 }
 
 $('btn-run').addEventListener('click', runComparison);
-
-async function refreshAudit(records) {
-  if (!records) {
-    const { status, body } = await api('GET', '/api/audit');
-    if (status !== 200 || !Array.isArray(body?.records)) return;
-    records = body.records;
-  }
-  const hiddenCount = Math.max(0, records.length - AUDIT_VISIBLE_LIMIT);
-  const visible = auditExpanded ? records : records.slice(0, AUDIT_VISIBLE_LIMIT);
-  renderAuditRecords(visible, auditExpanded ? 0 : hiddenCount, () => {
-    auditExpanded = true;
-    refreshAudit();
-  });
-}
-
-$('btn-refresh-audit').addEventListener('click', () => {
-  auditExpanded = false;
-  refreshAudit();
-});
-
-$('btn-verify-chain').addEventListener('click', async () => {
-  setResult('chain-result', 'verifying…');
-  const { body } = await api('POST', '/api/audit/verify');
-  if (body.ok) {
-    setResult('chain-result', `✓ hash links checked (${body.totalRecords} records; signatures, completeness and deleted records not verified)`, 'ok');
-  } else {
-    setResult('chain-result', `✗ chain BROKEN: ${body.reason ?? JSON.stringify(body)}`, 'err');
-  }
-});
 
 loadStatus();
 syncPreviewFromInput();

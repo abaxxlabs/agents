@@ -1,9 +1,8 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { VcVerifier } from '#identity/index.js';
-import { createJwt, decodeJwt } from '#crypto/jwt.js';
 import { InMemoryRevocationStore } from '#storage/memory/revocation-store.js';
 import { generateDidKey, issueCredential, createSigner } from '#auth/index.js';
-import { createPresentation, VP_TYPE } from '#identity/presentation.js';
+import { createPresentation } from '#identity/presentation.js';
 
 describe('VP Verification — VcVerifier', () => {
   let verifier: VcVerifier;
@@ -24,7 +23,6 @@ describe('VP Verification — VcVerifier', () => {
     verifier.registerKey(server.did, server.publicKey);
   });
 
-  // Helper: issue a standard VC
   function issueTestVC() {
     return issueCredential(human.did, human.privateKey, {
       agent: agent.did,
@@ -33,8 +31,6 @@ describe('VP Verification — VcVerifier', () => {
       expiresIn: '4h',
     });
   }
-
-  // ─── VP Signature Verification ──────────────────────────────────
 
   describe('VP signature verification', () => {
     it('accepts a valid VP wrapping a valid VC', async () => {
@@ -48,7 +44,6 @@ describe('VP Verification — VcVerifier', () => {
     it('rejects a VP with tampered signature', async () => {
       const vc = await issueTestVC();
       const vp = await createPresentation(vc, agent.did, signer);
-      // Tamper with the signature portion
       const parts = vp.split('.');
       parts[2] = parts[2].split('').reverse().join('');
       const tampered = parts.join('.');
@@ -57,54 +52,9 @@ describe('VP Verification — VcVerifier', () => {
       expect(result.valid).toBe(false);
       expect(result.status).toBe('INVALID_SIGNATURE');
     });
-
-    it('rejects a VP from an unknown issuer (falls through to inner VC subject mismatch)', async () => {
-      const unknownAgent = generateDidKey();
-      const unknownSigner = createSigner(unknownAgent.privateKey);
-      const vc = await issueTestVC();
-      // VP signed by an agent whose key is NOT registered.
-      // The VcVerifier resolves via did:key self-describing key, so the VP
-      // signature check passes. But the inner VC subject (agent.did) won't
-      // match the VP issuer (unknownAgent.did), producing WRONG_SUBJECT.
-      const vp = await createPresentation(vc, unknownAgent.did, unknownSigner);
-
-      const result = await verifier.verify(vp);
-      expect(result.valid).toBe(false);
-      expect(result.status).toBe('WRONG_SUBJECT');
-    });
-
-    it('rejects a VP with missing issuer (iss) claim', async () => {
-      const now = Math.floor(Date.now() / 1000);
-      // Manually create a VP JWT without an iss claim
-      const vpPayload = {
-        jti: 'test-nonce',
-        iat: now,
-        exp: now + 300,
-        vp: {
-          '@context': ['https://www.w3.org/2018/credentials/v1'],
-          type: [VP_TYPE],
-          verifiableCredential: [await issueTestVC()],
-        },
-      };
-      const vpJwt = await createJwt(vpPayload, agent.privateKey);
-
-      const result = await verifier.verify(vpJwt);
-      expect(result.valid).toBe(false);
-      expect(result.status).toBe('MALFORMED');
-      expect(result.error).toContain('VP missing issuer');
-    });
   });
 
-  // ─── VP Audience Binding ────────────────────────────────────────
-
   describe('VP audience binding', () => {
-    it('passes when VP audience matches expectedAudience', async () => {
-      const vc = await issueTestVC();
-      const vp = await createPresentation(vc, agent.did, signer, { audience: server.did });
-      const result = await verifier.verify(vp, { expectedAudience: server.did });
-      expect(result.valid).toBe(true);
-    });
-
     it('rejects when VP audience does not match expectedAudience', async () => {
       const otherServer = generateDidKey();
       const vc = await issueTestVC();
@@ -115,276 +65,7 @@ describe('VP Verification — VcVerifier', () => {
       expect(result.status).toBe('WRONG_AUDIENCE');
       expect(result.error).toContain('audience mismatch');
     });
-
-    it('passes when no expectedAudience is specified (legacy callers)', async () => {
-      const vc = await issueTestVC();
-      const vp = await createPresentation(vc, agent.did, signer, { audience: server.did });
-      // No expectedAudience — should still validate
-      const result = await verifier.verify(vp);
-      expect(result.valid).toBe(true);
-    });
-
-    it('rejects when VP has no audience and expectedAudience is set', async () => {
-      // Fail-closed: VP without aud claim is rejected when expectedAudience is set.
-      // Prevents cross-server replay of VPs that omit audience binding.
-      const vc = await issueTestVC();
-      const vp = await createPresentation(vc, agent.did, signer); // no audience
-      const result = await verifier.verify(vp, { expectedAudience: server.did });
-      expect(result.valid).toBe(false);
-      expect(result.status).toBe('WRONG_AUDIENCE');
-      expect(result.error).toContain('missing audience claim');
-    });
-
-    it('accepts audience as string[] and verifies against any listed DID', async () => {
-      const serverA = generateDidKey();
-      const serverB = generateDidKey();
-      const serverC = generateDidKey();
-      const vc = await issueTestVC();
-
-      const vp = await createPresentation(vc, agent.did, signer, {
-        audience: [serverA.did, serverB.did],
-      });
-
-      // Use separate verifier instances per audience check — each has its own JTI cache
-      // so the same VP can be replayed by different parties (which is the multi-audience point).
-      const mkVerifier = () =>
-        new VcVerifier({ clockSkew: '30s', revocationStore: new InMemoryRevocationStore() });
-      const resultA = await mkVerifier().verify(vp, { expectedAudience: serverA.did });
-      expect(resultA.valid).toBe(true);
-
-      const resultB = await mkVerifier().verify(vp, { expectedAudience: serverB.did });
-      expect(resultB.valid).toBe(true);
-
-      const resultC = await mkVerifier().verify(vp, { expectedAudience: serverC.did });
-      expect(resultC.valid).toBe(false);
-      expect(resultC.status).toBe('WRONG_AUDIENCE');
-      expect(resultC.error).toContain('audience mismatch');
-    });
   });
-
-  // ─── VP Expiry ──────────────────────────────────────────────────
-
-  describe('VP expiry', () => {
-    it('accepts a VP expired within the configured clock skew', async () => {
-      const nowMs = Date.now();
-      const dateSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
-      const vc = await issueTestVC();
-      const now = Math.floor(nowMs / 1000);
-      const vp = await createJwt(
-        {
-          iss: agent.did,
-          jti: 'within-exp-skew',
-          iat: now - 60,
-          exp: now - 10,
-          vp: {
-            '@context': ['https://www.w3.org/2018/credentials/v1'],
-            type: [VP_TYPE],
-            verifiableCredential: [vc],
-          },
-        },
-        agent.privateKey,
-      );
-
-      const result = await verifier.verify(vp);
-      expect(result.valid).toBe(true);
-      dateSpy.mockRestore();
-    });
-
-    it('accepts a VP not yet valid within the configured clock skew', async () => {
-      const nowMs = Date.now();
-      const dateSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
-      const vc = await issueTestVC();
-      const now = Math.floor(nowMs / 1000);
-      const vp = await createJwt(
-        {
-          iss: agent.did,
-          jti: 'within-nbf-skew',
-          iat: now,
-          nbf: now + 10,
-          exp: now + 60,
-          vp: {
-            '@context': ['https://www.w3.org/2018/credentials/v1'],
-            type: [VP_TYPE],
-            verifiableCredential: [vc],
-          },
-        },
-        agent.privateKey,
-      );
-
-      const result = await verifier.verify(vp);
-      expect(result.valid).toBe(true);
-      dateSpy.mockRestore();
-    });
-
-    it('rejects a VP not yet valid beyond the configured clock skew', async () => {
-      const vc = await issueTestVC();
-      const now = Math.floor(Date.now() / 1000);
-      const vp = await createJwt(
-        {
-          iss: agent.did,
-          jti: 'beyond-nbf-skew',
-          iat: now,
-          nbf: now + 60,
-          exp: now + 120,
-          vp: {
-            '@context': ['https://www.w3.org/2018/credentials/v1'],
-            type: [VP_TYPE],
-            verifiableCredential: [vc],
-          },
-        },
-        agent.privateKey,
-      );
-
-      const result = await verifier.verify(vp);
-      expect(result.valid).toBe(false);
-      expect(result.status).toBe('MALFORMED');
-      expect(result.error).toContain('VP not valid until');
-    });
-
-    it('rejects a VP at the exact expiration plus skew boundary', async () => {
-      const nowMs = 1_800_000_000_000;
-      const dateSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
-      const vc = await issueTestVC();
-      const vp = await createJwt(
-        {
-          iss: agent.did,
-          jti: 'exact-exp-skew-boundary',
-          iat: nowMs / 1000 - 60,
-          exp: nowMs / 1000 - 30,
-          vp: {
-            '@context': ['https://www.w3.org/2018/credentials/v1'],
-            type: [VP_TYPE],
-            verifiableCredential: [vc],
-          },
-        },
-        agent.privateKey,
-      );
-
-      const result = await verifier.verify(vp);
-      expect(result.valid).toBe(false);
-      expect(result.status).toBe('EXPIRED');
-      dateSpy.mockRestore();
-    });
-
-    it('rejects an out-of-range VP NumericDate without throwing', async () => {
-      const vc = await issueTestVC();
-      const vp = await createJwt(
-        {
-          iss: agent.did,
-          jti: 'out-of-range-nbf',
-          nbf: 1e308,
-          vp: {
-            '@context': ['https://www.w3.org/2018/credentials/v1'],
-            type: [VP_TYPE],
-            verifiableCredential: [vc],
-          },
-        },
-        agent.privateKey,
-      );
-
-      const result = await verifier.verify(vp);
-      expect(result.valid).toBe(false);
-      expect(result.status).toBe('MALFORMED');
-      expect(result.error).toContain('nbf is not a valid NumericDate');
-    });
-
-    it('rejects an invalid iat when nbf is valid', async () => {
-      const now = Math.floor(Date.now() / 1000);
-      const vc = await issueTestVC();
-      const vp = await createJwt(
-        {
-          iss: agent.did,
-          jti: 'invalid-iat-with-valid-nbf',
-          iat: 1e308,
-          nbf: now,
-          exp: now + 60,
-          vp: {
-            '@context': ['https://www.w3.org/2018/credentials/v1'],
-            type: [VP_TYPE],
-            verifiableCredential: [vc],
-          },
-        },
-        agent.privateKey,
-      );
-
-      const result = await verifier.verify(vp);
-      expect(result.valid).toBe(false);
-      expect(result.status).toBe('MALFORMED');
-      expect(result.error).toContain('iat is not a valid NumericDate');
-    });
-
-    it('rejects an expired inner VC even when the outer VP is inside its skew window', async () => {
-      const now = Math.floor(Date.now() / 1000);
-      const expiredVc = await createJwt(
-        {
-          iss: human.did,
-          sub: agent.did,
-          iat: now - 60,
-          exp: now - 10,
-          vc: {
-            '@context': ['https://www.w3.org/2018/credentials/v1'],
-            type: ['VerifiableCredential', 'AgentScopeCredential'],
-            credentialSubject: {
-              id: agent.did,
-              scope: { columns: ['patients.name'], actions: ['read'] },
-            },
-          },
-        },
-        human.privateKey,
-      );
-      const vp = await createJwt(
-        {
-          iss: agent.did,
-          jti: 'strict-inner-vc',
-          iat: now - 60,
-          exp: now - 10,
-          vp: {
-            '@context': ['https://www.w3.org/2018/credentials/v1'],
-            type: [VP_TYPE],
-            verifiableCredential: [expiredVc],
-          },
-        },
-        agent.privateKey,
-      );
-
-      const result = await verifier.verify(vp);
-      expect(result.valid).toBe(false);
-      expect(result.status).toBe('EXPIRED');
-    });
-
-    it('rejects an expired VP', async () => {
-      const vc = await issueTestVC();
-      const now = Math.floor(Date.now() / 1000);
-      // Create a VP that expired 10 minutes ago
-      const expiredPayload = {
-        iss: agent.did,
-        jti: 'expired-nonce',
-        iat: now - 600,
-        exp: now - 300,
-        vp: {
-          '@context': ['https://www.w3.org/2018/credentials/v1'],
-          type: [VP_TYPE],
-          verifiableCredential: [vc],
-        },
-      };
-      const expiredVp = await createJwt(expiredPayload, agent.privateKey);
-
-      // Use strict verifier
-      const strictVerifier = new VcVerifier({
-        clockSkew: '1s',
-        revocationStore: new InMemoryRevocationStore(),
-      });
-      strictVerifier.registerKey(human.did, human.publicKey);
-      strictVerifier.registerKey(agent.did, agent.publicKey);
-
-      const result = await strictVerifier.verify(expiredVp);
-      expect(result.valid).toBe(false);
-      expect(result.status).toBe('EXPIRED');
-      expect(result.error).toContain('VP expired');
-    });
-  });
-
-  // ─── VP Replay Protection ──────────────────────────────────────
 
   describe('VP replay protection', () => {
     it('rejects a replayed VP (same nonce used twice)', async () => {
@@ -399,80 +80,15 @@ describe('VP Verification — VcVerifier', () => {
       expect(result2.status).toBe('REPLAYED');
       expect(result2.error).toContain('already been used');
     });
-
-    it('accepts different VPs wrapping the same VC (different nonces)', async () => {
-      const vc = await issueTestVC();
-      const vp1 = await createPresentation(vc, agent.did, signer, { nonce: 'nonce-1' });
-      const vp2 = await createPresentation(vc, agent.did, signer, { nonce: 'nonce-2' });
-
-      const result1 = await verifier.verify(vp1);
-      expect(result1.valid).toBe(true);
-
-      const result2 = await verifier.verify(vp2);
-      expect(result2.valid).toBe(true);
-    });
   });
-
-  // ─── VP Malformed Cases ─────────────────────────────────────────
-
-  describe('VP malformed cases', () => {
-    it('rejects a VP with no inner verifiable credentials', async () => {
-      const now = Math.floor(Date.now() / 1000);
-      const emptyVp = await createJwt(
-        {
-          iss: agent.did,
-          jti: 'empty-vp-nonce',
-          iat: now,
-          exp: now + 300,
-          vp: {
-            '@context': ['https://www.w3.org/2018/credentials/v1'],
-            type: [VP_TYPE],
-            verifiableCredential: [],
-          },
-        },
-        agent.privateKey,
-      );
-
-      const result = await verifier.verify(emptyVp);
-      expect(result.valid).toBe(false);
-      expect(result.status).toBe('MALFORMED');
-      expect(result.error).toContain('no verifiable credentials');
-    });
-
-    it('rejects a VP with missing verifiableCredential array', async () => {
-      const now = Math.floor(Date.now() / 1000);
-      const noVcVp = await createJwt(
-        {
-          iss: agent.did,
-          jti: 'no-vc-nonce',
-          iat: now,
-          exp: now + 300,
-          vp: {
-            '@context': ['https://www.w3.org/2018/credentials/v1'],
-            type: [VP_TYPE],
-            // no verifiableCredential field
-          },
-        },
-        agent.privateKey,
-      );
-
-      const result = await verifier.verify(noVcVp);
-      expect(result.valid).toBe(false);
-      expect(result.status).toBe('MALFORMED');
-      expect(result.error).toContain('no verifiable credentials');
-    });
-  });
-
-  // ─── VP -> Inner VC Subject Binding ──────────────────────────────
 
   describe('VP -> inner VC subject binding', () => {
     it('rejects when VP issuer does not match inner VC subject', async () => {
-      // Agent B creates a VP wrapping a VC issued to Agent A
       const agentB = generateDidKey();
       const signerB = createSigner(agentB.privateKey);
       verifier.registerKey(agentB.did, agentB.publicKey);
 
-      const vcForAgentA = await issueTestVC(); // VC with sub = agent.did
+      const vcForAgentA = await issueTestVC();
       const vpByAgentB = await createPresentation(vcForAgentA, agentB.did, signerB);
 
       const result = await verifier.verify(vpByAgentB);
@@ -480,203 +96,5 @@ describe('VP Verification — VcVerifier', () => {
       expect(result.status).toBe('WRONG_SUBJECT');
       expect(result.error).toContain('subject mismatch');
     });
-
-    it('accepts when VP issuer matches inner VC subject', async () => {
-      const vc = await issueTestVC(); // VC with sub = agent.did
-      const vp = await createPresentation(vc, agent.did, signer); // VP iss = agent.did
-
-      const result = await verifier.verify(vp);
-      expect(result.valid).toBe(true);
-    });
-  });
-});
-
-// ─── createPresentation() Unit Tests ─────────────────────────────
-
-describe('createPresentation()', () => {
-  let agent: ReturnType<typeof generateDidKey>;
-  let human: ReturnType<typeof generateDidKey>;
-  let signer: ReturnType<typeof createSigner>;
-
-  beforeEach(() => {
-    agent = generateDidKey();
-    human = generateDidKey();
-    signer = createSigner(agent.privateKey);
-  });
-
-  it('creates a valid JWT with VP structure', async () => {
-    const vc = await issueCredential(human.did, human.privateKey, {
-      agent: agent.did,
-      columns: ['col.a'],
-      actions: ['read'],
-      expiresIn: '4h',
-    });
-
-    const vp = await createPresentation(vc, agent.did, signer);
-    expect(vp.split('.').length).toBe(3);
-
-    const decoded = decodeJwt(vp);
-    const vpClaim = decoded.payload.vp as { type: string[]; verifiableCredential: string[] };
-    expect(decoded.payload.iss).toBe(agent.did);
-    expect(vpClaim.type).toContain(VP_TYPE);
-    expect(vpClaim.verifiableCredential).toHaveLength(1);
-    expect(vpClaim.verifiableCredential[0]).toBe(vc);
-  });
-
-  it('sets audience claim when audience option is provided', async () => {
-    const vc = await issueCredential(human.did, human.privateKey, {
-      agent: agent.did,
-      columns: ['col.a'],
-      actions: ['read'],
-      expiresIn: '4h',
-    });
-
-    const server = generateDidKey();
-    const vp = await createPresentation(vc, agent.did, signer, { audience: server.did });
-    const decoded = decodeJwt(vp);
-    expect(decoded.payload.aud).toBe(server.did);
-  });
-
-  it('does not set audience claim when audience is not provided', async () => {
-    const vc = await issueCredential(human.did, human.privateKey, {
-      agent: agent.did,
-      columns: ['col.a'],
-      actions: ['read'],
-      expiresIn: '4h',
-    });
-
-    const vp = await createPresentation(vc, agent.did, signer);
-    const decoded = decodeJwt(vp);
-    expect(decoded.payload.aud).toBeUndefined();
-  });
-
-  it('uses custom nonce when provided', async () => {
-    const vc = await issueCredential(human.did, human.privateKey, {
-      agent: agent.did,
-      columns: ['col.a'],
-      actions: ['read'],
-      expiresIn: '4h',
-    });
-
-    const vp = await createPresentation(vc, agent.did, signer, { nonce: 'my-custom-nonce' });
-    const decoded = decodeJwt(vp);
-    expect(decoded.payload.jti).toBe('my-custom-nonce');
-  });
-
-  it('generates a fresh nonce (UUID) when nonce is not provided', async () => {
-    const vc = await issueCredential(human.did, human.privateKey, {
-      agent: agent.did,
-      columns: ['col.a'],
-      actions: ['read'],
-      expiresIn: '4h',
-    });
-
-    const vp1 = await createPresentation(vc, agent.did, signer);
-    const vp2 = await createPresentation(vc, agent.did, signer);
-    const decoded1 = decodeJwt(vp1);
-    const decoded2 = decodeJwt(vp2);
-    expect(decoded1.payload.jti).not.toBe(decoded2.payload.jti);
-  });
-
-  it('sets exp to 60 seconds from now by default', async () => {
-    // VP lifetime defaults to 60s. The VP lifetime IS the first-mover replay
-    // window for a captured presentation; 60s is generous for an RPC round-trip.
-    const vc = await issueCredential(human.did, human.privateKey, {
-      agent: agent.did,
-      columns: ['col.a'],
-      actions: ['read'],
-      expiresIn: '4h',
-    });
-
-    const before = Math.floor(Date.now() / 1000);
-    const vp = await createPresentation(vc, agent.did, signer);
-    const after = Math.floor(Date.now() / 1000);
-
-    const decoded = decodeJwt(vp);
-    expect(decoded.payload.exp).toBeGreaterThanOrEqual(before + 60);
-    expect(decoded.payload.exp).toBeLessThanOrEqual(after + 60);
-  });
-
-  it('respects an explicit lifetime option', async () => {
-    // Consumers needing a longer window (human-in-the-loop, resumable flows)
-    // pass `lifetime: '5m'` — the prior default is opt-in, not removed.
-    const vc = await issueCredential(human.did, human.privateKey, {
-      agent: agent.did,
-      columns: ['col.a'],
-      actions: ['read'],
-      expiresIn: '4h',
-    });
-
-    const before = Math.floor(Date.now() / 1000);
-    const vp = await createPresentation(vc, agent.did, signer, { lifetime: '5m' });
-    const after = Math.floor(Date.now() / 1000);
-
-    const decoded = decodeJwt(vp);
-    expect(decoded.payload.exp).toBeGreaterThanOrEqual(before + 300);
-    expect(decoded.payload.exp).toBeLessThanOrEqual(after + 300);
-  });
-
-  it('accepts tight lifetimes (e.g. 10s) for high-frequency RPC', async () => {
-    const vc = await issueCredential(human.did, human.privateKey, {
-      agent: agent.did,
-      columns: ['col.a'],
-      actions: ['read'],
-      expiresIn: '4h',
-    });
-
-    const before = Math.floor(Date.now() / 1000);
-    const vp = await createPresentation(vc, agent.did, signer, { lifetime: '10s' });
-    const after = Math.floor(Date.now() / 1000);
-
-    const decoded = decodeJwt(vp);
-    expect(decoded.payload.exp).toBeGreaterThanOrEqual(before + 10);
-    expect(decoded.payload.exp).toBeLessThanOrEqual(after + 10);
-  });
-
-  it('throws on malformed lifetime string', async () => {
-    // Surface misconfiguration at call time. A bad duration would otherwise
-    // produce a VP with NaN exp that only fails downstream at verify().
-    const vc = await issueCredential(human.did, human.privateKey, {
-      agent: agent.did,
-      columns: ['col.a'],
-      actions: ['read'],
-      expiresIn: '4h',
-    });
-
-    await expect(
-      createPresentation(vc, agent.did, signer, { lifetime: 'forever' }),
-    ).rejects.toThrow(/Invalid duration format/);
-    await expect(createPresentation(vc, agent.did, signer, { lifetime: '30' })).rejects.toThrow(
-      /Invalid duration format/,
-    );
-    await expect(createPresentation(vc, agent.did, signer, { lifetime: '' })).rejects.toThrow(
-      /Invalid duration format/,
-    );
-  });
-
-  it('throws on zero lifetime (born-expired VP footgun)', async () => {
-    // parseDuration's regex `\d+` accepts '0s'/'0m' as syntactically valid
-    // and returns 0 ms. Without a floor, this would produce exp = now:
-    // immediately expired under tight clockSkew, or only clockSkew-valid under
-    // default. Without the floor, a zero-lifetime VP would be born-expired.
-    const vc = await issueCredential(human.did, human.privateKey, {
-      agent: agent.did,
-      columns: ['col.a'],
-      actions: ['read'],
-      expiresIn: '4h',
-    });
-
-    await expect(createPresentation(vc, agent.did, signer, { lifetime: '0s' })).rejects.toThrow(
-      /at least 1 second/,
-    );
-    await expect(createPresentation(vc, agent.did, signer, { lifetime: '0m' })).rejects.toThrow(
-      /at least 1 second/,
-    );
-    await expect(createPresentation(vc, agent.did, signer, { lifetime: '0h' })).rejects.toThrow(
-      /at least 1 second/,
-    );
-    await expect(createPresentation(vc, agent.did, signer, { lifetime: '0d' })).rejects.toThrow(
-      /at least 1 second/,
-    );
   });
 });

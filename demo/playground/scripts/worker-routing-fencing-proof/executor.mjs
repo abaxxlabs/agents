@@ -158,7 +158,7 @@ export function createExecutors({ queryPool, rawPool, controlPool, events, worke
 
   async function raw(sandbox, sql, params, ownership) {
     requireSandbox(sandbox);
-    const policy = await validateDirectSql(sql);
+    const policy = await validateDirectSql(sql, { allowedSchemas: ['public'] });
     if (!policy.ok || writesOwnership(sql)) throw policyError();
     return withSandbox('raw', sandbox, (client) => client.query(sql, params), ownership);
   }

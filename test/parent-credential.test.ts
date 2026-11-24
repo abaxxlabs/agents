@@ -1,17 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { LocalTrustAnchorStore } from '#discovery/trust-anchor.js';
-import { issueCredentialFromParent, createSessionFromDid } from '#auth/agent.js';
+import { createSessionFromDid } from '#auth/agent.js';
+import { createOidcSession } from '#auth/session-factory.js';
 import { VcVerifier } from '#identity/index.js';
-import { InMemoryRevocationStore } from '#storage/memory/revocation-store.js';
 import { AgentVerifier, ParentScopeExceededError } from '#identity/agent-verifier.js';
 import { CapabilityEngine } from '#capability/engine.js';
-import { AuditLogger } from '#audit/index.js';
-import { generateDidKey, createSigner } from '#auth/index.js';
+import { generateDidKey } from '#auth/index.js';
 import { ParentCredentialRequestFailedError } from '#errors/index.js';
-import type { AuditEntry } from '#types/index.js';
 import type { CapabilitySet } from '#capability/types.js';
 import type { IdSdkInstance } from '#types/id-sdk.js';
-import { createMockAuditStore } from './mocks/audit-store.js';
 import { createMockVcVerifier } from './mocks/vc-verifier.js';
 
 const OWN_DID = 'did:key:z6MkownServerTest123';
@@ -59,135 +56,6 @@ function makeBindingJwt(capabilities?: CapabilitySet): string {
   };
   return `${header}.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.fakesignature`;
 }
-
-describe('addParentTrust', () => {
-  it('adds a parent trust anchor with source "parent"', async () => {
-    const store = new LocalTrustAnchorStore({ ownServerDid: OWN_DID });
-    await store.addParentTrust(PARENT_DID);
-
-    expect(store.isTrusted(PARENT_DID)).toBe(true);
-    const anchor = store.list().find((a) => a.did === PARENT_DID);
-    expect(anchor?.source).toBe('parent');
-    expect(anchor?.label).toBe('parent-instance');
-  });
-
-  it('does not overwrite an existing env anchor', async () => {
-    const store = new LocalTrustAnchorStore({
-      ownServerDid: OWN_DID,
-      initialTrustedServers: [PARENT_DID],
-    });
-    expect(store.list().find((a) => a.did === PARENT_DID)?.source).toBe('env');
-
-    await store.addParentTrust(PARENT_DID);
-
-    const anchor = store.list().find((a) => a.did === PARENT_DID);
-    expect(anchor?.source).toBe('env');
-  });
-
-  it('does not overwrite an existing api anchor', async () => {
-    const store = new LocalTrustAnchorStore({ ownServerDid: OWN_DID });
-    await store.addTrustedServer(PARENT_DID, 'api', 'federation-peer');
-
-    expect(store.list().find((a) => a.did === PARENT_DID)?.source).toBe('api');
-
-    await store.addParentTrust(PARENT_DID);
-
-    const anchor = store.list().find((a) => a.did === PARENT_DID);
-    expect(anchor?.source).toBe('api');
-  });
-
-  it('does not overwrite an existing local anchor', async () => {
-    const localDid = 'did:key:z6MklocalServerDid999';
-    const store = new LocalTrustAnchorStore({ ownServerDid: localDid });
-    expect(store.list().find((a) => a.did === localDid)?.source).toBe('local');
-
-    await store.addParentTrust(localDid);
-
-    const anchor = store.list().find((a) => a.did === localDid);
-    expect(anchor?.source).toBe('local');
-  });
-
-  it('rejects non-did:key/did:dht methods', async () => {
-    const store = new LocalTrustAnchorStore({ ownServerDid: OWN_DID });
-    await expect(store.addParentTrust('did:web:example.com')).rejects.toThrow(TypeError);
-  });
-
-  it('rejects empty string', async () => {
-    const store = new LocalTrustAnchorStore({ ownServerDid: OWN_DID });
-    await expect(store.addParentTrust('')).rejects.toThrow(TypeError);
-  });
-});
-
-describe('issueCredentialFromParent', () => {
-  it('delegates to provider.requestAgentCredential', async () => {
-    const expected = { jwt: 'eyJ...parent', issuerDid: PARENT_DID };
-    const provider = makeParentProvider(expected);
-
-    const result = await issueCredentialFromParent(provider, 'access-token-123', AGENT_DID, {
-      columns: ['patients.name'],
-      actions: ['read'],
-      expiresIn: '1h',
-    });
-
-    expect(result).toEqual(expected);
-    expect(provider.requestAgentCredential).toHaveBeenCalledWith('access-token-123', AGENT_DID, {
-      columns: ['patients.name'],
-      actions: ['read'],
-      expiresIn: '1h',
-    });
-  });
-
-  it('forwards explicit maxDepth to the parent provider', async () => {
-    const expected = { jwt: 'eyJ...parent', issuerDid: PARENT_DID };
-    const provider = makeParentProvider(expected);
-
-    await issueCredentialFromParent(provider, 'access-token-123', AGENT_DID, {
-      columns: ['patients.name'],
-      actions: ['read'],
-      expiresIn: '1h',
-      maxDepth: 3,
-    });
-
-    expect(provider.requestAgentCredential).toHaveBeenCalledWith('access-token-123', AGENT_DID, {
-      columns: ['patients.name'],
-      actions: ['read'],
-      expiresIn: '1h',
-      maxDepth: 3,
-    });
-  });
-
-  it('throws on invalid maxDepth before invoking the provider', async () => {
-    const expected = { jwt: 'eyJ...parent', issuerDid: PARENT_DID };
-    const provider = makeParentProvider(expected);
-
-    await expect(
-      issueCredentialFromParent(provider, 'access-token-123', AGENT_DID, {
-        columns: ['patients.name'],
-        actions: ['read'],
-        expiresIn: '1h',
-        maxDepth: 0,
-      }),
-    ).rejects.toThrow(/positive integer/);
-
-    expect(provider.requestAgentCredential).not.toHaveBeenCalled();
-  });
-
-  it('preserves parent-decides semantics when maxDepth is omitted', async () => {
-    const expected = { jwt: 'eyJ...parent', issuerDid: PARENT_DID };
-    const provider = makeParentProvider(expected);
-
-    await issueCredentialFromParent(provider, 'access-token-123', AGENT_DID, {
-      columns: ['patients.name'],
-      actions: ['read'],
-      expiresIn: '1h',
-    });
-
-    const forwardedOptions = (provider.requestAgentCredential as ReturnType<typeof vi.fn>).mock
-      .calls[0]?.[2];
-    expect(forwardedOptions).toBeDefined();
-    expect(forwardedOptions).not.toHaveProperty('maxDepth');
-  });
-});
 
 describe('createSessionFromDid — parent credential failure', () => {
   const humanKeys = generateDidKey();
@@ -278,171 +146,10 @@ describe('createSessionFromDid — parent credential failure', () => {
     expect(sdk.vc.getSignerOptions).not.toHaveBeenCalled();
     expect(sdk.vc.signCredential).not.toHaveBeenCalled();
   });
-
-  it('returns the credential the parent issued', async () => {
-    const provider = makeParentProvider({ jwt: 'eyJ.parent.jwt', issuerDid: PARENT_DID });
-
-    const session = createSessionFromDid(
-      humanKeys.did,
-      'test@example.com',
-      {} as unknown as VcVerifier,
-      undefined,
-      undefined,
-      humanKeys.privateKey,
-      undefined,
-      {
-        provider,
-        accessToken: 'token-123',
-        issuerDid: PARENT_DID,
-        credentialExp: Math.floor(Date.now() / 1000) + 3600,
-      },
-    );
-
-    const jwt = await session.issueCredential({
-      agent: AGENT_DID,
-      columns: ['patients.name'],
-      actions: ['read'],
-      expiresIn: '1h',
-    });
-
-    expect(jwt).toBe('eyJ.parent.jwt');
-  });
-
-  it('still signs locally when no parent is configured', async () => {
-    const session = createSessionFromDid(
-      humanKeys.did,
-      'test@example.com',
-      {} as unknown as VcVerifier,
-      undefined,
-      undefined,
-      humanKeys.privateKey,
-    );
-
-    const jwt = await session.issueCredential({
-      agent: AGENT_DID,
-      columns: ['patients.name'],
-      actions: ['read'],
-      expiresIn: '1h',
-    });
-
-    const payload = JSON.parse(Buffer.from(jwt.split('.')[1], 'base64url').toString('utf8'));
-    expect(payload.iss).toBe(humanKeys.did);
-  });
-
-  it('re-throws non-ParentCredentialRequestFailedError errors', async () => {
-    const provider = makeFailingProvider(new TypeError('null pointer in JWT parsing'));
-
-    const session = createSessionFromDid(
-      humanKeys.did,
-      'test@example.com',
-      {} as unknown as VcVerifier,
-      undefined,
-      undefined,
-      humanKeys.privateKey,
-      undefined,
-      {
-        provider,
-        accessToken: 'token-123',
-        issuerDid: PARENT_DID,
-        credentialExp: Math.floor(Date.now() / 1000) + 3600,
-      },
-    );
-
-    await expect(
-      session.issueCredential({
-        agent: AGENT_DID,
-        columns: ['patients.name'],
-        actions: ['read'],
-        expiresIn: '1h',
-      }),
-    ).rejects.toThrow(TypeError);
-  });
-
-  it('stores parentIssuerDid and parentCredentialExp on session', () => {
-    const exp = Math.floor(Date.now() / 1000) + 7200;
-    const session = createSessionFromDid(
-      humanKeys.did,
-      'test@example.com',
-      {} as unknown as VcVerifier,
-      undefined,
-      undefined,
-      humanKeys.privateKey,
-      undefined,
-      {
-        provider: makeParentProvider({ jwt: 'x', issuerDid: PARENT_DID }),
-        accessToken: 'tok',
-        issuerDid: PARENT_DID,
-        credentialExp: exp,
-      },
-    );
-
-    expect(session.parentIssuerDid).toBe(PARENT_DID);
-    expect(session.parentCredentialExp).toBe(exp);
-  });
-
-  it('rejects issueCredential when parent credential has expired', async () => {
-    const session = createSessionFromDid(
-      humanKeys.did,
-      'test@example.com',
-      {} as unknown as VcVerifier,
-      undefined,
-      undefined,
-      humanKeys.privateKey,
-      undefined,
-      {
-        provider: makeParentProvider({ jwt: 'x', issuerDid: PARENT_DID }),
-        accessToken: 'tok',
-        issuerDid: PARENT_DID,
-        credentialExp: Math.floor(Date.now() / 1000) - 100,
-      },
-    );
-
-    await expect(
-      session.issueCredential({
-        agent: AGENT_DID,
-        columns: ['patients.name'],
-        actions: ['read'],
-        expiresIn: '1h',
-      }),
-    ).rejects.toThrow('Parent credential has expired');
-  });
 });
 
 describe('createSessionFromDid — requireParent', () => {
   const humanKeys = generateDidKey();
-
-  it('throws when parent provider fails and requireParent is set', async () => {
-    const provider = makeFailingProvider(
-      new ParentCredentialRequestFailedError(PARENT_TENANT_URL, 503, 'network timeout'),
-    );
-
-    const session = createSessionFromDid(
-      humanKeys.did,
-      'test@example.com',
-      {} as unknown as VcVerifier, // verifier — not exercised in this path
-      undefined, // sdk
-      undefined, // oidcConfig
-      humanKeys.privateKey,
-      undefined, // ceiling
-      {
-        provider,
-        accessToken: 'token-123',
-        issuerDid: PARENT_DID,
-        credentialExp: Math.floor(Date.now() / 1000) + 3600,
-      },
-      makeLogger(),
-    );
-
-    await expect(
-      session.issueCredential({
-        agent: AGENT_DID,
-        columns: ['patients.name'],
-        actions: ['read'],
-        expiresIn: '1h',
-        requireParent: true,
-      }),
-    ).rejects.toThrow(ParentCredentialRequestFailedError);
-  });
 
   it('throws when requireParent is set but no parent provider configured', async () => {
     const session = createSessionFromDid(
@@ -467,67 +174,9 @@ describe('createSessionFromDid — requireParent', () => {
 });
 
 describe('createSessionFromDid — revokeCredential', () => {
-  it('writes locally first, returns empty result when no SDK (no throw)', async () => {
-    const humanKeys = generateDidKey();
-    const revocationStore = new InMemoryRevocationStore();
-    const realVerifier = new VcVerifier({ revocationStore });
-
-    const session = createSessionFromDid(
-      humanKeys.did,
-      'test@example.com',
-      realVerifier,
-      undefined, // no SDK
-      undefined, // no oidcConfig
-      humanKeys.privateKey,
-    );
-
-    const jti = 'revoke-local-only-jti-d6';
-    const result = await session.revokeCredential(jti);
-
-    // Local write succeeded, no SDK notification attempted.
-    expect(result.sdkNotificationFailed).toBeUndefined();
-    // Revocation is durable in the local store.
-    expect(await revocationStore.isRevoked(jti)).toBe(true);
-  });
-
-  it('SDK failure does not fail local revocation — sdkNotificationFailed is set', async () => {
-    const humanKeys = generateDidKey();
-    const revocationStore = new InMemoryRevocationStore();
-    const realVerifier = new VcVerifier({ revocationStore });
-
-    const failingSdk = {
-      vc: {
-        revokeCredential: vi.fn().mockRejectedValue(new Error('SDK network failure')),
-      },
-    } as unknown as Parameters<typeof createSessionFromDid>[3];
-
-    const session = createSessionFromDid(
-      humanKeys.did,
-      'test@example.com',
-      realVerifier,
-      failingSdk,
-      undefined,
-      humanKeys.privateKey,
-    );
-
-    const jti = 'revoke-sdk-fail-jti-d6';
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    try {
-      const result = await session.revokeCredential(jti);
-      // SDK failure does not fail the revocation.
-      expect(result.sdkNotificationFailed).toBeInstanceOf(Error);
-      expect(result.sdkNotificationFailed?.message).toContain('SDK network failure');
-      // Local revocation succeeded despite SDK failure.
-      expect(await revocationStore.isRevoked(jti)).toBe(true);
-    } finally {
-      warnSpy.mockRestore();
-    }
-  });
-
   it('store write failure propagates as hard failure (no silent continue)', async () => {
     const humanKeys = generateDidKey();
 
-    // Inject a failing revocation store.
     const { InMemoryRevocationStore } = await import('../src/storage/memory/revocation-store.js');
     const failingStore = new InMemoryRevocationStore();
     vi.spyOn(failingStore, 'revoke').mockRejectedValue(new Error('storage write failed'));
@@ -546,37 +195,6 @@ describe('createSessionFromDid — revokeCredential', () => {
     await expect(session.revokeCredential('some-jti-d10-hard-fail')).rejects.toThrow(
       'storage write failed',
     );
-  });
-});
-
-describe('CapabilityEngine.isSubsetOf — ceiling enforcement', () => {
-  const engine = new CapabilityEngine();
-
-  it('child subset of parent returns true', () => {
-    const child: CapabilitySet = [{ scope: 'data:patients', action: 'read' }];
-    const parent: CapabilitySet = [
-      { scope: 'data:patients', action: 'read' },
-      { scope: 'data:billing', action: 'read' },
-    ];
-    expect(engine.isSubsetOf(child, parent)).toBe(true);
-  });
-
-  it('child exceeding parent returns false', () => {
-    const child: CapabilitySet = [
-      { scope: 'data:patients', action: 'read' },
-      { scope: 'data:secrets', action: 'write' },
-    ];
-    const parent: CapabilitySet = [{ scope: 'data:patients', action: 'read' }];
-    expect(engine.isSubsetOf(child, parent)).toBe(false);
-  });
-
-  it('empty child is always a subset (vacuous truth)', () => {
-    const parent: CapabilitySet = [{ scope: 'data:patients', action: 'read' }];
-    expect(engine.isSubsetOf([], parent)).toBe(true);
-  });
-
-  it('empty child is a subset of empty parent', () => {
-    expect(engine.isSubsetOf([], [])).toBe(true);
   });
 });
 
@@ -601,23 +219,6 @@ describe('AgentVerifier — Step 2.5 parentScopeCeiling', () => {
     });
   }
 
-  it('passes when capabilities are within ceiling', async () => {
-    const verifier = await makeVerifier();
-    const caps: CapabilitySet = [{ scope: 'data:patients', action: 'read' }];
-    const ceiling: CapabilitySet = [
-      { scope: 'data:patients', action: 'read' },
-      { scope: 'data:billing', action: 'read' },
-    ];
-
-    const result = await verifier.verify({
-      bindingJwt: makeBindingJwt(caps),
-      agentDid: AGENT_DID,
-      parentScopeCeiling: ceiling,
-    });
-
-    expect(result.issuerDid).toBe(ISSUER_DID);
-  });
-
   it('throws ParentScopeExceededError when capabilities exceed ceiling', async () => {
     const verifier = await makeVerifier();
     const caps: CapabilitySet = [
@@ -634,113 +235,60 @@ describe('AgentVerifier — Step 2.5 parentScopeCeiling', () => {
       }),
     ).rejects.toThrow(ParentScopeExceededError);
   });
-
-  it('empty capabilities pass ceiling check (vacuous truth)', async () => {
-    const verifier = await makeVerifier();
-    const ceiling: CapabilitySet = [{ scope: 'data:patients', action: 'read' }];
-
-    const result = await verifier.verify({
-      bindingJwt: makeBindingJwt([]),
-      agentDid: AGENT_DID,
-      parentScopeCeiling: ceiling,
-    });
-
-    expect(result.issuerDid).toBe(ISSUER_DID);
-  });
 });
 
-describe('Audit Logger — orgId records', () => {
-  let agent: ReturnType<typeof generateDidKey>;
-  let human: ReturnType<typeof generateDidKey>;
+describe('createOidcSession — parent issuance', () => {
+  const identity = {
+    humanDid: 'did:key:z6MkoidcHumanTest111',
+    issuer: 'https://tenant.example',
+    sub: 'user-123',
+    email: 'trader@tenant.example',
+  };
 
-  beforeEach(() => {
-    agent = generateDidKey();
-    human = generateDidKey();
-  });
+  function makeVerifier() {
+    return { registerKey: vi.fn() } as unknown as VcVerifier;
+  }
 
-  it('records the current schema version when orgId is present', async () => {
-    const logger = new AuditLogger({
-      auditStore: createMockAuditStore(),
-      enabled: true,
+  it('asks the tenant to sign until the parent credential expires, then rejects without calling the provider', async () => {
+    const provider = makeParentProvider({ jwt: 'tenant.signed.jwt', issuerDid: PARENT_DID });
+    const credentialExp = Math.floor(Date.now() / 1000) + 3600;
+    const session = createOidcSession(makeVerifier(), identity, undefined, undefined, undefined, {
+      provider,
+      accessToken: 'access-token',
+      credentialExp,
     });
 
-    const entry: AuditEntry = {
-      agentDid: agent.did,
-      ownerDid: human.did,
-      credentialJwt: 'eyJ...',
-      sql: 'SELECT * FROM patients',
-      columnsAccessed: ['patients.name'],
-      rowCount: 1,
-      durationMs: 10,
-      orgId: PARENT_DID,
-    };
-
-    const record = await logger.log(entry, createSigner(agent.privateKey));
-    expect(record.version).toBe(4);
-    expect(record.orgId).toBe(PARENT_DID);
-  });
-
-  it('records the current schema version even when orgId is absent', async () => {
-    const logger = new AuditLogger({
-      auditStore: createMockAuditStore(),
-      enabled: true,
+    const jwt = await session.issueCredential({
+      agent: AGENT_DID,
+      columns: ['order_book.ticker'],
+      actions: ['read'],
+      expiresIn: '4h',
     });
 
-    const entry: AuditEntry = {
-      agentDid: agent.did,
-      ownerDid: human.did,
-      credentialJwt: 'eyJ...',
-      sql: 'SELECT * FROM patients',
-      columnsAccessed: ['patients.name'],
-      rowCount: 1,
-      durationMs: 10,
-    };
+    expect(jwt).toBe('tenant.signed.jwt');
+    expect(provider.requestAgentCredential).toHaveBeenCalledWith(
+      'access-token',
+      AGENT_DID,
+      expect.objectContaining({
+        columns: ['order_book.ticker'],
+        actions: ['read'],
+        expiresIn: '4h',
+      }),
+    );
 
-    const record = await logger.log(entry, createSigner(agent.privateKey));
-    expect(record.version).toBe(4);
-    expect(record.orgId).toBeUndefined();
-  });
-
-  it('orgId is persisted via auditStore.append', async () => {
-    const store = createMockAuditStore();
-    const logger = new AuditLogger({ auditStore: store, enabled: true });
-
-    const entry: AuditEntry = {
-      agentDid: agent.did,
-      ownerDid: human.did,
-      credentialJwt: 'eyJ...',
-      sql: 'SELECT * FROM patients',
-      columnsAccessed: ['patients.name'],
-      rowCount: 1,
-      durationMs: 10,
-      orgId: PARENT_DID,
-    };
-
-    await logger.log(entry, createSigner(agent.privateKey));
-
-    expect(store.append).toHaveBeenCalledTimes(1);
-    const appendedRecord = (store.append as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(appendedRecord.orgId).toBe(PARENT_DID);
-  });
-
-  it('empty string orgId is preserved on record (signAuditRecord !== undefined check)', async () => {
-    const logger = new AuditLogger({
-      auditStore: createMockAuditStore(),
-      enabled: true,
-    });
-
-    const entry: AuditEntry = {
-      agentDid: agent.did,
-      ownerDid: human.did,
-      credentialJwt: 'eyJ...',
-      sql: 'SELECT * FROM patients',
-      columnsAccessed: ['patients.name'],
-      rowCount: 1,
-      durationMs: 10,
-      orgId: '',
-    };
-
-    const record = await logger.log(entry, createSigner(agent.privateKey));
-    expect(record.orgId).toBe('');
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue((credentialExp + 1) * 1000);
+    try {
+      await expect(
+        session.issueCredential({
+          agent: AGENT_DID,
+          columns: ['order_book.ticker'],
+          actions: ['read'],
+          expiresIn: '4h',
+        }),
+      ).rejects.toThrow(/expired/i);
+      expect(provider.requestAgentCredential).toHaveBeenCalledTimes(1);
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 });

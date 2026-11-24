@@ -22,7 +22,8 @@
     "proof:sandbox-isolation": "node scripts/sandbox-isolation-proof.mjs",
     "proof:worker-routing-fencing": "node scripts/worker-routing-fencing-proof.mjs",
     "test:docker-context": "node scripts/check-docker-context.mjs",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "cleanup:visitor-databases": "node scripts/cleanup-visitor-databases.mjs"
   },
   "dependencies": {
     "@abaxxlabs/agents": "file:../..",

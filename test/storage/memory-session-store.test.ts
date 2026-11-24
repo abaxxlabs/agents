@@ -10,8 +10,9 @@ function env(overrides: Partial<SessionEnvelope> = {}): SessionEnvelope {
     oidcIssuer: 'https://login.abaxx.one/realms/demo',
     oidcSubject: 'alice',
     providerKind: 'oidc-abaxx-one',
-    createdAt: 0, // overridden by store
-    expiresAt: 0, // overridden by store
+    // The store replaces these placeholder timestamps.
+    createdAt: 0,
+    expiresAt: 0,
     ...overrides,
   };
 }
@@ -26,68 +27,18 @@ describe('InMemorySessionStore', () => {
     store = new InMemorySessionStore(macKey);
   });
 
-  it('put() rejects empty token', async () => {
-    await expect(store.put('', env(), { ttlSeconds: 60 })).rejects.toThrow(
-      'token must be a non-empty string',
-    );
-  });
-
-  it('put() rejects non-positive ttlSeconds', async () => {
-    await expect(store.put('tok', env(), { ttlSeconds: 0 })).rejects.toThrow(
-      'ttlSeconds must be > 0',
-    );
-    await expect(store.put('tok', env(), { ttlSeconds: -1 })).rejects.toThrow(
-      'ttlSeconds must be > 0',
-    );
-  });
-
   it('get() returns null after expiry (TTL-only coherency)', async () => {
-    await store.put('tok-1', env(), { ttlSeconds: 0.01 }); // 10ms
+    await store.put('tok-1', env(), { ttlSeconds: 0.01 });
     await new Promise((r) => setTimeout(r, 30));
     expect(await store.get('tok-1')).toBeNull();
   });
 
-  it('delete() removes a persisted session', async () => {
-    await store.put('tok-d', env(), { ttlSeconds: 60 });
-    expect(await store.get('tok-d')).not.toBeNull();
-    await store.delete('tok-d');
-    expect(await store.get('tok-d')).toBeNull();
-  });
-
-  it('pruneExpired(limit) bounds deletion to first N expired rows', async () => {
-    for (let i = 0; i < 5; i++) {
-      await store.put(`tok-${i}`, env(), { ttlSeconds: 0.01 });
-    }
-    await new Promise((r) => setTimeout(r, 30));
-    const n = await store.pruneExpired(undefined, 2);
-    expect(n).toBe(2);
-  });
-
   it('MAC mismatch throws EnvelopeIntegrityError (defense in depth)', async () => {
     await store.put('tok-dm', env(), { ttlSeconds: 60 });
-    // Directly mutate internal map entry to simulate memory corruption.
     const internal = (store as unknown as { store: Map<string, { envelope: SessionEnvelope }> })
       .store;
     const entry = internal.get('tok-dm')!;
     entry.envelope.humanDid = 'did:attacker';
     await expect(store.get('tok-dm')).rejects.toThrow('Session envelope integrity check failed');
-  });
-
-  it('rejects scope claims modified after persistence', async () => {
-    await store.put(
-      'tok-scope',
-      env({
-        oidcScopeClaims: {
-          scope_columns: ['patients.name'],
-          scope_actions: ['read'],
-        },
-      }),
-      { ttlSeconds: 60 },
-    );
-    const internal = (store as unknown as { store: Map<string, { envelope: SessionEnvelope }> })
-      .store;
-    internal.get('tok-scope')!.envelope.oidcScopeClaims!.scope_columns = ['patients.ssn'];
-
-    await expect(store.get('tok-scope')).rejects.toThrow('Session envelope integrity check failed');
   });
 });

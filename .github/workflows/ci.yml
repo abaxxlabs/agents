@@ -23,7 +23,7 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Lint
-        run: bun run precommit:lint
+        run: node scripts/release-gate.mjs --lint
 
   format:
     name: Check changed TypeScript formatting
@@ -109,8 +109,52 @@ jobs:
           if [ "$fail" -eq 0 ]; then echo "✓ All PR commits follow Conventional Commits."; fi
           exit $fail
 
+  sandbox-plane:
+    name: sandbox plane integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      SANDBOX_PLANE_SUITE: required
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '20.3.0'
+          package-manager-cache: false
+      - name: Configure npm cache
+        run: |
+          echo "npm_config_cache=$RUNNER_TEMP/npm-cache" >> "$GITHUB_ENV"
+          echo "NPM_CONFIG_CACHE=$RUNNER_TEMP/npm-cache" >> "$GITHUB_ENV"
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      # The playground links the root package (file:../..) whose entrypoints
+      # live in dist/, so build before the playground install.
+      - name: Build library
+        run: npm run build
+      - name: Install playground dependencies
+        run: cd demo/playground && npm ci --ignore-scripts
+      - name: Run sandbox data plane suite
+        run: npx vitest run test/sandbox-shared-data-plane.test.ts
+
   test:
     name: test (20)
+    needs: [lint, typecheck]
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -129,6 +173,10 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
     steps:
+      - name: Require successful lint and typecheck
+        env:
+          PRECHECKS_OK: ${{ needs.lint.result == 'success' && needs.typecheck.result == 'success' }}
+        run: test "$PRECHECKS_OK" = true
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -144,7 +192,7 @@ jobs:
       - name: Set up test database
         run: node scripts/setup-test-db.mjs
       - name: Release verification gate
-        run: npm run release:gate
+        run: npm run release:gate -- --ci
       # Guard against accidental `git add -f dist/` regressions.
       # `dist/` is gitignored and built fresh in CI; tracking it would let a
       # stale local build silently override the source-of-truth signature on

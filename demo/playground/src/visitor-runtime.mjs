@@ -1,79 +1,57 @@
-import pg from 'pg';
-import { AgentScope } from '@abaxxlabs/agents/sql';
-import { parseMasterKeyHex } from '@abaxxlabs/agents/bootstrap';
 import { isConfiguredMockUser } from './request-policy.mjs';
+import { createScopedSdkRuntime } from './shared-fixture-adapter.mjs';
 import { createSimulator } from './routes-sim.mjs';
 import { logSafeError } from './safe-diagnostics.mjs';
 
 /** A mock identity has not logged in to this visitor runtime. */
 export class NotAuthenticatedError extends Error {}
 
-async function closeResources(scope, simulator, appPool, masterKey, sessions) {
+async function closeResources(scoped, sessions) {
   const failures = [];
-  for (const close of [
-    scope ? () => scope.close() : null,
-    simulator ? () => simulator.close() : null,
-    appPool ? () => appPool.end() : null,
-  ]) {
-    if (!close) continue;
+  if (scoped) {
     try {
-      await close();
+      await scoped.close();
     } catch (err) {
       failures.push(err);
     }
   }
   sessions.clear();
-  masterKey.fill(0);
   if (failures.length) throw new AggregateError(failures, 'Failed to close visitor runtime resources');
 }
 
-/** Create the scoped resources and mock sessions for one existing visitor database. */
+/**
+ * Create one visitor's SDK scope and simulator over the process-wide pools.
+ * Identity, credentials and audit stay in the visitor's ephemeral SQLite store;
+ * PostgreSQL connections are borrowed from the shared fixture and direct pools.
+ */
 export async function createVisitorRuntime({
-  databaseName,
-  appDatabaseUrl,
-  masterKeyHex,
-  naiveDbPassword,
+  sharedFixture,
+  directSqlPool,
+  masterKeyBuffer,
   userCeilings,
   readBody,
   rejected,
+  metrics,
 }) {
-  if (!databaseName || new URL(appDatabaseUrl).pathname.slice(1) !== databaseName) {
-    throw new Error('appDatabaseUrl must target databaseName');
-  }
+  if (!sharedFixture?.pool) throw new Error('Visitor runtime requires the shared fixture pool');
+  if (!directSqlPool) throw new Error('Visitor runtime requires the shared direct SQL pool');
 
-  const masterKey = parseMasterKeyHex(masterKeyHex);
   const sessions = new Map();
-  let appPool;
-  let scope;
+  let scoped;
   let simulator;
   try {
-    appPool = new pg.Pool({
-      connectionString: appDatabaseUrl,
-      application_name: 'agents-playground-server',
-      max: 10,
-      statement_timeout: 5_000,
-    });
-    appPool.on('error', (err) => {
-      logSafeError(console, 'error', 'Visitor application database pool reported an idle connection error', err);
-    });
-    scope = await AgentScope.create({
-      database: { connectionString: appDatabaseUrl },
-      encryption: { columns: ['orders.price', 'orders.counterparty'] },
-      audit: { enabled: true },
-      credential: { maxTtl: '4h' },
-      devMode: true,
-    }, { masterKey, pool: appPool });
+    scoped = await createScopedSdkRuntime({ sharedFixture, masterKeyBuffer });
     simulator = await createSimulator({
-      databaseUrl: appDatabaseUrl,
-      naiveDbPassword,
-      pool: appPool,
-      scope,
+      pool: sharedFixture.pool,
+      directSqlPool,
+      scope: scoped.scope,
       readBody,
       rejected,
+      metrics,
     });
   } catch (err) {
     try {
-      await closeResources(scope, simulator, appPool, masterKey, sessions);
+      await closeResources(scoped, sessions);
     } catch (closeErr) {
       logSafeError(console, 'error', 'Visitor runtime cleanup failed after initialization error', closeErr);
     }
@@ -82,13 +60,12 @@ export async function createVisitorRuntime({
 
   let closePromise;
   return {
-    databaseName,
-    scope,
+    scope: scoped.scope,
     simulator: { routes: simulator.routes },
     async loginSession(alias) {
       if (!isConfiguredMockUser(alias)) throw new Error('Unknown mock identity');
       if (closePromise) throw new Error('Visitor runtime is closed');
-      const session = await scope.authenticate({ mockHumanDid: alias, scopeCeiling: userCeilings[alias] });
+      const session = await scoped.scope.authenticate({ mockHumanDid: alias, scopeCeiling: userCeilings[alias] });
       if (closePromise) throw new Error('Visitor runtime is closed');
       sessions.set(session.humanDid, session);
       return session;
@@ -99,7 +76,11 @@ export async function createVisitorRuntime({
       return session;
     },
     close() {
-      closePromise ??= closeResources(scope, simulator, appPool, masterKey, sessions);
+      // Memoize only the attempt in flight so a failed close can be retried.
+      closePromise ??= closeResources(scoped, sessions).catch((err) => {
+        closePromise = undefined;
+        throw err;
+      });
       return closePromise;
     },
   };

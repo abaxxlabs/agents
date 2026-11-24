@@ -73,12 +73,16 @@ export type {
   CreateAgentOptions,
   RegisteredAgent,
   AgentSigner,
+  DwnSigner,
   IdSdkInstance,
   IssueCredentialOptions,
   DelegateCredentialOptions,
   CredentialScope,
   AuditRecord,
   AuditEntry,
+  AuditEventKind,
+  MessageAuditEvent,
+  MessageDirection,
   VerificationResult,
   DecodedCredential,
 } from '#types/index.js';
@@ -87,6 +91,7 @@ export type {
 
 export type { Did, ColumnName, TableName, Jti, IssuerUrl } from '#types/index.js';
 export { asDid, asColumnName, asTableName, asJti, asIssuerUrl } from '#types/index.js';
+export { resolveDidKey } from '#did/resolve.js';
 
 // ─── Errors ─────────────────────────────────────────────────────────
 
@@ -115,6 +120,7 @@ export {
   MasterKeyMismatchError,
   MasterKeyMissingError,
   PrecisionLossError,
+  DecryptionFailedError,
 } from '#errors/index.js';
 
 export {
@@ -205,6 +211,7 @@ export {
   createMockSession,
   createOidcSession,
   createSigner,
+  createDwnSigner,
   toExternalSigner,
 } from '#auth/index.js';
 

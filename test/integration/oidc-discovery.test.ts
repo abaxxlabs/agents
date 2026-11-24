@@ -88,7 +88,6 @@ describeAbaxxOneOidc('Abaxx One OIDC Discovery', () => {
     url.searchParams.set('state', 'test-state-123');
 
     const res = await fetch(url.toString(), { redirect: 'manual' });
-    // Should redirect to login page or return HTML — NOT 404/500
     expect([200, 302, 303]).toContain(res.status);
   });
 
@@ -107,7 +106,6 @@ describeAbaxxOneOidc('Abaxx One OIDC Discovery', () => {
       }),
     });
 
-    // Should reject with 400/401, NOT 500
     expect([400, 401, 403]).toContain(res.status);
   });
 });

@@ -7,31 +7,33 @@ sidebar_position: 1
 
 # Installation
 
-Agents++ is a TypeScript library and middleware layer for agent identity, authorization, encryption, and audit. The PostgreSQL query-enforcement surface is available through the `sql` subpath.
+Install Agents++ and prepare a PostgreSQL-backed scope.
+
+Agents++ is a TypeScript library and middleware layer for agent identity, authorization, encryption, and auditing. PostgreSQL query enforcement is available through the `sql` subpath.
 
 ## Requirements
 
 - Node.js 20.3 or newer.
 - PostgreSQL 16 for the SQL query path and the full integration test suite.
-- A 32-byte master key represented as exactly 64 hexadecimal characters when using encrypted columns or durable storage.
+- A 32-byte master key encoded as exactly 64 hexadecimal characters if you use encrypted columns or durable storage.
 
 ## Install the SQL surface
 
 ```bash
-npm install @abaxxlabs/agents pg@8.20.0 libpg-query@17.7.3
+npm install @abaxxlabs/agents pg@8.23.1 libpg-query@18.1.5
 ```
 
-The `pg` package provides the PostgreSQL pool. `libpg-query` parses PostgreSQL statements before the scope engine sends an authorized query to the database.
+The `pg` package provides the PostgreSQL connection pool, while `libpg-query` parses PostgreSQL statements before the scope engine submits an authorized query to the database.
 
-These versions match the exact peer dependencies declared by the published Agents++ package. Update them together when a newer compatible Agents++ release is published.
+These versions correspond to the exact peer dependencies declared by the published agents++ package. Update them together when a newer compatible agents++ release becomes available.
 
-The `latest` npm dist-tag tracks the current recommended release; releases merged to `main` are promoted to `latest` automatically. Versions published without promotion are available under the `next` dist-tag; install one with `npm install @abaxxlabs/agents@next` or pin an exact version.
+The `latest` dist-tag identifies the currently recommended release. Releases merged to `main` are published directly under `latest`. To install a specific version, use a command such as `npm install @abaxxlabs/agents@0.60.1`.
 
-For identity-only use cases, install the Agents++ package without the PostgreSQL peers and import from `@abaxxlabs/agents`.
+For identity-only use cases, install the agents++ package without the PostgreSQL peer dependencies and import from `@abaxxlabs/agents`.
 
 ## Configure the master key
 
-Generate and store the key through your deployment secret manager. Do not commit it to source control.
+Generate the key and store it in your deployment’s secret manager. Never commit it to source control.
 
 ```bash
 export AGENTS_MASTER_KEY="<64 hexadecimal characters>"
@@ -49,15 +51,15 @@ const masterKey = resolveMasterKeyFromEnv();
 
 ## Apply PostgreSQL migrations
 
-Apply the repository migrations through your deployment tooling before relying on durable PostgreSQL storage, revocation, sessions, encrypted columns, or the audit tables. The published npm package does not include the repository migration directory.
+Apply the repository migrations using your deployment tooling before relying on durable PostgreSQL storage, revocation, sessions, encrypted columns, or audit tables. The published npm package does not include the repository’s migration directory.
 
 ## Verify the installation
 
-In your application project, run its own typecheck and tests after integrating Agents++ (the commands below are examples of project scripts):
+After integrating agents++, run your application project’s typecheck and tests using its own scripts (the commands below are examples).
 
 ```bash
 npm run typecheck
 npm test
 ```
 
-The PostgreSQL-gated tests skip when no database is available. They run when `DATABASE_URL` points to a configured PostgreSQL instance.
+Tests requiring PostgreSQL are skipped when no database is available. They run when `DATABASE_URL` points to a configured PostgreSQL instance.

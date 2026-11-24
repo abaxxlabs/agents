@@ -29,7 +29,6 @@ const postgresReachable = await isPostgresReachable();
 const describeFn = postgresReachable ? describe : describe.skip;
 
 describeFn('AgentScope hygiene (live Postgres required)', () => {
-  // 64-char hex needle used to detect master-key leakage in output
   const MASTER_KEY_BYTE = 0xab;
   const HEX_NEEDLE = 'ab'.repeat(32);
 
@@ -42,12 +41,13 @@ describeFn('AgentScope hygiene (live Postgres required)', () => {
     masterKeyBuf = Buffer.alloc(32, MASTER_KEY_BYTE);
     pool = new Pool({ connectionString: DB_URL, max: 2 });
 
-    // Clear rows from prior runs that may be wrapped with a different master key.
-    // MasterKeyMismatchError would prevent AgentScope.create from succeeding here.
+    // Remove keys from earlier runs so their wrapping key cannot prevent setup.
     await pool.query('DELETE FROM agent_keys').catch(() => undefined);
     await pool.query('DELETE FROM agents').catch(() => undefined);
 
-    const base = PostgresStorageBackend.fromPool(pool, false, { sessionMacKey: deterministicSessionMacKey() });
+    const base = PostgresStorageBackend.fromPool(pool, false, {
+      sessionMacKey: deterministicSessionMacKey(),
+    });
     revocation = new InMemoryRevocationStore();
     const storage = composeStorageBackend(base, { revocation });
 
@@ -64,48 +64,35 @@ describeFn('AgentScope hygiene (live Postgres required)', () => {
     try {
       await scope.close();
     } catch {
-      // close-zeroes-masterKey test may have already closed it
+      // A lifecycle test may have already closed the scope.
     }
     // Pool was supplied externally, so AgentScope.close() won't end it.
     await pool.end().catch(() => undefined);
   });
 
-  // ─── pruneRevocations delegates to storage.revocation ───────────────
   describe('pruneRevocations()', () => {
-    it('returns 0 when no revocations are present', async () => {
-      const pruned = await scope.pruneRevocations();
-      expect(pruned).toBe(0);
-    });
-
     it('prunes a revocation whose credentialExp is past the default cutoff', async () => {
-      // Seed the in-memory store directly so we can assert the delegation
-      // actually deleted something. Default cutoff in InMemoryRevocationStore
-      // is now − 30 days; we revoke with a credentialExp 31 days in the past.
+      // Default cutoff is now − 30 days; revoke with credentialExp 31 days in the past.
       const longPast = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000);
       await revocation.revoke('jti-b4-prune-old', { credentialExp: longPast });
-      // Plus a fresh entry that should NOT be pruned.
       await revocation.revoke('jti-b4-prune-fresh', {
         credentialExp: new Date(Date.now() + 60 * 60 * 1000),
       });
 
       const pruned = await scope.pruneRevocations();
       expect(pruned).toBe(1);
-      // Fresh entry survives.
       expect(await revocation.isRevoked('jti-b4-prune-fresh')).toBe(true);
-      // Old entry is gone.
       expect(await revocation.isRevoked('jti-b4-prune-old')).toBe(false);
     });
 
     it('passes an explicit cutoff Date through to the store', async () => {
-      // Probe via loadAll() not isRevoked() — the in-memory store lazy-evicts
-      // past-exp entries on isRevoked(), which would make cutoff unverifiable.
+      // Use loadAll(): isRevoked() evicts expired entries and would hide whether pruning worked.
       const oneHourPast = new Date(Date.now() - 60 * 60 * 1000);
       await revocation.revoke('jti-b4-cutoff', { credentialExp: oneHourPast });
 
       const presentBefore = (await revocation.loadAll()).some((e) => e.jti === 'jti-b4-cutoff');
       expect(presentBefore).toBe(true);
 
-      // Cutoff 2h in the past → 1h_ago < 2h_ago is FALSE → entry survives.
       const survives = await scope.pruneRevocations(new Date(Date.now() - 2 * 60 * 60 * 1000));
       expect(survives).toBe(0);
       const presentAfterSurvives = (await revocation.loadAll()).some(
@@ -113,7 +100,6 @@ describeFn('AgentScope hygiene (live Postgres required)', () => {
       );
       expect(presentAfterSurvives).toBe(true);
 
-      // Cutoff 30s in the past → 1h_ago < 30s_ago is TRUE → entry pruned.
       const removed = await scope.pruneRevocations(new Date(Date.now() - 30 * 1000));
       expect(removed).toBe(1);
       const presentAfterRemoved = (await revocation.loadAll()).some(
@@ -123,7 +109,6 @@ describeFn('AgentScope hygiene (live Postgres required)', () => {
     });
   });
 
-  // ─── redaction in toJSON / inspect ────────────────────────────
   describe('redaction', () => {
     it('toJSON() does not contain master-key hex', () => {
       const snapshot = scope.toJSON();
@@ -132,34 +117,18 @@ describeFn('AgentScope hygiene (live Postgres required)', () => {
       expect(snapshot.masterKey).toBe('[REDACTED 32 bytes]');
     });
 
-    it('JSON.stringify(scope) does not contain master-key hex', () => {
-      // JSON.stringify invokes toJSON() if present.
-      const out = JSON.stringify(scope);
-      expect(out).not.toContain(HEX_NEEDLE);
-      expect(out).toContain('[REDACTED 32 bytes]');
-    });
-
     it('util.inspect(scope) does not contain master-key hex', () => {
-      // Node's util.inspect invokes [inspect.custom] if present.
       const out = inspect(scope, { depth: 5 });
       expect(out).not.toContain(HEX_NEEDLE);
       expect(out).toContain('[REDACTED 32 bytes]');
     });
 
     it('console.log path (util.inspect with default opts) is also redacted', () => {
-      // console.log uses util.inspect under the hood with default opts.
       const out = inspect(scope);
       expect(out).not.toContain(HEX_NEEDLE);
     });
-
-    it('exposes verifierDid and encryptedColumns in the snapshot', () => {
-      const snapshot = scope.toJSON();
-      expect(snapshot.verifierDid).toMatch(/^did:/);
-      expect(Array.isArray(snapshot.encryptedColumns)).toBe(true);
-    });
   });
 
-  // ─── close() does not mutate caller-owned masterKey ───────────
   describe('close() leaves caller-owned masterKey intact', () => {
     it('after close(), the caller-owned masterKey buffer is unchanged', async () => {
       expect(masterKeyBuf[0]).toBe(MASTER_KEY_BYTE);

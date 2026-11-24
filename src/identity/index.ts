@@ -17,6 +17,7 @@
 export * from './org-boundary.js';
 export * from './keystore.js';
 export * from './server-identity.js';
+export * from './instance-identity.js';
 export * from './binding.js';
 export * from './agent-verifier.js';
 export * from './did-dht.js';

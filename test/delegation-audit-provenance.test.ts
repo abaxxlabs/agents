@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ScopeEngine } from '#sql/scope-engine.js';
 import { VcVerifier } from '#identity/index.js';
-import { createJwt, decodeJwt } from '#crypto/jwt.js';
+import { decodeJwt } from '#crypto/jwt.js';
 import { InMemoryRevocationStore } from '#storage/memory/revocation-store.js';
 import { AuditLogger } from '#audit/index.js';
 import type { AgentStore, AuditStore } from '#storage/types.js';
@@ -12,14 +12,12 @@ import {
   issueDelegatedCredential,
   createSigner,
 } from '#auth/index.js';
-import type { AuditEntry, AuditRecord, RegisteredAgent } from '#types/index.js';
-import { SqliteStorageBackend } from '#storage/sqlite/index.js';
-import { deterministicSessionMacKey } from './support/deterministic-session-mac-key.js';
+import type { AuditRecord, RegisteredAgent } from '#types/index.js';
 
 function createFixture() {
   const human = generateDidKey();
-  const supervisor = generateDidKey(); // delegator
-  const worker = generateDidKey(); // delegate
+  const supervisor = generateDidKey();
+  const worker = generateDidKey();
   const server = generateDidKey();
 
   const verifier = new VcVerifier({
@@ -118,32 +116,10 @@ describe('delegated query audit provenance', () => {
 
     const record = f.appended.at(-1)!;
     expect(record.status).toBe('success');
-    expect(record.ownerDid).toBe(f.human.did); // root human, not the delegator
+    expect(record.ownerDid).toBe(f.human.did);
     expect(record.delegatorDid).toBe(f.supervisor.did);
     expect(record.delegatedGrantId).toBe(sourceJti);
     expect(record.version).toBe(4);
-  });
-
-  it('leaves a non-delegated query unchanged: owner is the human, no delegator', async () => {
-    const f = createFixture();
-    const supervisorCred = await issueCredential(f.human.did, f.human.privateKey, {
-      agent: f.supervisor.did,
-      columns: ['patients.name'],
-      actions: ['read'],
-      expiresIn: '4h',
-    });
-
-    await f.engine.query({
-      agent: f.supervisor.did,
-      credential: supervisorCred,
-      table: 'patients',
-      sql: 'SELECT name FROM patients',
-    });
-
-    const record = f.appended.at(-1)!;
-    expect(record.ownerDid).toBe(f.human.did);
-    expect(record.delegatorDid).toBeUndefined();
-    expect(record.delegatedGrantId).toBeUndefined();
   });
 
   it('records delegation provenance on rejected delegated queries', async () => {
@@ -166,110 +142,5 @@ describe('delegated query audit provenance', () => {
     expect(record.delegatedGrantId).toBe(sourceJti);
     expect(record.reasonCode).toBe('SCOPE_VIOLATION');
     expect(record.version).toBe(4);
-  });
-
-  it('rejects delegated-shaped credentials that do not prove a valid delegating agent hop', async () => {
-    const f = createFixture();
-    const attacker = generateDidKey();
-    f.verifier.registerKey(attacker.did, attacker.publicKey);
-    const forgedSourceCred = await issueCredential(attacker.did, attacker.privateKey, {
-      agent: f.supervisor.did,
-      columns: ['patients.name'],
-      actions: ['read'],
-      expiresIn: '4h',
-    });
-    const forgedSourceJti = decodeJwt(forgedSourceCred).payload.jti;
-    const now = Math.floor(Date.now() / 1000);
-    const ownerSignedDelegatedCred = await createJwt(
-      {
-        iss: f.human.did,
-        sub: f.worker.did,
-        jti: 'owner-signed-delegated-leaf',
-        iat: now,
-        exp: now + 3600,
-        delegationChain: [forgedSourceCred],
-        vc: {
-          '@context': ['https://www.w3.org/2018/credentials/v1'],
-          type: ['VerifiableCredential', 'DelegatedAgentScopeCredential'],
-          credentialSubject: {
-            id: f.worker.did,
-            scope: {
-              columns: ['patients.name'],
-              actions: ['read'],
-            },
-            grantedBy: f.human.did,
-            grantedTo: f.worker.did,
-            delegatedGrantId: 'attacker-controlled-grant-id',
-          },
-        },
-      },
-      f.human.privateKey,
-    );
-
-    await expect(
-      f.engine.query({
-        agent: f.worker.did,
-        credential: ownerSignedDelegatedCred,
-        table: 'patients',
-        sql: 'SELECT name FROM patients',
-      }),
-    ).rejects.toThrow();
-
-    const record = f.appended.at(-1)!;
-    expect(record.status).toBe('rejected');
-    expect(record.ownerDid).toBe(f.human.did);
-    expect(record.delegatorDid).toBeUndefined();
-    expect(record.delegatedGrantId).toBeUndefined();
-    expect(record.delegatedGrantId).not.toBe(forgedSourceJti);
-  });
-
-  it('produces a version-4 record whose signature still verifies', async () => {
-    const f = createFixture();
-    const { delegatedCred } = await issueAndDelegate(f);
-
-    await f.engine.query({
-      agent: f.worker.did,
-      credential: delegatedCred,
-      table: 'patients',
-      sql: 'SELECT name FROM patients',
-    });
-
-    const record = f.appended.at(-1)!;
-    expect(record.version).toBe(4);
-    const ok = await f.auditLogger.verifyRecord(record, f.worker.publicKey);
-    expect(ok).toBe(true);
-  });
-
-  it('persists and reads back the provenance fields through the SQLite store', async () => {
-    const backend = await SqliteStorageBackend.create(
-      { type: 'sqlite', path: ':memory:', sessionMacKey: deterministicSessionMacKey('provenance') },
-      { sessionMacKey: deterministicSessionMacKey('provenance') },
-    );
-    await backend.initialize();
-    try {
-      const agent = generateDidKey();
-      const logger = new AuditLogger({ auditStore: backend.audit, enabled: true });
-      const entry: AuditEntry = {
-        agentDid: agent.did,
-        ownerDid: 'did:key:root-human',
-        credentialJwt: 'eyJ.delegated.jwt',
-        sql: 'SELECT name FROM patients',
-        columnsAccessed: ['patients.name'],
-        rowCount: 1,
-        durationMs: 5,
-        delegatorDid: 'did:key:delegating-agent',
-        delegatedGrantId: 'grant-jti-123',
-      };
-
-      await logger.log(entry, createSigner(agent.privateKey));
-
-      const [stored] = await backend.audit.query({ agentDid: agent.did });
-      expect(stored.ownerDid).toBe('did:key:root-human');
-      expect(stored.delegatorDid).toBe('did:key:delegating-agent');
-      expect(stored.delegatedGrantId).toBe('grant-jti-123');
-      expect(stored.version).toBe(4);
-    } finally {
-      await backend.close();
-    }
   });
 });

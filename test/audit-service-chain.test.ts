@@ -1,8 +1,3 @@
-/**
- * The audit service is what the verify-chain tool and the REST route call. It has to verify a
- * chain that holds message records, and a burst of message records has to keep its order.
- */
-
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -72,7 +67,6 @@ describe('audit service on chains with message records', () => {
       auditReader: logger,
       verifier: { verify: async () => ({ valid: true, status: 'VALID' }) },
     });
-    // The tool and the REST route always pass the session owner, as here.
     const result = await service.verifyChain({}, { ownerDid: owner.did });
 
     expect(result).toMatchObject({

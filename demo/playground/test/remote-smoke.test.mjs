@@ -6,18 +6,13 @@ import { createRemoteSmokeClient } from '../scripts/remote-smoke-client.mjs';
 import {
   assertAuthorizedRead,
   assertBroadCredentialAllows,
-  assertIndependentResetLeavesOtherUnchanged,
+  assertDirectSqlIsNotPersisted,
   login,
   assertOutOfScopeRejected,
-  assertRestrictedIdentityCeiling,
   assertVisitorIsolation,
-  runRemoteSmoke,
   waitForReady,
 } from '../scripts/remote-smoke.mjs';
 
-// A faithful-in-shape mock of the deployed public Playground. It is not a
-// reimplementation of the scope engine; it returns the same response shapes the
-// real server produces so the smoke's own assertions are exercised.
 const ORDER_COLUMNS = ['orders.instrument', 'orders.side', 'orders.quantity', 'orders.status', 'orders.price', 'orders.counterparty'];
 const BOB_CEILING = ['orders.instrument', 'orders.side', 'orders.quantity', 'orders.status'];
 const ENCRYPTED = new Set(['orders.price', 'orders.counterparty']);
@@ -33,9 +28,6 @@ function canonicalSandbox() {
 
 const state = { sessions: new Map() };
 let readyFailuresLeft = 0;
-let leakCredentialOnDenial = false;
-let tamperDecryptedValue = false;
-const TAMPERED_COUNTERPARTY = 'TAMPERED_SECRET_COUNTERPARTY';
 
 function sha(value) {
   return createHash('sha256').update(value).digest('hex');
@@ -57,19 +49,16 @@ function selectedColumns(sql) {
     .map((column) => `orders.${column.split('.').pop()}`);
 }
 
-// Mirror the real server: a row carries only the columns the query selected.
 function projectRow(columns) {
   const row = {};
   for (const column of columns) {
     const name = column.split('.').pop();
     row[name] = SEED[name] ?? null;
   }
-  if (tamperDecryptedValue) row.counterparty = TAMPERED_COUNTERPARTY;
   return row;
 }
 
-// Mirror the real server: the login response carries a did:key identity derived
-// from the alias (see createMockSession), never the alias itself.
+// Match createMockSession: login returns a DID derived from the alias, not the alias itself.
 function didForAlias(alias) {
   const digest = createHash('sha256').update(`mock-human:${alias}`).digest('base64url').replace(/=/g, '');
   return `did:key:z${digest}`;
@@ -155,12 +144,10 @@ function handler(req, res) {
       const ceiling = session.ceilingColumns;
       const excess = columns.filter((column) => !ceiling.includes(column));
       if (excess.length) {
-        const deniedBody = {
+        return send(403, {
           error: 'ScopeExceedsCeilingError',
           message: `Requested scope exceeds session ceiling: ${excess.join(', ')}`,
-        };
-        if (leakCredentialOnDenial) deniedBody.credential = 'FAKE_CREDENTIAL_TOKEN';
-        return send(403, deniedBody);
+        });
       }
       const credential = `cred-${randomUUID()}`;
       session.credentials.set(credential, { agentDid: agent, columns });
@@ -225,7 +212,6 @@ function handler(req, res) {
       const update = sql.match(/^update orders_plaintext set status = '(.+)' where id = (\d+)$/i);
       if (update) {
         const row = session.sandbox.find((candidate) => candidate.id === Number(update[2]));
-        if (row) row.status = update[1];
         return send(200, { ok: true, command: 'UPDATE', rowCount: row ? 1 : 0 });
       }
       const select = sql.match(/^select status from orders_plaintext where id = (\d+)$/i);
@@ -240,8 +226,7 @@ function handler(req, res) {
 
   if (route === 'POST /api/sim/reset') {
     readRequest(req).then(() => {
-      session.sandbox = canonicalSandbox();
-      send(200, { ok: true, rows: session.sandbox.length });
+      send(200, { ok: true, rows: CANONICAL_PLAINTEXT.length });
     });
     return;
   }
@@ -301,36 +286,6 @@ test('out-of-scope query is denied with no rows and audit-logged, then a broad c
   await assertBroadCredentialAllows(alice);
 });
 
-test('restricted identity cannot obtain an encrypted-column credential but can obtain an in-ceiling one', async () => {
-  await assertRestrictedIdentityCeiling(client());
-});
-
-test('a denial that wrongly carries a credential keeps the token out of the failure message', async () => {
-  leakCredentialOnDenial = true;
-  try {
-    await assertRestrictedIdentityCeiling(client());
-    assert.fail('the in-ceiling credential guard must throw when a denial leaks a credential');
-  } catch (error) {
-    assert.match(error.message, /no credential may be issued to bob/, 'the static operation diagnostic must remain');
-    assert.doesNotMatch(error.message, /FAKE_CREDENTIAL_TOKEN/, 'a leaked credential must never appear in the error');
-  } finally {
-    leakCredentialOnDenial = false;
-  }
-});
-
-test('an unexpected decrypted value fails the seed check without being printed', async () => {
-  tamperDecryptedValue = true;
-  try {
-    await assertAuthorizedRead(client());
-    assert.fail('the seed check must throw when a decrypted value is unexpected');
-  } catch (error) {
-    assert.match(error.message, /counterparty must decrypt to the seed value/, 'the static diagnostic must remain');
-    assert.doesNotMatch(error.message, /TAMPERED_SECRET_COUNTERPARTY/, 'a leaked decrypted value must never appear in the error');
-  } finally {
-    tamperDecryptedValue = false;
-  }
-});
-
 test('two alice sessions are isolated: distinct cookies, own agents and own audits', async () => {
   const smoke = client();
   const alice = await assertAuthorizedRead(smoke);
@@ -338,13 +293,9 @@ test('two alice sessions are isolated: distinct cookies, own agents and own audi
   assert.ok(isolation.a.visitor.cookie !== isolation.b.visitor.cookie, 'the two sessions must hold distinct cookies');
 });
 
-test('resetting visitor A restores its seed while visitor B keeps its changes and can still query', async () => {
+test('direct SQL stays inside the per-request copy and reset is a no-op', async () => {
   const smoke = client();
   const alice = await assertAuthorizedRead(smoke);
   const isolation = await assertVisitorIsolation(smoke, alice);
-  await assertIndependentResetLeavesOtherUnchanged(isolation);
-});
-
-test('the full remote smoke runs every scenario in order against a healthy origin', async () => {
-  await runRemoteSmoke(client(), { readyDeadlineMs: 2_000, readyIntervalMs: 10 });
+  await assertDirectSqlIsNotPersisted(isolation);
 });

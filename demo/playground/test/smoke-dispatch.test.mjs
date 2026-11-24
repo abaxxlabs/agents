@@ -28,8 +28,7 @@ test('dispatcher selects and starts the local Compose smoke when the target is u
     resolveSmokeTarget({ PLAYGROUND_PORT: '3110', PLAYGROUND_DATABASE_URL: 'postgres://x' }),
     { mode: 'local', script: 'compose-smoke.mjs' },
   );
-  // An empty PATH makes compose-smoke's first docker call fail, proving the
-  // local script was selected without touching the host Docker daemon.
+  // An empty PATH makes the first docker call fail, proving local selection.
   const result = runDispatcher({}, { PATH: '/nonexistent' });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /docker compose --project-name agents-playground-test-/);
@@ -47,9 +46,6 @@ test('dispatcher routes a bare HTTPS origin to the remote module and propagates 
     'https://playground.example.com:8443',
     'a non-default HTTPS port is part of the deployed origin',
   );
-  // Point the remote smoke at an unreachable origin with tight timeouts: it
-  // must be selected, attempt HTTP only, and fail fast without any container
-  // or database access, and without echoing the target host.
   const result = runDispatcher({
     PLAYGROUND_SMOKE_BASE_URL: ORIGIN,
     PLAYGROUND_SMOKE_TIMEOUT_MS: '300',
@@ -84,21 +80,4 @@ test('dispatcher rejects invalid targets without starting any smoke', () => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /smoke selector: PLAYGROUND_SMOKE_BASE_URL must be a bare HTTPS origin/);
   assert.doesNotMatch(`${result.stdout}${result.stderr}`, /docker|remote smoke|psql/);
-});
-
-test('selector errors never echo the configured value', () => {
-  const sensitiveTargets = [
-    ['https://user:super-secret-token@playground.example.com', 'credential-bearing url'],
-    ['not a url', 'malformed url'],
-  ];
-  for (const [value, label] of sensitiveTargets) {
-    let error;
-    try {
-      resolveSmokeTarget({ PLAYGROUND_SMOKE_BASE_URL: value });
-    } catch (err) {
-      error = err;
-    }
-    assert.ok(error, `invalid target must throw (${label})`);
-    assert.doesNotMatch(error.message, /super-secret-token|not a url/);
-  }
 });

@@ -1,7 +1,10 @@
 # Migration: BYOK master key + injections boundary (v0.9.10.0)
 
-**Audience:** anyone upgrading `@abaxxlabs/agents` from v0.9.6.0–v0.9.9.x to v0.9.10.0.
-**Why this document exists:** v0.9.10.0 is a breaking change with two distinct axes:
+This guide is for application maintainers migrating an existing Agents++ repository-source integration to v0.9.10.0. It covers source versions from v0.9.6.0 to v0.9.9.x and explains how to supply the master key explicitly at application startup through the BYOK ("bring your own key") boundary and configure durable revocation storage when needed.
+
+These are historical repository-source release labels, not public npm upgrade targets. As the [rollback guide](v0.9.10-rollback.md) explains, v0.9.10.0 and v0.9.9.x were not published to the public npm registry. Use this guide to assess an integration built from those sources; use [Installation](../guides/installation.md) for the current package setup.
+
+The historical v0.9.10.0 change has two distinct axes:
 
 1. **API shape**: `AgentScope.create(config, injections)` is now a two-parameter factory. The master key moves from `config.encryption.masterKey` (a hex string) to `injections.masterKey` (a 32-byte branded `MasterKey` Buffer). This is the BYOK ("bring your own key") boundary: the library no longer reads `AGENTS_MASTER_KEY` from the environment; consumers supply the key explicitly.
 2. **Revocation enforcement** (drift correction). Pre-v0.9.10.0, the `IRevocationStore` interface and three adapters were available, but `AgentScope.create` could not receive an injected store. Every deployment used `InMemoryRevocationStore`, so revocation state was limited to a single process lifetime. This release adds the injection path so deployments can use a durable revocation store.

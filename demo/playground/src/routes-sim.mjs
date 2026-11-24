@@ -1,14 +1,15 @@
-import pg from 'pg';
 import { ORDER_COLUMNS, ORDER_TABLE, areKnownOrderColumns } from './request-policy.mjs';
 import { validateDirectSql } from './direct-sql-policy.mjs';
+import { ORDERS_PLAINTEXT_TEMP_DDL, ORDERS_PLAINTEXT_TEMP_SEED } from './demo-data.mjs';
 import { createDeadlineExecutor, DIRECT_SQL_REQUEST_TIMEOUT_MS, readCursorRows } from './direct-sql-results.mjs';
 import { logSafeError } from './safe-diagnostics.mjs';
 
 /**
  * Maps PostgreSQL cancel error codes to payloads the UI can distinguish:
- * 57014 = statement_timeout, 55P03 = lock_timeout.
+ * 57014 = statement_timeout. The direct path runs against a private temporary
+ * copy, so a permitted statement cannot wait on a shared lock.
  * @param {unknown} err
- * @returns {{ ok: false, error: string, kind?: 'statement' | 'lock', message: string }}
+ * @returns {{ ok: false, error: string, kind?: 'statement', message: string }}
  */
 export function directSqlErrorPayload(err) {
   if (err?.code === '57014') {
@@ -17,14 +18,6 @@ export function directSqlErrorPayload(err) {
       error: 'TimeoutError',
       kind: 'statement',
       message: 'Statement cancelled by PostgreSQL after 2s (statement_timeout)',
-    };
-  }
-  if (err?.code === '55P03') {
-    return {
-      ok: false,
-      error: 'TimeoutError',
-      kind: 'lock',
-      message: 'Statement cancelled by PostgreSQL after waiting 1s for a lock (lock_timeout)',
     };
   }
   const code = typeof err?.code === 'string' ? err.code : '';
@@ -39,38 +32,39 @@ export function directSqlErrorPayload(err) {
 }
 
 /**
- * Rolls back a failed direct SQL transaction before returning its client to the
- * pool. A rollback failure leaves session state unknown, so discard that client.
+ * Rolls back a direct SQL transaction before returning its client to the pool.
+ * The temporary copy dies with the transaction, so a successful rollback is
+ * also the cleanup path. A rollback failure leaves session state unknown, so
+ * discard that client.
+ * @param {import('pg').Client} client
+ * @param {{ error: (...args: unknown[]) => void }} [logger]
+ * @returns {Promise<void>}
+ */
+async function rollbackAndRelease(client, logger = console) {
+  try {
+    await client.query('ROLLBACK');
+  } catch (rollbackError) {
+    logSafeError(logger, 'error', 'Direct SQL ROLLBACK failed; discarding pooled connection', rollbackError);
+    client.release(true);
+    return;
+  }
+  client.release();
+}
+
+/**
+ * Rolls back a failed direct SQL transaction and maps the failure to a payload.
  * @param {import('pg').Client | undefined} client
  * @param {unknown} originalError
  * @param {{ error: (...args: unknown[]) => void }} [logger]
  * @returns {Promise<ReturnType<typeof directSqlErrorPayload>>}
  */
 export async function cleanUpFailedDirectSql(client, originalError, logger = console) {
-  if (!client) return directSqlErrorPayload(originalError);
-  try {
-    await client.query('ROLLBACK');
-    client.release();
-  } catch (rollbackError) {
-    logSafeError(logger, 'error', 'Direct SQL ROLLBACK failed; discarding pooled connection', rollbackError);
-    client.release(true);
-  }
+  if (client) await rollbackAndRelease(client, logger);
   return directSqlErrorPayload(originalError);
 }
 
-export async function createSimulator({ databaseUrl, naiveDbPassword, pool, scope, readBody, rejected }) {
-  const naiveUrl = new URL(databaseUrl);
-  naiveUrl.username = 'agents_playground_naive';
-  naiveUrl.password = naiveDbPassword;
-  const naivePool = new pg.Pool({
-    connectionString: naiveUrl.toString(),
-    application_name: 'agents-playground-naive',
-    max: 2,
-    connectionTimeoutMillis: DIRECT_SQL_REQUEST_TIMEOUT_MS,
-  });
-  naivePool.on('error', (err) => {
-    logSafeError(console, 'error', 'Visitor direct-SQL database pool reported an idle connection error', err);
-  });
+export async function createSimulator({ pool, directSqlPool, scope, readBody, rejected, metrics }) {
+  if (!directSqlPool?.connect) throw new Error('Simulator requires the shared direct SQL pool');
 
   let simColumns = ORDER_COLUMNS.filter((column) => !['orders.price', 'orders.counterparty'].includes(column));
   let simSession;
@@ -91,29 +85,20 @@ export async function createSimulator({ databaseUrl, naiveDbPassword, pool, scop
     return simCredential;
   }
 
-  try {
-    simSession = await scope.authenticate({
-      mockHumanDid: 'demo-operator',
-      scopeCeiling: {
-        columns: ORDER_COLUMNS,
-        actions: ['read'],
-        source: 'oidc-groups',
-        resolvedFrom: ['desk-junior'],
-      },
-    });
+  simSession = await scope.authenticate({
+    mockHumanDid: 'demo-operator',
+    scopeCeiling: {
+      columns: ORDER_COLUMNS,
+      actions: ['read'],
+      source: 'oidc-groups',
+      resolvedFrom: ['desk-junior'],
+    },
+  });
 
-    simAgent = (await scope.listAgents({ ownerDid: simSession.humanDid }))
-      .find((agent) => agent.name === 'sim-agent');
-    simAgent ??= await scope.createAgentIdentity({ name: 'sim-agent', ownerDid: simSession.humanDid });
-    await getSimCredential();
-  } catch (err) {
-    try {
-      await naivePool.end();
-    } catch (closeErr) {
-      logSafeError(console, 'error', 'Direct SQL pool cleanup failed after simulator initialization error', closeErr);
-    }
-    throw err;
-  }
+  simAgent = (await scope.listAgents({ ownerDid: simSession.humanDid }))
+    .find((agent) => agent.name === 'sim-agent');
+  simAgent ??= await scope.createAgentIdentity({ name: 'sim-agent', ownerDid: simSession.humanDid });
+  await getSimCredential();
 
   return {
     routes: {
@@ -152,32 +137,40 @@ export async function createSimulator({ databaseUrl, naiveDbPassword, pool, scop
         }
         const verdict = await validateDirectSql(sql);
         if (!verdict.ok) {
+          if (verdict.kind === 'unavailable') {
+            return [503, { ok: false, error: 'DirectSqlUnavailable', message: verdict.reason }];
+          }
+          if (verdict.kind === 'parse') metrics?.counter('playground_parser_errors_total');
           return [403, { ok: false, error: 'DirectSqlRejected', message: verdict.reason }];
         }
         const deadline = Date.now() + DIRECT_SQL_REQUEST_TIMEOUT_MS;
         let client;
         try {
           // SET LOCAL reverts at COMMIT/ROLLBACK, so pooled clients are released clean.
-          client = await naivePool.connect();
+          client = await directSqlPool.connect();
           await client.query('BEGIN');
           const execute = createDeadlineExecutor(client, deadline);
-          await execute("SET LOCAL lock_timeout = '1s'");
+          // Pin the resolution order: unqualified names may only reach the
+          // session's temporary schema, never public.
+          await execute('SET LOCAL search_path = pg_temp');
+          // The statement runs against a throwaway copy of the fixture. The
+          // copy never commits, so ON COMMIT DROP and ROLLBACK both remove it.
+          await execute(ORDERS_PLAINTEXT_TEMP_DDL);
+          await execute(ORDERS_PLAINTEXT_TEMP_SEED);
           if (verdict.statement === 'SelectStmt') {
             const { rows, limitedBy } = await readCursorRows(client, sql, execute);
             const payload = { ok: true, command: 'SELECT', rowsReturned: rows.length, rows };
             if (limitedBy) payload.limitedBy = limitedBy;
-            await execute('COMMIT');
             return [200, payload];
           }
           const result = await execute(sql);
-          await execute('COMMIT');
           return [200, { ok: true, command: result.command, rowCount: result.rowCount }];
         } catch (err) {
           const payload = await cleanUpFailedDirectSql(client, err);
           client = undefined;
           return [200, payload];
         } finally {
-          client?.release();
+          if (client) await rollbackAndRelease(client);
         }
       },
 
@@ -195,17 +188,7 @@ export async function createSimulator({ databaseUrl, naiveDbPassword, pool, scop
         }
       },
 
-      'POST /api/sim/reset': async () => {
-        const marker = await pool.query(
-          'SELECT value FROM demo_playground_metadata WHERE key = $1',
-          ['owner'],
-        );
-        if (marker.rows[0]?.value !== 'agents-demo-playground') {
-          throw new Error('Database not claimed by the Playground');
-        }
-        await pool.query('SELECT public.reset_orders_plaintext_sandbox()');
-        return [200, { ok: true, rows: 8 }];
-      },
+      'POST /api/sim/reset': async () => [200, { ok: true, rows: 8 }],
 
       'GET /api/sim/raw-bytes': async () => {
         const [plain, enc] = await Promise.all([
@@ -218,6 +201,5 @@ export async function createSimulator({ databaseUrl, naiveDbPassword, pool, scop
         return [200, { plaintext: plain.rows, encrypted: enc.rows.map(asPsql) }];
       },
     },
-    close: () => naivePool.end(),
   };
 }

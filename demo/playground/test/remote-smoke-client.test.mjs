@@ -55,10 +55,6 @@ function handler(req, res) {
       '__Host-visitorSessionId=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/; Secure' });
     return;
   }
-  if (route === 'POST /api/denied') {
-    readRequest(req).then(() => send(403, { error: 'ScopeViolationError' }));
-    return;
-  }
   send(404, { error: 'NotFound' });
 }
 
@@ -100,22 +96,6 @@ test('each visitor keeps an independent cookie jar', async () => {
   assert.equal(afterLogout.json.cookie, null, 'a Max-Age=0 set-cookie must remove the session cookie');
 });
 
-test('POST sends Origin and JSON content type, GET sends no Origin, and non-2xx responses are returned', async () => {
-  const { visitor } = createRemoteSmokeClient(origin);
-  const current = visitor();
-  const postEcho = await current.post('/api/echo', { note: 'x' });
-  assert.equal(postEcho.status, 200);
-  assert.equal(postEcho.json.origin, origin, 'POST must carry the exact origin');
-  assert.equal(postEcho.json.contentType, 'application/json');
-
-  const getEcho = await current.get('/api/echo');
-  assert.equal(getEcho.json.origin, null, 'GET must not send Origin');
-
-  const denied = await current.post('/api/denied', { credential: 'credential-abc', sql: 'SELECT 1' });
-  assert.equal(denied.status, 403, 'denied responses are returned for assertions, not thrown');
-  assert.equal(denied.json.error, 'ScopeViolationError');
-});
-
 test('timeouts, redirects, and escaped paths fail with a RemoteSmokeError that names the operation only', async () => {
   const { visitor } = createRemoteSmokeClient(origin, { timeoutMs: 100 });
   const current = visitor();
@@ -143,7 +123,6 @@ test('timeouts, redirects, and escaped paths fail with a RemoteSmokeError that n
   assert.match(redirected.message, /^remote smoke: GET \/api\/redirect failed: attempted a redirect$/);
   assert.doesNotMatch(redirected.message, /elsewhere/, 'the redirect error must not leak the target');
 
-  // The guard must refuse before fetch, so the mock never sees these requests.
   const escapedCases = [
     ['//other.example/steal', /path must stay within the configured origin/],
     ['api/echo', /path must start with \//],

@@ -17,6 +17,11 @@ export function corporateEmployeeNames(rootDir, emailSuffix) {
   return [...names];
 }
 
+export function privateUrlPrefixesForPolicy(policy, fallbackPrefixes = []) {
+  const prefixes = policy ? (policy.privateUrlPrefixes ?? []) : fallbackPrefixes;
+  return normalizePrivateUrlPrefixes(prefixes);
+}
+
 export function normalizePrivateUrlPrefixes(values) {
   const normalized = new Set();
   for (const rawValue of values) {

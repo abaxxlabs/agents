@@ -27,6 +27,7 @@ export default defineConfig({
       { find: '@abaxxlabs/agents/sqlite', replacement: `${rootDir}src/storage/sqlite/index.ts` },
       { find: '@abaxxlabs/agents/storage', replacement: `${rootDir}src/storage/index.ts` },
       { find: '@abaxxlabs/agents/sql', replacement: `${rootDir}src/sql/index.ts` },
+      { find: '@abaxxlabs/agents/id-sdk-mcp', replacement: `${rootDir}src/mcp/id-sdk.ts` },
       { find: '@abaxxlabs/agents/mcp', replacement: `${rootDir}src/mcp/index.ts` },
       { find: '@abaxxlabs/agents', replacement: `${rootDir}src/index.ts` },
     ],

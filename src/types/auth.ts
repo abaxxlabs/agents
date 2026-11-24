@@ -27,6 +27,8 @@ export interface AuthOptions {
     org?: string;
   };
   scopeCeiling?: ScopeCeiling;
+  /** Tenant access token from the same OIDC flow; makes the tenant sign agent credentials. */
+  accessToken?: string;
 }
 
 export interface AuthenticatedSession {
@@ -48,6 +50,17 @@ export interface CreateAgentOptions {
 export interface AgentSigner {
   /** Sign a JWT payload, returning a compact JWS string (EdDSA / Ed25519). */
   signJwt(payload: Record<string, unknown>): Promise<string>;
+}
+
+/**
+ * Signs raw bytes with an Ed25519 key, in the shape DWN messages expect: the signature covers
+ * exactly the bytes passed, and `keyId` is the DID URL a DWN node resolves to verify it.
+ */
+export interface DwnSigner {
+  /** DID URL of the verification method, `<did>#<fragment>`. */
+  readonly keyId: string;
+  readonly algorithm: 'EdDSA';
+  sign(content: Uint8Array): Promise<Uint8Array>;
 }
 
 export interface RegisteredAgent {

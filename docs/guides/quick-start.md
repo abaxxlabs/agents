@@ -7,10 +7,13 @@ sidebar_position: 2
 
 # Quick start
 
-This example uses the SDK directly in one application process. It creates an agent, issues a narrow credential, signs a Verifiable Presentation with the agent signer, and executes a read-only PostgreSQL query through the scope engine.
+Create an agent, issue a scoped credential, sign a presentation, and execute a protected PostgreSQL read.
+
+This quick start shows you how to use the agents++ SDK to run a protected, read-only PostgreSQL query in a single application process. You’ll create an agent, issue a narrowly scoped credential, use the agent signer to sign a Verifiable Presentation, and run the query through ScopeEngine.
+
 ## Prepare a disposable database
 
-The `DATABASE_URL` below must point to an existing disposable PostgreSQL database. From a checkout of the Agents++ repository, apply the repository migrations before starting the SDK. The npm package does not include the repository migration directory:
+The `DATABASE_URL` below must point to an existing disposable PostgreSQL database. From a checkout of the Agents++ repository, run the repository migrations before starting the SDK. The npm package does not include the repository’s migration directory:
 
 ```bash
 export DATABASE_URL='postgresql://localhost:5432/agents'
@@ -39,7 +42,7 @@ SQL
 npx agents encrypt orders.price --db "$DATABASE_URL"
 ```
 
-The encryption command records the original type of the column so the SDK can decrypt it during an authorized query. The mock identity path is only for development and tests.
+The encryption command records the column's original type so the SDK can decrypt it during an authorized query. The mock identity path is for development and testing only.
 
 ## Run the SDK-direct flow
 
@@ -89,20 +92,20 @@ try {
 }
 ```
 
-The database connection, master key, and agent signer remain in the application process. The query returns the authorized `orders.price` value decrypted by the scope engine. The VP has a fresh nonce and is audience-bound to this scope's verifier.
+The database connection, master key, and agent signer stay in the application process. The query returns the authorized `orders.price` value, decrypted by the scope engine. The VP has a fresh nonce and is bound to this scope's verifier as its audience.
 
-The value passed to `scope.query()` is the signed VP, not the raw credential. Setting `requirePresentation: true` makes the example exercise the same presentation requirement used by remote query paths.
+The value passed to `scope.query()` is the signed VP, not the raw credential. Setting `requirePresentation: true` ensures that the example exercises the same presentation requirement used by remote query paths.
 
 ## MCP limitation
 
-The SDK-direct flow above is the self-contained end-to-end path. The MCP `query` tool also requires an agent-signed Verifiable Presentation; sending the raw credential is rejected because it would be a bearer token.
+The SDK-direct flow described above provides a self-contained, end-to-end path. The MCP `query` tool also requires an agent-signed Verifiable Presentation; requests containing the raw credential are rejected because it functions as a bearer token.
 
-MCP has no presentation-creation tool, so the client application must supply the VP. The transport never exposes the agent's private signer.
+MCP does not provide a presentation-creation tool, so the client application must supply the VP. The transport does not expose the agent's private signer.
 
-The application can use the public `createPresentation(vcJwt, agentDid, agentSigner, { audience: verifierDid })` helper shown above when it holds the agent signer and the server's verifier DID. An MCP-only client without the agent signer cannot construct a VP from a raw VC using MCP tools alone.
+If the application has access to the agent signer and the server’s verifier DID, it can use the public `createPresentation(vcJwt, agentDid, agentSigner, { audience: verifierDid })` helper shown above. An MCP-only client without the agent signer cannot construct a VP from a raw VC using MCP tools alone.
 
-## What this example does not do
+## Example Limitations {#what-this-example-does-not-do}
 
-- It does not execute an AI model or orchestrate tools.
-- It does not authorize writes; the implemented query policy is read-only.
+- It does not execute an AI model or coordinate the use of tools.
+- It does not authorize write operations; the implemented query policy is read-only.
 - It does not replace PostgreSQL roles, deployment controls, or secret management.

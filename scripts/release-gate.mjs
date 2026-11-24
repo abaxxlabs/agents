@@ -19,19 +19,22 @@ import {
 } from './check-npm-cache.mjs';
 
 export const LINT_MAX_WARNINGS = '387';
+const lintStep = {
+  label: 'Lint source',
+  command: 'npm',
+  args: ['run', 'lint', '--', `--max-warnings=${LINT_MAX_WARNINGS}`],
+  ci: false,
+};
 export const RELEASE_GATE_COMMAND_STEPS = [
   {
     label: 'Install dependencies from bun.lock',
     command: 'bun',
     args: ['install', '--frozen-lockfile'],
+    ci: false,
   },
-  { label: 'Type-check source', command: 'npm', args: ['run', 'typecheck'] },
+  { label: 'Type-check source', command: 'npm', args: ['run', 'typecheck'], ci: false },
   { label: 'Check public API snapshot', command: 'npm', args: ['run', 'check:public-api'] },
-  {
-    label: 'Lint source',
-    command: 'npm',
-    args: ['run', 'lint', '--', `--max-warnings=${LINT_MAX_WARNINGS}`],
-  },
+  lintStep,
   { label: 'Run tests', command: 'npm', args: ['test'] },
   { label: 'Clean dist', command: 'npm', args: ['run', 'clean'] },
   { label: 'Build package', command: 'npm', args: ['run', 'build'] },
@@ -46,6 +49,11 @@ export const RELEASE_GATE_COMMAND_STEPS = [
     args: ['run', 'audit:package-files'],
   },
   {
+    label: 'Run package CLI contract',
+    command: 'npm',
+    args: ['run', 'test:package-contract'],
+  },
+  {
     label: 'Verify npm pack dry-run',
     command: 'npm',
     args: ['pack', '--dry-run', '--ignore-scripts'],
@@ -56,6 +64,10 @@ export const RELEASE_GATE_COMMAND_STEPS = [
     args: ['publish', '--dry-run', '--ignore-scripts'],
   },
 ];
+
+export function releaseGateCommandSteps({ ci = false } = {}) {
+  return RELEASE_GATE_COMMAND_STEPS.filter((step) => !ci || step.ci !== false);
+}
 
 class CommandFailure extends Error {
   constructor(command, args, code) {
@@ -113,7 +125,10 @@ function runCommandCapture(command, args, options = {}) {
 
 async function runStep(label, fn) {
   console.log(`\n==> ${label}`);
-  return await fn();
+  const startedAt = performance.now();
+  const result = await fn();
+  console.log(`Completed ${label}: ${((performance.now() - startedAt) / 1000).toFixed(2)}s`);
+  return result;
 }
 
 async function copyRootNpmrcIfPresent(targetDir) {
@@ -329,11 +344,12 @@ async function assertVendoredIdSdkMcpServerLoads(consumerDir) {
   console.log('Vendored id-sdk-mcp server starts cleanly with no manually installed deps');
 }
 
-export async function runReleaseGate() {
+export async function runReleaseGate({ ci = false } = {}) {
+  const startedAt = performance.now();
   await runStep('Verify clean working tree', assertCleanWorkingTree);
   await runStep('Verify Bun lockfile contract', assertBunLockfile);
   await runStep('Validate npm cache ownership', checkNpmCache);
-  for (const step of RELEASE_GATE_COMMAND_STEPS) {
+  for (const step of releaseGateCommandSteps({ ci })) {
     if (step.cwd && !existsSync(path.resolve(process.cwd(), step.cwd))) {
       console.log(`Skipping "${step.label}": ${step.cwd} not present.`);
       continue;
@@ -342,7 +358,7 @@ export async function runReleaseGate() {
   }
   const tarball = await runStep('Smoke install packed tarball', smokeInstallTarball);
   await runStep('Smoke import MCP without manual peers', () => smokeInstallMcpWithoutManualPeers(tarball));
-  console.log(`\nRelease gate passed. Generated tarball: ${tarball}`);
+  console.log(`\nRelease gate passed in ${((performance.now() - startedAt) / 1000).toFixed(2)}s. Generated tarball: ${tarball}`);
   return { tarball };
 }
 
@@ -351,7 +367,10 @@ const isMain = process.argv[1]
   : false;
 
 if (isMain) {
-  runReleaseGate().catch((error) => {
+  const run = process.argv.includes('--lint')
+    ? () => runStep(lintStep.label, () => runCommand(lintStep.command, lintStep.args))
+    : () => runReleaseGate({ ci: process.argv.includes('--ci') });
+  run().catch((error) => {
     if (error.message !== 'npm cache validation failed') {
       console.error(error.message);
     }

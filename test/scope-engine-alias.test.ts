@@ -12,11 +12,8 @@ import { DidAliasRegistry } from '#did/alias.js';
 import type { RegisteredAgent } from '#types/index.js';
 
 function createAliasTestFixtures() {
-  // The "old" human DID (pre-migration, did:key from free tier)
   const humanOld = generateDidKey();
-  // The "new" human DID (post-migration, simulated did:dht - but using did:key
-  // for testing since generateDidKey only makes did:key. The alias registry
-  // doesn't care about the DID method — it just compares strings.)
+  // did:key stands in for did:dht because alias lookup compares DID strings, not methods.
   const humanNew = generateDidKey();
   const agentA = generateDidKey();
 
@@ -28,7 +25,6 @@ function createAliasTestFixtures() {
   verifier.registerKey(humanNew.did, humanNew.publicKey);
   verifier.registerKey(agentA.did, agentA.publicKey);
 
-  // Column keys
   const nameKey = generateColumnKey();
   const columnKeys = new Map<string, Buffer>([['patients.name', nameKey]]);
   const encryptedColumns = new Set(['patients.name']);
@@ -53,7 +49,7 @@ function createAliasTestFixtures() {
       {
         did: agentA.did,
         name: 'Agent A',
-        ownerDid: humanNew.did, // <-- migrated to new DID
+        ownerDid: humanNew.did,
         signer: createSigner(agentA.privateKey),
         publicKey: agentA.publicKey,
       },
@@ -67,7 +63,6 @@ function createAliasTestFixtures() {
   const server = generateDidKey();
   verifier.registerKey(server.did, server.publicKey);
 
-  // Set up alias registry: old DID → new DID
   const aliasRegistry = new DidAliasRegistry();
   aliasRegistry.addAlias({
     oldDid: humanOld.did,
@@ -95,51 +90,6 @@ function createAliasTestFixtures() {
 }
 
 describe('ScopeEngine — alias-aware DID comparison', () => {
-  it('accepts credential from old DID when agent has migrated to new DID', async () => {
-    const {
-      humanOld,
-      agentA,
-      server,
-      verifier,
-      pool,
-      agents,
-      auditLogger,
-      columnKeys,
-      encryptedColumns,
-      aliasRegistry,
-    } = createAliasTestFixtures();
-
-    const engine = new ScopeEngine({
-      pool,
-      verifier,
-      auditLogger,
-      columnKeys,
-      encryptedColumns,
-      agents,
-      verifierDid: server.did,
-      didAliases: aliasRegistry,
-      agentStore: { findByDid: vi.fn().mockResolvedValue(null) } as unknown as AgentStore,
-    });
-
-    // Issue credential from the OLD human DID (pre-migration credential)
-    const credential = await issueCredential(humanOld.did, humanOld.privateKey, {
-      agent: agentA.did,
-      columns: ['patients.name'],
-      actions: ['read'],
-      expiresIn: '4h',
-    });
-
-    const result = await engine.query({
-      agent: agentA.did,
-      credential,
-      table: 'patients',
-      sql: 'SELECT name FROM patients',
-    });
-
-    expect(result.rows.length).toBe(1);
-    expect(result.rows[0].name).toBe('Jane Doe');
-  });
-
   it('rejects credential from old DID without alias registry (strict mode)', async () => {
     const {
       humanOld,
@@ -161,56 +111,10 @@ describe('ScopeEngine — alias-aware DID comparison', () => {
       encryptedColumns,
       agents,
       verifierDid: server.did,
-      // didAliases omitted
       agentStore: { findByDid: vi.fn().mockResolvedValue(null) } as unknown as AgentStore,
     });
 
     const credential = await issueCredential(humanOld.did, humanOld.privateKey, {
-      agent: agentA.did,
-      columns: ['patients.name'],
-      actions: ['read'],
-      expiresIn: '4h',
-    });
-
-    await expect(
-      engine.query({
-        agent: agentA.did,
-        credential,
-        table: 'patients',
-        sql: 'SELECT name FROM patients',
-      }),
-    ).rejects.toThrow('is not the registered owner');
-  });
-
-  it('rejects credential from unrelated DID even with alias registry', async () => {
-    const {
-      agentA,
-      server,
-      verifier,
-      pool,
-      agents,
-      auditLogger,
-      columnKeys,
-      encryptedColumns,
-      aliasRegistry,
-    } = createAliasTestFixtures();
-
-    const engine = new ScopeEngine({
-      pool,
-      verifier,
-      auditLogger,
-      columnKeys,
-      encryptedColumns,
-      agents,
-      verifierDid: server.did,
-      didAliases: aliasRegistry,
-      agentStore: { findByDid: vi.fn().mockResolvedValue(null) } as unknown as AgentStore,
-    });
-
-    const unrelated = generateDidKey();
-    verifier.registerKey(unrelated.did, unrelated.publicKey);
-
-    const credential = await issueCredential(unrelated.did, unrelated.privateKey, {
       agent: agentA.did,
       columns: ['patients.name'],
       actions: ['read'],

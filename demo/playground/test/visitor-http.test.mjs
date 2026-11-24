@@ -4,50 +4,94 @@ import test from 'node:test';
 import { QueryRejectedError, ScopeViolationError } from '@abaxxlabs/agents/sql';
 import { createVisitorHttpHandler } from '../src/visitor-http.mjs';
 import { createVisitorSessionRegistry } from '../src/visitor-session-registry.mjs';
+import { createVisitorSessionCookie } from '../src/visitor-session-cookie.mjs';
+import { createVisitorSessionCleaner } from '../src/visitor-session-cleaner.mjs';
+import { createPlaygroundMetrics } from '../src/playground-metrics.mjs';
 import { resolveHttpBoundaryConfig } from '../src/env-file.mjs';
 
 function fixture(options = {}) {
   const events = [];
   const runtimes = [];
-  let provisionCount = 0;
-  let dropCount = 0;
-  let time = 0;
-  const dropGate = { shouldFail: options.failDropFor };
-  const provisioner = {
-    async createVisitorDatabase() {
-      const number = ++provisionCount;
-      events.push(`provision:${number}`);
-      return {
-        databaseName: `visitor_${number}`,
-        appDatabaseUrl: `postgres://agents_playground_app@localhost/visitor_${number}`,
-      };
+  const sessions = new Map();
+  const origins = new Map();
+  let runtimeCount = 0;
+  let admissions = 0;
+  let now = options.now ?? 1_000_000;
+  const absoluteTtlMs = options.absoluteTtlMs ?? 60_000;
+  const inactivityTtlMs = options.inactivityTtlMs ?? 30_000;
+  const maxSessions = options.maxSessions ?? 4;
+  const maxNewSessions = options.maxNewSessions ?? 100;
+  const rateWindowMs = options.rateWindowMs ?? 60_000;
+  const sessionStore = {
+    async admit({ sandboxId, originHash }) {
+      const bucket = origins.get(originHash);
+      if (!bucket || now - bucket.startedAt >= rateWindowMs) {
+        origins.set(originHash, { startedAt: now, count: 1 });
+      } else if (bucket.count >= maxNewSessions) {
+        return { ok: false, reason: 'rate-limit', retryAfterMs: bucket.startedAt + rateWindowMs - now };
+      } else {
+        bucket.count += 1;
+      }
+      if (sessions.size >= maxSessions) return { ok: false, reason: 'capacity' };
+      admissions += 1;
+      const row = { createdAt: now, expiresAt: now + absoluteTtlMs, lastSeenAt: now, originHash };
+      sessions.set(sandboxId, row);
+      return { ok: true, expiresAt: row.expiresAt, lastSeenAt: now };
     },
-    async dropVisitorDatabase(databaseName) {
-      dropCount += 1;
-      events.push(`drop:${databaseName}`);
-      if (dropGate.shouldFail?.(databaseName)) throw new Error(`drop failed for ${databaseName}`);
+    async resolve({ sandboxId }) {
+      const row = sessions.get(sandboxId);
+      if (!row) return { ok: false, reason: 'unknown' };
+      if (row.expiresAt <= now) return { ok: false, reason: 'absolute-expired' };
+      if (row.lastSeenAt <= now - inactivityTtlMs) return { ok: false, reason: 'inactive' };
+      return { ok: true, expiresAt: row.expiresAt, lastSeenAt: row.lastSeenAt };
+    },
+    async touch({ sandboxId }) {
+      const row = sessions.get(sandboxId);
+      if (!row) return false;
+      row.lastSeenAt = now;
+      return true;
+    },
+    async release({ sandboxId }) {
+      const row = sessions.get(sandboxId);
+      sessions.delete(sandboxId);
+      return Boolean(row);
+    },
+    async countActive() {
+      return sessions.size;
     },
   };
+  const sessionCookie = createVisitorSessionCookie({
+    key: Buffer.alloc(32, 7),
+    absoluteTtlMs,
+    now: () => now,
+  });
   const registry = createVisitorSessionRegistry({
-    provisioner,
-    maxSessions: options.maxSessions ?? 4,
-    inactivityTtlMs: options.inactivityTtlMs ?? 60_000,
-    now: () => time,
-    async createRuntime({ databaseName }) {
-      events.push(`runtime:${databaseName}`);
+    async createRuntime({ sandboxId }) {
+      const label = `visitor_${++runtimeCount}`;
+      events.push(`runtime:${label}`);
       const loggedIn = new Map();
       const scope = {
-        async listAgents() { return [{ name: databaseName }]; },
+        async listAgents() { return [{ name: label }]; },
         auditLoggerInstance: {
-          async export() { return [{ databaseName }]; },
+          async export() { return [{ databaseName: label }]; },
+          async verifyAuditChain() { return { ok: true }; },
         },
       };
       const runtime = {
-        databaseName,
+        sandboxId,
         scope,
-        simulator: { routes: { 'GET /api/sim/agent': async () => [200, { databaseName }] } },
+        simulator: {
+          routes: {
+            'GET /api/sim/agent': async () => [200, { databaseName: label }],
+            'GET /api/sim/raw-bytes': async () => [200, { databaseName: label }],
+            'POST /api/sim/config': async () => [200, { ok: true }],
+            'POST /api/sim/raw': async () => [200, { ok: true }],
+            'POST /api/sim/scoped': async () => [200, { ok: true }],
+            'POST /api/sim/reset': async () => [200, { ok: true }],
+          },
+        },
         async loginSession(alias) {
-          events.push(`login:${databaseName}:${alias}`);
+          events.push(`login:${label}:${alias}`);
           const session = {
             humanDid: `did:key:${alias}`,
             scopeCeiling: {
@@ -62,29 +106,36 @@ function fixture(options = {}) {
           if (!session) throw new Error('No visitor login');
           return session;
         },
-        async close() { events.push(`close:${databaseName}`); },
+        async close() { events.push(`close:${label}`); },
       };
       runtimes.push(runtime);
       return runtime;
     },
   });
-  // Resolved before construction so the handler's public-mode cookie name,
-  // Secure attribute, and HSTS header are live for every request, not just
-  // the per-request boundary check.
   const boundaryConfig = options.publicOrigin !== undefined
     ? resolveHttpBoundaryConfig({
         PLAYGROUND_HTTP_MODE: 'public',
         PLAYGROUND_PUBLIC_ORIGIN: options.publicOrigin,
         PLAYGROUND_TRUSTED_PROXY_IPS: '127.0.0.1/32',
       })
-    : (options.httpBoundaryConfig ?? { mode: 'local' });
+    : { mode: 'local' };
+  const metrics = createPlaygroundMetrics();
+  const sessionCleaner = createVisitorSessionCleaner({
+    registry,
+    sessionStore,
+    logger: { error() {} },
+  });
   const handler = createVisitorHttpHandler({
     registry,
+    sessionStore,
+    sessionCleaner,
+    sessionCookie,
+    metrics,
     libraryVersion: 'test-version',
     httpBoundaryConfig: boundaryConfig,
     hostGatewayIps: null,
     publicRoot: new URL('../public/', import.meta.url).pathname,
-    ...(options.sessionRateLimit ? { sessionRateLimit: options.sessionRateLimit } : {}),
+    now: () => now,
   });
   const server = createServer(handler);
 
@@ -95,13 +146,14 @@ function fixture(options = {}) {
       const address = server.address();
       resolve({
         server,
-        registry,
         runtimes,
         events,
-        get provisionCount() { return provisionCount; },
-        get dropGate() { return dropGate; },
-        advance: (milliseconds) => { time += milliseconds; },
-        get dropCount() { return dropCount; },
+        sessions,
+        sessionStore,
+        sessionCookie,
+        registry,
+        get admissions() { return admissions; },
+        advance(ms) { now += ms; },
         baseUrl: `http://127.0.0.1:${address.port}`,
         port: address.port,
         publicOrigin: options.publicOrigin ?? null,
@@ -110,9 +162,7 @@ function fixture(options = {}) {
   });
 }
 
-// Public-mode peers must be simulated at the socket layer, so this bypasses
-// fetch (which always uses 127.0.0.1) and lets the caller set the Host header
-// and other fields that the boundary policy inspects.
+// Bypasses fetch so callers can set socket peer and Host/Proto headers the boundary inspects.
 function rawRequest(port, path, { method = 'GET', headers = {}, body } = {}) {
   return new Promise((resolve, reject) => {
     const payload = body === undefined ? undefined : JSON.stringify(body);
@@ -145,39 +195,35 @@ async function request(baseUrl, path, { method = 'GET', body, cookie } = {}) {
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  return { response, body: await response.json() };
+  const text = await response.text();
+  let parsed;
+  try {
+    parsed = text ? JSON.parse(text) : undefined;
+  } catch {
+    parsed = undefined;
+  }
+  return { response, body: parsed, text };
 }
 
 function sessionCookie(response) {
   return response.headers.get('set-cookie').split(';', 1)[0];
 }
 
-test('status stays global and never provisions a visitor database', async (t) => {
-  const app = await fixture();
-  t.after(() => new Promise((resolve) => app.server.close(resolve)));
-
-  const { response, body } = await request(app.baseUrl, '/api/status');
-  assert.equal(response.status, 200);
-  assert.deepEqual(body, { status: 'ok', libraryVersion: 'test-version' });
-  assert.equal(app.provisionCount, 0);
-});
-
-test('first login provisions once and a valid login cookie reuses the runtime', async (t) => {
+test('first login creates one runtime and a valid login cookie reuses the runtime', async (t) => {
   const app = await fixture();
   t.after(() => new Promise((resolve) => app.server.close(resolve)));
 
   const first = await request(app.baseUrl, '/api/login', { method: 'POST', body: { humanDid: 'alice' } });
   assert.equal(first.response.status, 200);
   const cookie = sessionCookie(first.response);
-  assert.match(cookie, /^visitorSessionId=[A-Za-z0-9_-]{43}$/);
+  assert.match(cookie, /^visitorSessionId=v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/);
   assert.equal(JSON.stringify(first.body).includes(cookie.split('=')[1]), false);
-  assert.equal(app.provisionCount, 1);
+  assert.equal(app.runtimes.length, 1);
 
   const second = await request(app.baseUrl, '/api/login', {
     method: 'POST', body: { humanDid: 'bob' }, cookie,
   });
   assert.equal(second.response.status, 200);
-  assert.equal(app.provisionCount, 1);
   assert.equal(app.runtimes.length, 1);
   assert.deepEqual(app.events.filter((event) => event.startsWith('login:')), [
     'login:visitor_1:alice', 'login:visitor_1:bob',
@@ -192,7 +238,7 @@ test('separate browser cookies route requests to separate visitor runtimes', asy
   const firstCookie = sessionCookie(first.response);
   const secondCookie = sessionCookie(second.response);
   assert.notEqual(firstCookie, secondCookie);
-  assert.equal(app.provisionCount, 2);
+  assert.equal(app.runtimes.length, 2);
 
   const firstAgents = await request(app.baseUrl, '/api/agents', { cookie: firstCookie });
   const secondAgents = await request(app.baseUrl, '/api/agents', { cookie: secondCookie });
@@ -202,7 +248,7 @@ test('separate browser cookies route requests to separate visitor runtimes', asy
   assert.equal(secondAgents.body.agents[0].name, 'visitor_2');
   assert.equal(firstAudit.body.records[0].databaseName, 'visitor_1');
   assert.equal(secondSimulator.body.databaseName, 'visitor_2');
-  assert.equal(app.provisionCount, 2);
+  assert.equal(app.runtimes.length, 2);
 });
 
 test('query rejections expose the audit ID without exposing scope details or changing HTTP decisions', async (t) => {
@@ -237,79 +283,223 @@ test('query rejections expose the audit ID without exposing scope details or cha
   }
 });
 
-test('query rejections without a valid audit ID report an unconfirmed audit', async (t) => {
-  const app = await fixture();
-  t.after(() => new Promise((resolve) => app.server.close(resolve)));
-  const login = await request(app.baseUrl, '/api/login', { method: 'POST', body: { humanDid: 'alice' } });
-  const cookie = sessionCookie(login.response);
-  const agent = 'did:key:query-agent';
-
-  for (const auditId of [undefined, null, '', '   ', 42, {}, [], ['audit-id']]) {
-    for (const err of [
-      new ScopeViolationError(agent, ['orders.hidden_column'], ['orders.authorized_column']),
-      new QueryRejectedError(agent, 'Only SELECT is allowed'),
-    ]) {
-      if (auditId !== undefined) err.details.auditId = auditId;
-      app.runtimes[0].scope.query = async () => { throw err; };
-      const result = await request(app.baseUrl, '/api/query', {
-        method: 'POST', cookie,
-        body: { agent, credential: 'test-credential', sql: 'SELECT id FROM orders' },
-      });
-      assert.equal(result.response.status, 403);
-      assert.equal(result.body.message, err.message);
-      assert.equal(result.body.inspection.evidence.auditId, null);
-      assert.ok(!result.body.inspection.decisionTrace.includes('Rejection recorded'));
-      assert.ok(result.body.inspection.decisionTrace.includes('Rejection audit not confirmed'));
-    }
-  }
-});
-
-test('invalid visitor cookies and mock identities fail without provisioning', async (t) => {
+test('invalid visitor cookies and mock identities fail without creating a runtime', async (t) => {
   const app = await fixture();
   t.after(() => new Promise((resolve) => app.server.close(resolve)));
 
   for (const { path, options, status, error } of [
-    { path: '/api/agents', options: { cookie: 'visitorSessionId=not-registered' }, status: 401, error: 'VisitorSessionNotFoundError' },
+    { path: '/api/agents', options: { cookie: 'visitorSessionId=not-registered' }, status: 401, error: 'InvalidSessionCookie' },
     { path: '/api/login', options: { method: 'POST', body: { humanDid: 'unknown' } }, status: 400, error: 'ValidationError' },
   ]) {
     const result = await request(app.baseUrl, path, options);
     assert.equal(result.response.status, status);
     assert.equal(result.body.error, error);
-    assert.equal(app.provisionCount, 0);
+    assert.equal(app.runtimes.length, 0);
   }
 });
 
-test('an invalid cookie is replaced by a new session on login after expired cleanup', async (t) => {
+test('an expired session returns an explicit session-lost response and keeps the cookie for re-login', async (t) => {
   const app = await fixture();
   t.after(() => new Promise((resolve) => app.server.close(resolve)));
-  const order = [];
-  const cleanup = app.registry.cleanupExpiredSessions.bind(app.registry);
-  const create = app.registry.createSession.bind(app.registry);
-  app.registry.cleanupExpiredSessions = async () => { order.push('expired-cleanup'); return cleanup(); };
-  app.registry.createSession = async () => { order.push('create-session'); return create(); };
 
-  const { response } = await request(app.baseUrl, '/api/login', {
-    method: 'POST', body: { humanDid: 'alice' }, cookie: 'visitorSessionId=stale-session-id',
+  const login = await request(app.baseUrl, '/api/login', { method: 'POST', body: { humanDid: 'alice' } });
+  const cookie = sessionCookie(login.response);
+  app.advance(31_000);
+
+  const result = await request(app.baseUrl, '/api/agents', { cookie });
+  assert.equal(result.response.status, 410);
+  assert.equal(result.body.error, 'SessionLost');
+  assert.equal(result.body.detail, 'start-a-new-session');
+  assert.equal(result.response.headers.get('set-cookie')?.includes('Max-Age=0') ?? false, false);
+  assert.equal(app.runtimes.length, 1);
+  assert.ok(app.events.includes('close:visitor_1'));
+
+  const relogin = await request(app.baseUrl, '/api/login', {
+    method: 'POST', body: { humanDid: 'alice' }, cookie,
   });
-  assert.equal(response.status, 200);
-  assert.deepEqual(order, ['expired-cleanup', 'create-session']);
-  assert.equal(app.provisionCount, 1);
+  assert.equal(relogin.response.status, 200);
+  assert.equal(app.sessions.size, 1);
+  assert.equal(app.runtimes.length, 2);
+});
+
+test('polling does not extend the inactivity deadline', async (t) => {
+  const app = await fixture();
+  t.after(() => new Promise((resolve) => app.server.close(resolve)));
+
+  const login = await request(app.baseUrl, '/api/login', { method: 'POST', body: { humanDid: 'alice' } });
+  const cookie = sessionCookie(login.response);
+  app.advance(20_000);
+  for (let index = 0; index < 5; index += 1) {
+    assert.equal((await request(app.baseUrl, '/api/agents', { cookie })).response.status, 200);
+  }
+  app.advance(11_000);
+
+  const result = await request(app.baseUrl, '/api/agents', { cookie });
+  assert.equal(result.response.status, 410);
+  assert.equal(result.body.error, 'SessionLost');
+});
+
+test('a tampered cookie is rejected and clears both the local and legacy paths', async (t) => {
+  const app = await fixture();
+  t.after(() => new Promise((resolve) => app.server.close(resolve)));
+
+  const login = await request(app.baseUrl, '/api/login', { method: 'POST', body: { humanDid: 'alice' } });
+  const cookie = sessionCookie(login.response);
+  const tampered = `${cookie.slice(0, -1)}${cookie.endsWith('A') ? 'B' : 'A'}`;
+
+  const result = await request(app.baseUrl, '/api/agents', { cookie: tampered });
+  assert.equal(result.response.status, 401);
+  assert.equal(result.body.error, 'InvalidSessionCookie');
+  const cleared = result.response.headers.getSetCookie();
+  assert.equal(cleared.length, 2);
+  assert.ok(cleared.some((value) => value.includes('Path=/api')));
+  assert.ok(cleared.some((value) => value.endsWith('Path=/')));
+  assert.equal(app.runtimes.length, 1);
+});
+
+test('a valid cookie for an unknown sandbox returns session-lost', async (t) => {
+  const app = await fixture();
+  t.after(() => new Promise((resolve) => app.server.close(resolve)));
+  const token = app.sessionCookie.issue({ sandboxId: 'a'.repeat(43) }).token;
+
+  const result = await request(app.baseUrl, '/api/agents', { cookie: `visitorSessionId=${token}` });
+  assert.equal(result.response.status, 410);
+  assert.equal(result.body.error, 'SessionLost');
+  assert.equal(app.runtimes.length, 0);
+});
+
+test('login with an invalid cookie starts a new session instead of reusing an identity', async (t) => {
+  const app = await fixture();
+  t.after(() => new Promise((resolve) => app.server.close(resolve)));
+
+  const first = await request(app.baseUrl, '/api/login', {
+    method: 'POST', body: { humanDid: 'alice' }, cookie: 'visitorSessionId=stale',
+  });
+  assert.equal(first.response.status, 200);
+  assert.match(sessionCookie(first.response), /^visitorSessionId=v1\./);
+  assert.equal(app.runtimes.length, 1);
+});
+
+test('login with two local visitor cookies starts a new session and clears the legacy path', async (t) => {
+  const app = await fixture();
+  t.after(() => new Promise((resolve) => app.server.close(resolve)));
+
+  const result = await request(app.baseUrl, '/api/login', {
+    method: 'POST', body: { humanDid: 'alice' }, cookie: 'visitorSessionId=first; visitorSessionId=second',
+  });
+  assert.equal(result.response.status, 200);
+  const cookies = result.response.headers.getSetCookie();
+  assert.ok(cookies.some((value) => value.startsWith('visitorSessionId=v1.')));
+  assert.ok(cookies.some((value) => value.includes('Max-Age=0') && value.includes('Path=/api')));
+  assert.equal(app.runtimes.length, 1);
+});
+
+test('a reused cookie near expiry is reissued with a positive Max-Age', async (t) => {
+  const app = await fixture({ absoluteTtlMs: 60_000, inactivityTtlMs: 120_000 });
+  t.after(() => new Promise((resolve) => app.server.close(resolve)));
+
+  const login = await request(app.baseUrl, '/api/login', { method: 'POST', body: { humanDid: 'alice' } });
+  const cookie = sessionCookie(login.response);
+  app.advance(59_999);
+
+  const relogin = await request(app.baseUrl, '/api/login', {
+    method: 'POST', body: { humanDid: 'bob' }, cookie,
+  });
+  assert.equal(relogin.response.status, 200);
+  const issued = relogin.response.headers.getSetCookie().find((value) => value.startsWith('visitorSessionId=v1.'));
+  assert.match(issued, /Max-Age=1;/);
+});
+
+test('a session store failure maps to 503 without becoming a validation or cookie error', async (t) => {
+  const app = await fixture();
+  t.after(() => new Promise((resolve) => app.server.close(resolve)));
+
+  const login = await request(app.baseUrl, '/api/login', { method: 'POST', body: { humanDid: 'alice' } });
+  const cookie = sessionCookie(login.response);
+  app.sessionStore.resolve = async () => { throw new Error('control database unavailable'); };
+  const resolveFailure = await request(app.baseUrl, '/api/agents', { cookie });
+  assert.equal(resolveFailure.response.status, 503);
+  assert.equal(resolveFailure.body.error, 'SessionPlaneUnavailable');
+
+  app.sessionStore.admit = async () => { throw new Error('control database unavailable'); };
+  const admitFailure = await request(app.baseUrl, '/api/login', { method: 'POST', body: { humanDid: 'bob' } });
+  assert.equal(admitFailure.response.status, 503);
+  assert.equal(admitFailure.body.error, 'SessionPlaneUnavailable');
+});
+
+test('new-session admission is rejected by origin without creating a session', async (t) => {
+  const app = await fixture({ maxNewSessions: 1 });
+  t.after(() => new Promise((resolve) => app.server.close(resolve)));
+
+  const first = await request(app.baseUrl, '/api/login', { method: 'POST', body: { humanDid: 'alice' } });
+  assert.equal(first.response.status, 200);
+  const second = await request(app.baseUrl, '/api/login', { method: 'POST', body: { humanDid: 'bob' } });
+  assert.equal(second.response.status, 429);
+  assert.equal(second.body.error, 'RateLimitExceeded');
+  assert.ok(Number(second.response.headers.get('retry-after')) > 0);
+  assert.equal(app.runtimes.length, 1);
+  assert.equal(app.admissions, 1);
+});
+
+test('login keeps an active row when this replica has no runtime', async (t) => {
+  const app = await fixture();
+  t.after(() => new Promise((resolve) => app.server.close(resolve)));
+
+  const first = await request(app.baseUrl, '/api/login', { method: 'POST', body: { humanDid: 'alice' } });
+  const cookie = sessionCookie(first.response);
+  const sandboxId = app.sessionCookie.verify(cookie.split('=')[1]).sandboxId;
+  await app.registry.closeRuntime(sandboxId);
+  assert.equal(app.sessions.has(sandboxId), true);
+
+  const second = await request(app.baseUrl, '/api/login', {
+    method: 'POST', body: { humanDid: 'bob' }, cookie,
+  });
+  assert.equal(second.response.status, 200);
+  assert.equal(app.sessions.has(sandboxId), true);
+  assert.equal(app.sessions.size, 2);
+  assert.equal(app.runtimes.length, 2);
+});
+
+test('login issues a cookie with the live reservation expiry', async (t) => {
+  const app = await fixture();
+  t.after(() => new Promise((resolve) => app.server.close(resolve)));
+
+  const login = await request(app.baseUrl, '/api/login', { method: 'POST', body: { humanDid: 'alice' } });
+  const cookie = sessionCookie(login.response);
+  const verdict = app.sessionCookie.verify(cookie.split('=')[1]);
+  assert.equal(verdict.ok, true);
+  assert.equal(verdict.expiresAt, app.sessions.get(verdict.sandboxId).expiresAt);
+});
+
+test('a full global cap rejects admission with 503 and creates no runtime', async (t) => {
+  const app = await fixture({ maxSessions: 0 });
+  t.after(() => new Promise((resolve) => app.server.close(resolve)));
+
+  const result = await request(app.baseUrl, '/api/login', { method: 'POST', body: { humanDid: 'alice' } });
+  assert.equal(result.response.status, 503);
+  assert.equal(result.body.error, 'VisitorSessionCapacityError');
+  assert.equal(app.runtimes.length, 0);
+  assert.equal(app.sessions.size, 0);
+});
+
+test('metrics expose active sessions, admissions and route latency', async (t) => {
+  const app = await fixture();
+  t.after(() => new Promise((resolve) => app.server.close(resolve)));
+
+  await request(app.baseUrl, '/api/login', { method: 'POST', body: { humanDid: 'alice' } });
+  const result = await request(app.baseUrl, '/metrics');
+  assert.equal(result.response.status, 200);
+  assert.match(result.response.headers.get('content-type'), /text\/plain/);
+  assert.match(result.text, /^# TYPE playground_admissions_total counter$/m);
+  assert.match(result.text, /^playground_admissions_total\{origin="[0-9a-f]{12}"\} 1$/m);
+  assert.match(result.text, /^playground_sessions_active 1$/m);
+  assert.match(result.text, /^# TYPE playground_request_duration_seconds histogram$/m);
+  assert.match(result.text, /playground_request_duration_seconds_count\{method="POST",route="login",status="200"\} 1/);
 });
 
 function publicHost(app) {
   return new URL(app.publicOrigin).host;
 }
-
-test('public mode serves the UI to a socket peer inside a trusted CIDR', async (t) => {
-  const app = await fixture({ publicOrigin: 'https://playground.example.com' });
-  t.after(() => new Promise((resolve) => app.server.close(resolve)));
-
-  const status = await rawRequest(app.port, '/api/status', {
-    headers: { host: publicHost(app), 'x-forwarded-proto': 'https' },
-  });
-  assert.equal(status.status, 200);
-  assert.equal(JSON.parse(status.body).libraryVersion, 'test-version');
-});
 
 test('public mode 403s a forged Host/Proto from the same trusted peer', async (t) => {
   const app = await fixture({ publicOrigin: 'https://playground.example.com' });
@@ -323,86 +513,4 @@ test('public mode 403s a forged Host/Proto from the same trusted peer', async (t
     headers: { host: publicHost(app), 'x-forwarded-proto': 'http' },
   });
   assert.equal(badProto.status, 403);
-});
-
-test('public mode probes are served pre-boundary and unauthenticated requests are 403', async (t) => {
-  const app = await fixture({ publicOrigin: 'https://playground.example.com' });
-  t.after(() => new Promise((resolve) => app.server.close(resolve)));
-
-  // /healthz responds before the boundary check.
-  const health = await rawRequest(app.port, '/healthz');
-  assert.equal(health.status, 200);
-
-  // A real socket peer (127.0.0.1) is in the configured CIDR, but without the
-  // public Host header the boundary rejects the UI request.
-  const noHost = await rawRequest(app.port, '/api/status');
-  assert.equal(noHost.status, 403);
-});
-
-test('public mode login serves the __Host- secure session cookie and HSTS from a trusted peer', async (t) => {
-  const app = await fixture({ publicOrigin: 'https://playground.example.com' });
-  t.after(() => new Promise((resolve) => app.server.close(resolve)));
-
-  const { status, headers } = await rawRequest(app.port, '/api/login', {
-    method: 'POST',
-    body: { humanDid: 'alice' },
-    headers: { host: publicHost(app), origin: app.publicOrigin, 'x-forwarded-proto': 'https' },
-  });
-  assert.equal(status, 200);
-  assert.equal(app.provisionCount, 1);
-
-  const cookies = headers['set-cookie'];
-  assert.ok(Array.isArray(cookies), 'expected a set-cookie array on public login');
-  const session = cookies.find((cookie) => cookie.startsWith('__Host-visitorSessionId='));
-  assert.ok(session, 'expected the __Host- prefixed public session cookie');
-  assert.match(session, /;\s*Secure/);
-  assert.match(session, /HttpOnly/);
-  assert.ok(cookies.some((cookie) => cookie.startsWith('visitorSessionId=;')), 'expected the legacy cookie to be expired');
-
-  assert.equal(headers['strict-transport-security'], 'max-age=31536000');
-});
-
-test('a rate-limited login rejects before cleanup retries run', async (t) => {
-  const app = await fixture({ sessionRateLimit: { maxNewSessions: 2, windowMs: 60_000 }, failDropFor: () => true });
-  t.after(() => new Promise((resolve) => app.server.close(resolve)));
-  let cleanupRuns = 0;
-  const cleanup = app.registry.cleanupExpiredSessions.bind(app.registry);
-  app.registry.cleanupExpiredSessions = async () => { cleanupRuns += 1; return cleanup(); };
-
-  const login = (alias) => request(app.baseUrl, '/api/login', { method: 'POST', body: { humanDid: alias } });
-  await login('alice');
-  await login('bob');
-  app.advance(61_000);
-  cleanupRuns = 0;
-  const third = await login('alice');
-  assert.equal(third.response.status, 429);
-  assert.equal(third.body.error, 'RateLimitExceeded');
-  assert.match(third.response.headers.get('retry-after'), /^\d+$/);
-  assert.equal(cleanupRuns, 0);
-  assert.equal(app.provisionCount, 2);
-  assert.equal(app.dropCount, 0);
-});
-
-test('a failed session cleanup holds login at capacity until the next retry frees the slot', async (t) => {
-  const app = await fixture({ maxSessions: 2, failDropFor: () => true });
-  t.after(() => new Promise((resolve) => app.server.close(resolve)));
-
-  const login = (alias) => request(app.baseUrl, '/api/login', { method: 'POST', body: { humanDid: alias } });
-  await login('alice');
-  await login('bob');
-  assert.equal(app.provisionCount, 2);
-  app.advance(61_000);
-  const rejected = await login('alice');
-  assert.equal(rejected.response.status, 503);
-  assert.equal(rejected.body.error, 'VisitorSessionCapacityError');
-  assert.equal(app.provisionCount, 2);
-  const closesBefore = app.events.filter((event) => event.startsWith('close:')).length;
-  const dropsBefore = app.dropCount;
-  app.dropGate.shouldFail = () => false;
-  const admitted = await login('alice');
-  assert.equal(admitted.response.status, 200);
-  assert.equal(app.provisionCount, 3);
-  assert.match(sessionCookie(admitted.response), /^visitorSessionId=[A-Za-z0-9_-]{43}$/);
-  assert.equal(app.events.filter((event) => event.startsWith('close:')).length, closesBefore);
-  assert.ok(app.dropCount > dropsBefore, 'retry re-issued DROPs without re-closing runtimes');
 });

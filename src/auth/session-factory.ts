@@ -30,6 +30,64 @@ import type { Logger } from '#observability/logger.js';
 import { getLogger } from '#observability/logger.js';
 import { assertExpiresInBound } from '#config.js';
 
+/** Parent tenant that signs agent credentials on the human's behalf. */
+export interface ParentIssuerConfig {
+  provider: {
+    requestAgentCredential: (
+      accessToken: string,
+      agentDid: string,
+      options: {
+        columns: string[];
+        actions: string[];
+        expiresIn: string | number;
+        maxDepth?: number;
+      },
+    ) => Promise<{ jwt: string; issuerDid: string }>;
+  };
+  accessToken: string;
+  issuerDid?: string;
+  credentialExp?: number;
+}
+
+// A parent-bound session must not silently self-sign: callers cannot tell the two apart.
+async function issueViaParent(
+  parentConfig: ParentIssuerConfig,
+  options: IssueCredentialOptions,
+  logger: Logger,
+): Promise<string> {
+  if (parentConfig.credentialExp && Math.floor(Date.now() / 1000) > parentConfig.credentialExp) {
+    throw new Error(
+      'Parent credential has expired. Re-authenticate with the AbaxxOne parent instance ' +
+        'to obtain a fresh credential before issuing new agent credentials.',
+    );
+  }
+
+  try {
+    const result = await issueCredentialFromParent(
+      parentConfig.provider,
+      parentConfig.accessToken,
+      options.agent,
+      {
+        columns: options.columns,
+        actions: options.actions,
+        expiresIn: options.expiresIn,
+        maxDepth: options.maxDepth,
+      },
+    );
+    return result.jwt;
+  } catch (e) {
+    // Transports send a generic message, so the upstream reason is only visible in this log.
+    if (e instanceof ParentCredentialRequestFailedError) {
+      logger.error(`[agents] Parent credential request failed: ${e.message}`, {
+        tenantUrl: e.tenantUrl,
+        upstreamStatus: e.httpStatus,
+        upstreamBody: e.details?.upstreamBody,
+      });
+    }
+    throw e;
+  }
+}
+
 function revokeCredentialHelper(
   verifier: VcVerifier,
   sdk: IdSdkInstance | undefined,
@@ -65,23 +123,7 @@ export function createSessionFromDid(
   _oidcConfig?: { tenantUrl: string },
   humanPrivateKey?: Uint8Array,
   ceiling: ScopeCeiling = unrestrictedCeiling(),
-  parentConfig?: {
-    provider: {
-      requestAgentCredential: (
-        accessToken: string,
-        agentDid: string,
-        options: {
-          columns: string[];
-          actions: string[];
-          expiresIn: string | number;
-          maxDepth?: number;
-        },
-      ) => Promise<{ jwt: string; issuerDid: string }>;
-    };
-    accessToken: string;
-    issuerDid: string;
-    credentialExp: number;
-  },
+  parentConfig?: ParentIssuerConfig,
   logger: Logger = getLogger(),
 ): AuthenticatedSession {
   return {
@@ -101,43 +143,7 @@ export function createSessionFromDid(
         assertExpiresInBound(options.expiresIn, ceiling.credentialMaxTtlMs);
       }
 
-      if (
-        parentConfig?.credentialExp &&
-        Math.floor(Date.now() / 1000) > parentConfig.credentialExp
-      ) {
-        throw new Error(
-          'Parent credential has expired. Re-authenticate with the AbaxxOne parent instance ' +
-            'to obtain a fresh credential before issuing new agent credentials.',
-        );
-      }
-
-      // A parent-bound session must not silently self-sign: callers cannot tell the two apart.
-      if (parentConfig) {
-        try {
-          const result = await issueCredentialFromParent(
-            parentConfig.provider,
-            parentConfig.accessToken,
-            options.agent,
-            {
-              columns: options.columns,
-              actions: options.actions,
-              expiresIn: options.expiresIn,
-              maxDepth: options.maxDepth,
-            },
-          );
-          return result.jwt;
-        } catch (e) {
-          // Transports send a generic message, so the upstream reason is only visible in this log.
-          if (e instanceof ParentCredentialRequestFailedError) {
-            logger.error(`[agents] Parent credential request failed: ${e.message}`, {
-              tenantUrl: e.tenantUrl,
-              upstreamStatus: e.httpStatus,
-              upstreamBody: e.details?.upstreamBody,
-            });
-          }
-          throw e;
-        }
-      }
+      if (parentConfig) return issueViaParent(parentConfig, options, logger);
 
       if (options.requireParent) {
         throw new Error(
@@ -218,6 +224,7 @@ export function createOidcSession(
   sdk?: IdSdkInstance,
   ceiling: ScopeCeiling = unrestrictedCeiling(),
   logger: Logger = getLogger(),
+  parentConfig?: ParentIssuerConfig,
 ): AuthenticatedSession {
   const seed = createHash('sha256')
     .update(identity.issuer + '\x00' + identity.sub)
@@ -250,6 +257,8 @@ export function createOidcSession(
     humanDid,
     email: identity.email,
     scopeCeiling: ceiling,
+    parentIssuerDid: parentConfig?.issuerDid,
+    parentCredentialExp: parentConfig?.credentialExp,
 
     async issueCredential(options: IssueCredentialOptions): Promise<string> {
       assertScopeFitsInCeiling(
@@ -259,6 +268,12 @@ export function createOidcSession(
       );
       if (ceiling.credentialMaxTtlMs !== undefined) {
         assertExpiresInBound(options.expiresIn, ceiling.credentialMaxTtlMs);
+      }
+      if (parentConfig) return issueViaParent(parentConfig, options, logger);
+      if (options.requireParent) {
+        throw new Error(
+          'requireParent is set but no parent provider is configured on this session.',
+        );
       }
       if (sdk) {
         const jwt = await issueCredentialWithSdk(sdk, humanDid, options).catch<null>(() => null);

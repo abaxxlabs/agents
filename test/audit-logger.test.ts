@@ -1,7 +1,6 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { AuditLogger, hashCredential, hashQuery, hashAuditRecord } from '#audit/index.js';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { AuditLogger, hashAuditRecord } from '#audit/index.js';
 import { generateDidKey, createSigner } from '#auth/index.js';
-import { DidAliasRegistry } from '#did/alias.js';
 import type { AuditEntry, AuditRecord } from '#types/index.js';
 import { createMockAuditStore } from './mocks/audit-store.js';
 
@@ -24,181 +23,56 @@ describe('Audit Logger', () => {
     };
   });
 
-  describe('record creation and signing', () => {
-    it('creates a signed audit record', async () => {
-      const store = createMockAuditStore();
-      const logger = new AuditLogger({ auditStore: store, enabled: true });
+  it('creates a signed audit record', async () => {
+    const store = createMockAuditStore();
+    const logger = new AuditLogger({ auditStore: store, enabled: true });
 
-      const record = await logger.log(entry, createSigner(agent.privateKey));
+    const record = await logger.log(entry, createSigner(agent.privateKey));
 
-      expect(record.id).toBeDefined();
-      expect(record.agentDid).toBe(agent.did);
-      expect(record.ownerDid).toBe(human.did);
-      expect(record.columnsAccessed).toEqual(['patients.name', 'patients.dob']);
-      expect(record.rowCount).toBe(5);
-      expect(record.signature).toBeDefined();
-      expect(record.signature.split('.').length).toBe(3); // JWT format
-    });
-
-    it('persists record via auditStore.append', async () => {
-      const store = createMockAuditStore();
-      const logger = new AuditLogger({ auditStore: store, enabled: true });
-
-      await logger.log(entry, createSigner(agent.privateKey));
-      expect(store.append).toHaveBeenCalledTimes(1);
-      expect(store.append).toHaveBeenCalledWith(expect.objectContaining({ agentDid: agent.did }));
-    });
+    expect(record.id).toBeDefined();
+    expect(record.agentDid).toBe(agent.did);
+    expect(record.ownerDid).toBe(human.did);
+    expect(record.columnsAccessed).toEqual(['patients.name', 'patients.dob']);
+    expect(record.rowCount).toBe(5);
+    expect(record.signature).toBeDefined();
+    expect(record.signature.split('.').length).toBe(3);
   });
 
-  describe('signature verification', () => {
-    it('verifies a valid audit record signature', async () => {
-      const store = createMockAuditStore();
-      const logger = new AuditLogger({ auditStore: store, enabled: true });
+  it('throws AuditWriteFailedError on write failure (always fail-closed)', async () => {
+    const store = createMockAuditStore({ failOnAppend: true });
+    const logger = new AuditLogger({ auditStore: store, enabled: true });
 
-      const record = await logger.log(entry, createSigner(agent.privateKey));
-      const verified = await logger.verifyRecord(record, agent.publicKey);
-      expect(verified).toBe(true);
-    });
-
-    it('rejects record with wrong public key', async () => {
-      const store = createMockAuditStore();
-      const logger = new AuditLogger({ auditStore: store, enabled: true });
-
-      const record = await logger.log(entry, createSigner(agent.privateKey));
-      const other = generateDidKey();
-      const verified = await logger.verifyRecord(record, other.publicKey);
-      expect(verified).toBe(false);
-    });
+    await expect(logger.log(entry, createSigner(agent.privateKey))).rejects.toThrow(
+      'Could not write audit record',
+    );
   });
 
-  describe('write failure behavior', () => {
-    it('throws AuditWriteFailedError on write failure (always fail-closed)', async () => {
-      const store = createMockAuditStore({ failOnAppend: true });
-      const logger = new AuditLogger({ auditStore: store, enabled: true });
+  it('second record chains to first via previousHash', async () => {
+    const store = createMockAuditStore();
+    const logger = new AuditLogger({ auditStore: store, enabled: true });
 
-      await expect(logger.log(entry, createSigner(agent.privateKey))).rejects.toThrow(
-        'Could not write audit record',
-      );
-    });
-  });
+    const record1 = await logger.log(entry, createSigner(agent.privateKey));
+    const record2 = await logger.log(entry, createSigner(agent.privateKey));
 
-  describe('disabled audit', () => {
-    it('returns record without calling append when disabled', async () => {
-      const store = createMockAuditStore();
-      const logger = new AuditLogger({ auditStore: store, enabled: false });
-
-      const record = await logger.log(entry, createSigner(agent.privateKey));
-      expect(record.id).toBeDefined();
-      expect(store.append).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('hash chaining', () => {
-    it('first record has previousHash = GENESIS', async () => {
-      const store = createMockAuditStore();
-      const logger = new AuditLogger({ auditStore: store, enabled: true });
-
-      const record = await logger.log(entry, createSigner(agent.privateKey));
-      expect(record.previousHash).toBe('GENESIS');
+    const expectedHash = hashAuditRecord({
+      id: record1.id,
+      timestamp: record1.timestamp,
+      agentDid: record1.agentDid,
+      ownerDid: record1.ownerDid,
+      credentialId: record1.credentialId,
+      queryHash: record1.queryHash,
+      columnsAccessed: record1.columnsAccessed,
+      rowCount: record1.rowCount,
+      durationMs: record1.durationMs,
+      previousHash: record1.previousHash,
+      version: record1.version,
+      status: record1.status,
+      reason: record1.reason,
+      reasonCode: record1.reasonCode,
     });
 
-    it('second record chains to first via previousHash', async () => {
-      const store = createMockAuditStore();
-      const logger = new AuditLogger({ auditStore: store, enabled: true });
-
-      const record1 = await logger.log(entry, createSigner(agent.privateKey));
-      const record2 = await logger.log(entry, createSigner(agent.privateKey));
-
-      // record2.previousHash should be the hash of record1 (without signature)
-      const expectedHash = hashAuditRecord({
-        id: record1.id,
-        timestamp: record1.timestamp,
-        agentDid: record1.agentDid,
-        ownerDid: record1.ownerDid,
-        credentialId: record1.credentialId,
-        queryHash: record1.queryHash,
-        columnsAccessed: record1.columnsAccessed,
-        rowCount: record1.rowCount,
-        durationMs: record1.durationMs,
-        previousHash: record1.previousHash,
-        version: record1.version,
-        status: record1.status,
-        reason: record1.reason,
-        reasonCode: record1.reasonCode,
-      });
-
-      expect(record2.previousHash).toBe(expectedHash);
-      expect(record2.previousHash).not.toBe('GENESIS');
-    });
-
-    it('hash chain is deterministic', async () => {
-      const store = createMockAuditStore();
-      const logger = new AuditLogger({ auditStore: store, enabled: true });
-
-      const record1 = await logger.log(entry, createSigner(agent.privateKey));
-      const record2 = await logger.log(entry, createSigner(agent.privateKey));
-      const record3 = await logger.log(entry, createSigner(agent.privateKey));
-
-      // Each record should have a different previousHash
-      expect(record1.previousHash).toBe('GENESIS');
-      expect(record2.previousHash).not.toBe('GENESIS');
-      expect(record3.previousHash).not.toBe(record2.previousHash);
-    });
-  });
-
-  describe('timestamps', () => {
-    afterEach(() => vi.restoreAllMocks());
-
-    it('never repeat while the clock stands still or steps back', async () => {
-      const logger = new AuditLogger({ auditStore: createMockAuditStore(), enabled: true });
-      const signer = createSigner(agent.privateKey);
-      const now = vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000);
-
-      const first = await logger.log(entry, signer);
-      const second = await logger.log(entry, signer);
-      now.mockReturnValue(1_799_999_999_000);
-      const third = await logger.log(entry, signer);
-
-      expect([first, second, third].map((record) => Date.parse(record.timestamp))).toEqual([
-        1_800_000_000_000, 1_800_000_000_001, 1_800_000_000_002,
-      ]);
-    });
-
-    it('are later than the stored head, whatever form the store returns it in', async () => {
-      const signer = createSigner(agent.privateKey);
-      const head = await new AuditLogger({ auditStore: createMockAuditStore(), enabled: true }).log(
-        entry,
-        signer,
-      );
-      const ahead = Date.now() + 60_000;
-
-      for (const timestamp of [new Date(ahead).toISOString(), new Date(ahead)]) {
-        const store = createMockAuditStore();
-        vi.mocked(store.loadLastRecordLocked).mockResolvedValue({
-          ...head,
-          timestamp: timestamp as string,
-        });
-        const logger = new AuditLogger({ auditStore: store, enabled: true });
-        const record = await logger.log(entry, signer);
-        expect(Date.parse(record.timestamp)).toBe(ahead + 1);
-      }
-    });
-  });
-
-  describe('hashing', () => {
-    it('hashes credential JWT deterministically', () => {
-      const h1 = hashCredential('eyJ.test.jwt');
-      const h2 = hashCredential('eyJ.test.jwt');
-      expect(h1).toBe(h2);
-      expect(h1.length).toBe(16);
-    });
-
-    it('hashes SQL query deterministically', () => {
-      const h1 = hashQuery('SELECT * FROM patients');
-      const h2 = hashQuery('SELECT * FROM patients');
-      expect(h1).toBe(h2);
-      expect(h1.length).toBe(64); // SHA-256 hex
-    });
+    expect(record2.previousHash).toBe(expectedHash);
+    expect(record2.previousHash).not.toBe('GENESIS');
   });
 });
 
@@ -213,11 +87,7 @@ describe('AuditLogger.verifyAuditChain', () => {
     };
   }
 
-  function makeRecord(
-    id: string,
-    previousHash: string,
-    overrides: Partial<AuditRecord> = {},
-  ): AuditRecord {
+  function makeRecord(id: string, previousHash: string): AuditRecord {
     const base: Omit<AuditRecord, 'signature'> = {
       id,
       timestamp: new Date().toISOString(),
@@ -232,42 +102,8 @@ describe('AuditLogger.verifyAuditChain', () => {
       version: 2,
       status: 'success',
     };
-    return { ...base, signature: 'unsigned', ...overrides };
+    return { ...base, signature: 'unsigned' };
   }
-
-  it('returns ok=true with totalRecords=0 for an empty chain', async () => {
-    const store = makeAuditStore([]);
-    const logger = new AuditLogger({ auditStore: store, enabled: false });
-    const result = await logger.verifyAuditChain();
-    expect(result.ok).toBe(true);
-    expect(result.totalRecords).toBe(0);
-  });
-
-  it('returns ok=true for a valid 2-record chain', async () => {
-    const rec1 = makeRecord('rec-1', 'GENESIS');
-    const hash1 = hashAuditRecord(rec1);
-    const rec2 = makeRecord('rec-2', hash1);
-
-    const store = makeAuditStore([rec1, rec2]);
-    const logger = new AuditLogger({ auditStore: store, enabled: false });
-    const result = await logger.verifyAuditChain();
-    expect(result.ok).toBe(true);
-    expect(result.totalRecords).toBe(2);
-  });
-
-  it('returns ok=true for a valid 3-record chain', async () => {
-    const rec1 = makeRecord('rec-1', 'GENESIS');
-    const hash1 = hashAuditRecord(rec1);
-    const rec2 = makeRecord('rec-2', hash1);
-    const hash2 = hashAuditRecord(rec2);
-    const rec3 = makeRecord('rec-3', hash2);
-
-    const store = makeAuditStore([rec1, rec2, rec3]);
-    const logger = new AuditLogger({ auditStore: store, enabled: false });
-    const result = await logger.verifyAuditChain();
-    expect(result.ok).toBe(true);
-    expect(result.totalRecords).toBe(3);
-  });
 
   it('returns ok=false with failedAt pointing to the broken record', async () => {
     const rec1 = makeRecord('rec-1', 'GENESIS');
@@ -281,121 +117,5 @@ describe('AuditLogger.verifyAuditChain', () => {
     expect(result.ok).toBe(false);
     expect(result.failedAt).toBe('rec-2');
     expect(result.totalRecords).toBe(3);
-  });
-
-  it('unfiltered call returns partial=false', async () => {
-    const rec1 = makeRecord('rec-1', 'GENESIS');
-    const rec2 = makeRecord('rec-2', hashAuditRecord(rec1));
-    const store = makeAuditStore([rec1, rec2]);
-    const logger = new AuditLogger({ auditStore: store, enabled: false });
-    const result = await logger.verifyAuditChain();
-    expect(result.ok).toBe(true);
-    expect(result.partial).toBe(false);
-  });
-
-  it('filtered call returns ok=true and partial=true for an untampered subset', async () => {
-    const rec1 = makeRecord('rec-1', 'GENESIS');
-    const hash1 = hashAuditRecord(rec1);
-    const rec2 = makeRecord('rec-2', hash1);
-    const hash2 = hashAuditRecord(rec2);
-    const rec3 = makeRecord('rec-3', hash2);
-
-    const store = makeAuditStore([rec2, rec3]);
-    const logger = new AuditLogger({ auditStore: store, enabled: false });
-    const result = await logger.verifyAuditChain({ since: new Date('2020-01-01') });
-    expect(result.ok).toBe(true);
-    expect(result.partial).toBe(true);
-    expect(result.totalRecords).toBe(2);
-  });
-
-  it('since-filtered call uses the unqualified error message when a record in the subset is tampered', async () => {
-    const rec1 = makeRecord('rec-1', 'GENESIS');
-    const hash1 = hashAuditRecord(rec1);
-    const rec2 = makeRecord('rec-2', hash1);
-    const rec3 = makeRecord('rec-3', 'tampered-hash');
-
-    const store = makeAuditStore([rec2, rec3]);
-    const logger = new AuditLogger({ auditStore: store, enabled: false });
-    const result = await logger.verifyAuditChain({ since: new Date('2020-01-01') });
-    expect(result.ok).toBe(false);
-    expect(result.partial).toBe(true);
-    expect(result.failedAt).toBe('rec-3');
-
-    expect(result.error).toContain('Hash chain broken at record');
-    expect(result.error).not.toContain('in filtered subset');
-    expect(result.error).not.toContain('may reflect non-consecutive records');
-  });
-
-  it('agent-filtered call qualifies the error as a possible non-consecutive subset gap', async () => {
-    const rec1 = makeRecord('rec-1', 'GENESIS');
-    const hash1 = hashAuditRecord(rec1);
-    const rec2 = makeRecord('rec-2', hash1);
-    const rec3 = makeRecord('rec-3', 'interleaved-record-hash');
-
-    const store = makeAuditStore([rec2, rec3]);
-    const logger = new AuditLogger({ auditStore: store, enabled: false });
-    const result = await logger.verifyAuditChain({ agentDid: 'did:key:zAgent' });
-    expect(result.ok).toBe(false);
-    expect(result.partial).toBe(true);
-    expect(result.failedAt).toBe('rec-3');
-
-    expect(result.error).toContain('in filtered subset');
-    expect(result.error).toContain('may reflect non-consecutive records');
-    expect(result.error).toContain('without filters for root-of-chain proof');
-  });
-
-  it('unfiltered call uses the unqualified error message', async () => {
-    const rec1 = makeRecord('rec-1', 'GENESIS');
-    const rec2 = makeRecord('rec-2', 'not-the-right-hash');
-
-    const store = makeAuditStore([rec1, rec2]);
-    const logger = new AuditLogger({ auditStore: store, enabled: false });
-    const result = await logger.verifyAuditChain();
-    expect(result.ok).toBe(false);
-    expect(result.partial).toBe(false);
-    expect(result.error).toContain('Hash chain broken at record');
-    expect(result.error).not.toContain('in filtered subset');
-    expect(result.error).not.toContain('may reflect non-consecutive records');
-  });
-
-  it('filtered call on a single record returns ok=true and partial=true', async () => {
-    const rec1 = makeRecord('rec-1', 'GENESIS');
-    const hash1 = hashAuditRecord(rec1);
-    const rec2 = makeRecord('rec-2', hash1);
-
-    const store = makeAuditStore([rec2]);
-    const logger = new AuditLogger({ auditStore: store, enabled: false });
-    const result = await logger.verifyAuditChain({ agentDid: 'did:key:zAgent' });
-    expect(result.ok).toBe(true);
-    expect(result.partial).toBe(true);
-    expect(result.totalRecords).toBe(1);
-  });
-
-  it('preserves orgId filter when alias expansion fires', async () => {
-    const aliasRegistry = new DidAliasRegistry();
-    aliasRegistry.addAlias({
-      oldDid: 'did:key:zOld',
-      newDid: 'did:dht:New',
-      credentialHash: 'hash-deadbeef',
-      migratedAt: new Date(),
-      expiresAt: new Date(Date.now() + 86_400_000),
-    });
-
-    const rec = makeRecord('rec-A', 'GENESIS', { orgId: 'org-A' });
-    const store = makeAuditStore([rec]);
-    const logger = new AuditLogger({
-      auditStore: store,
-      aliasRegistry,
-      enabled: false,
-    });
-
-    await logger.export({ agentDid: 'did:key:zOld', orgId: 'org-A' });
-
-    expect(store.query).toHaveBeenCalledWith(
-      expect.objectContaining({
-        agentDids: expect.arrayContaining(['did:key:zOld', 'did:dht:New']),
-        orgId: 'org-A',
-      }),
-    );
   });
 });

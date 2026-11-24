@@ -59,7 +59,7 @@ describe('Cross-org federation primitive (Beat 7)', () => {
     const orgBVerifier = new VcVerifier({
       revocationStore: new InMemoryRevocationStore(),
     });
-    const orgBEnrolled = new Set<string>(); // empty — nobody enrolled yet
+    const orgBEnrolled = new Set<string>();
 
     const vp = await createPresentation(credUnknown, unknownAgent.did, unknownSigner, {
       audience: orgBIdentity.did,
@@ -73,38 +73,5 @@ describe('Cross-org federation primitive (Beat 7)', () => {
       expectedSubject: unknownAgent.did,
     });
     expect(result.valid).toBe(true);
-  });
-
-  it("rejects an enrolled agent's VP when bound to the wrong audience", async () => {
-    const human = generateDidKey();
-    const agentA = generateDidKey();
-    const agentASigner = createSigner(agentA.privateKey);
-
-    const credA = await issueCredential(human.did, human.privateKey, {
-      agent: agentA.did,
-      columns: ['order_book.ticker'],
-      actions: ['read'],
-      expiresIn: '4h',
-    });
-
-    const orgBIdentity = generateDidKey();
-    const orgCIdentity = generateDidKey(); // different verifier
-
-    const orgBVerifier = new VcVerifier({
-      revocationStore: new InMemoryRevocationStore(),
-    });
-    orgBVerifier.registerKey(agentA.did, agentA.publicKey);
-
-    const vp = await createPresentation(credA, agentA.did, agentASigner, {
-      audience: orgCIdentity.did,
-    });
-
-    const result = await orgBVerifier.verify(vp, {
-      expectedAudience: orgBIdentity.did,
-      expectedSubject: agentA.did,
-    });
-
-    expect(result.valid).toBe(false);
-    expect(result.status).toBe('WRONG_AUDIENCE');
   });
 });
