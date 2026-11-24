@@ -6,7 +6,11 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import { scanArtifactContentForViolations } from './audit-artifact-content.mjs';
-import { corporateEmployeeNames, normalizePrivateUrlPrefixes } from './audit-sensitive-values.mjs';
+import {
+  corporateEmployeeNames,
+  normalizePrivateUrlPrefixes,
+  privateUrlPrefixesForPolicy,
+} from './audit-sensitive-values.mjs';
 import { evaluatePublicRepoPath, loadPublicRepoPolicy } from './assert-package-artifacts.mjs';
 
 const PUBLIC_SOURCE_SCAN_PATHS = ['CHANGELOG.md', 'src', 'test', 'scripts'];
@@ -29,6 +33,7 @@ export function scanFiles(files, rootDir, options = {}) {
   const contentOptions = {
     ...options,
     contentExceptions: options.policy?.contentExceptions ?? options.contentExceptions,
+    privateUrlPrefixes: privateUrlPrefixesForPolicy(options.policy, options.privateUrlPrefixes),
   };
   for (const filePath of files) {
     let contents;
@@ -74,7 +79,7 @@ export function releaseContentOptions(pluginConfig, context) {
     ? loadPublicRepoPolicy(path.resolve(rootDir, pluginConfig.policyPath))
     : undefined;
   const blockedUrls = normalizePrivateUrlPrefixes([
-    ...(pluginConfig.privateUrlPrefixes ?? []),
+    ...privateUrlPrefixesForPolicy(policy, pluginConfig.privateUrlPrefixes),
     context.options?.repositoryUrl,
   ]);
   return {

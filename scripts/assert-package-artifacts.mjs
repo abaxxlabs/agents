@@ -128,6 +128,7 @@ export function parsePublicRepoPolicy(value) {
     'ticketPrefixes',
     'blockedTerms',
     'contentExceptions',
+    'privateUrlPrefixes',
   ]);
   for (const field of Object.keys(value)) {
     if (!supportedFields.has(field)) {
@@ -152,6 +153,9 @@ export function parsePublicRepoPolicy(value) {
       assertStringArray(value.licenseSourceDirectories ?? ['src/'], 'licenseSourceDirectories'),
     ),
     ticketPrefixes: Object.freeze(assertStringArray(value.ticketPrefixes ?? [], 'ticketPrefixes')),
+    privateUrlPrefixes: Object.freeze(
+      assertStringArray(value.privateUrlPrefixes ?? [], 'privateUrlPrefixes'),
+    ),
     blockedTerms: Object.freeze(parseBlockedTerms(value.blockedTerms)),
     contentExceptions: Object.freeze(parseContentExceptions(value.contentExceptions)),
   });

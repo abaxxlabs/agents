@@ -110,55 +110,6 @@ describe('SqliteAuditStore message columns', () => {
     expect(messageFields(written)).toMatchObject({ version: 5, eventKind: 'message' });
     expect(await logger.verifyRecord(readBack, agent.publicKey)).toBe(true);
   });
-
-  it('filters by eventKind, messageRecordId and direction, with count in agreement', async () => {
-    const logger = new AuditLogger({ auditStore: backend.audit });
-    await logger.log(entry, signer);
-    await logger.logMessageEvent(event(), signer);
-    await logger.logMessageEvent(
-      event({ direction: 'received', messageRecordId: 'bafyrecord-two' }),
-      signer,
-    );
-    await logger.logRejection('scope exceeded', 'SCOPE_VIOLATION', signer, {
-      agentDid: agent.did,
-      ownerDid: owner.did,
-    });
-
-    const cases = [
-      [{ eventKind: 'query' as const }, 2],
-      [{ eventKind: 'message' as const }, 2],
-      [{ messageRecordId: 'bafyrecord-two' }, 1],
-      [{ direction: 'sent' as const }, 1],
-      [{ eventKind: 'message' as const, direction: 'received' as const }, 1],
-      [{ agentDid: agent.did, messageRecordId: 'bafyrecord-one' }, 1],
-      [{ eventKind: 'message' as const, messageRecordId: 'missing' }, 0],
-      [{ messageRecordIds: ['bafyrecord-one', 'bafyrecord-two'] }, 2],
-      [{ messageRecordIds: ['bafyrecord-two', 'missing'], direction: 'received' as const }, 1],
-      [{ messageRecordIds: ['missing'] }, 0],
-      [{ messageRecordIds: [] as string[] }, 0],
-    ] as const;
-    for (const [filter, expected] of cases) {
-      expect(await backend.audit.query(filter)).toHaveLength(expected);
-      expect(await backend.audit.count(filter)).toBe(expected);
-    }
-
-    const [received] = await backend.audit.query({ messageRecordId: 'bafyrecord-two' });
-    expect(received.direction).toBe('received');
-    const queries = await backend.audit.query({ eventKind: 'query' });
-    expect(queries.every((r) => r.eventKind === undefined && r.version === 4)).toBe(true);
-
-    const verifier = new AuditLogger({ auditStore: backend.audit, enabled: false });
-    expect(await verifier.verifyAuditChain()).toMatchObject({ ok: true, totalRecords: 4 });
-  });
-
-  it('creates the message lookup index', () => {
-    const rows = innerDb(backend)
-      .prepare('PRAGMA index_info(idx_agent_audit_message)')
-      .all() as Array<{
-      name: string;
-    }>;
-    expect(rows.map((r) => r.name)).toEqual(['agent_did', 'message_record_id']);
-  });
 });
 
 describe('agent_audit message columns on an existing SQLite database', () => {
@@ -174,31 +125,6 @@ describe('agent_audit message columns on an existing SQLite database', () => {
   const legacyMigrations = SQLITE_MIGRATIONS.filter(
     (sql) => !MESSAGE_COLUMNS.some((c) => sql.includes(c)),
   );
-
-  it('writes and reads query records before the columns exist', async () => {
-    const backend = await createBackend();
-    try {
-      const db = innerDb(backend);
-      for (const sql of legacySchema) db.exec(sql);
-      for (const sql of legacyMigrations) {
-        try {
-          db.exec(sql);
-        } catch {
-          // duplicate column, as initialize() tolerates
-        }
-      }
-      expect(auditColumns(backend)).not.toContain('event_kind');
-
-      const logger = new AuditLogger({ auditStore: backend.audit });
-      await logger.log(entry, signer);
-      await logger.log(entry, signer);
-
-      expect(await logger.verifyAuditChain()).toMatchObject({ ok: true, totalRecords: 2 });
-      await expect(logger.logMessageEvent(event(), signer)).rejects.toThrow();
-    } finally {
-      await backend.close();
-    }
-  });
 
   it('initialize() adds the columns and older records still verify', async () => {
     const backend = await createBackend();

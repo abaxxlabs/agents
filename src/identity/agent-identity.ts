@@ -320,12 +320,28 @@ export class AgentIdentity {
     }
 
     if (options.oidcIdentity) {
+      if (options.accessToken && !this.config.abaxxOne) {
+        throw new Error(
+          'accessToken requires an abaxxOne tenant in AgentIdentityConfig; ' +
+            'without one the session would self-issue instead of asking the tenant to sign.',
+        );
+      }
+      // A tenant access token makes the tenant sign; without one the human self-issues (free tier).
+      const parentConfig =
+        options.accessToken && this.config.abaxxOne
+          ? {
+              provider: this.ensureAbaxxOneProvider(options.redirectUri),
+              accessToken: options.accessToken,
+            }
+          : undefined;
+
       return createOidcSession(
         this.verifier,
         options.oidcIdentity,
         this.sdk,
         this.effectiveCeiling(options.scopeCeiling),
         this.logger,
+        parentConfig,
       );
     }
 
@@ -560,6 +576,21 @@ export class AgentIdentity {
       ownerDid: record.ownerDid,
       createdAt: record.createdAt,
     };
+  }
+
+  /**
+   * The in-memory registered agent with its signer, or undefined when the DID is not
+   * registered on this instance. The signer never exposes key material.
+   */
+  getRegisteredAgent(did: string): RegisteredAgent | undefined {
+    this.assertOpen();
+    return this.agents.get(did);
+  }
+
+  /** Every registered agent held in memory, with signers. Not subject to the list limit. */
+  listRegisteredAgents(): RegisteredAgent[] {
+    this.assertOpen();
+    return [...this.agents.values()];
   }
 
   /** List registered agents with optional filtering. */

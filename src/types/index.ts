@@ -24,6 +24,7 @@ export type {
   AuthenticatedSession,
   CreateAgentOptions,
   AgentSigner,
+  DwnSigner,
   RegisteredAgent,
 } from './auth.js';
 

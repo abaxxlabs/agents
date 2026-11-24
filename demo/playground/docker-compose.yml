@@ -53,7 +53,6 @@ services:
       HOST: 0.0.0.0
       PORT: 3100
       PLAYGROUND_TRUST_COMPOSE_GATEWAY: "true"
-      PLAYGROUND_ADMIN_DATABASE_URL: ${PLAYGROUND_SETUP_DATABASE_URL:-${PLAYGROUND_DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/playground}}
     depends_on:
       setup:
         condition: service_completed_successfully

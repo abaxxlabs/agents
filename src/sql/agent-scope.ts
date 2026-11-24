@@ -305,6 +305,22 @@ export class AgentScope implements AgentScopeInstance {
   }
 
   /**
+   * The registered agent with its signer, or undefined when not registered here.
+   * @experimental Host extensions need the signer today; a later release narrows this.
+   */
+  getRegisteredAgent(did: string): RegisteredAgent | undefined {
+    return this.identity.getRegisteredAgent(did);
+  }
+
+  /**
+   * Every registered agent with its signer. Not subject to the list limit.
+   * @experimental Host extensions need the signers today; a later release narrows this.
+   */
+  listRegisteredAgents(): RegisteredAgent[] {
+    return this.identity.listRegisteredAgents();
+  }
+
+  /**
    * Delete revocation records whose underlying credential has already expired.
    * Delegates to identity, which delegates to `storage.revocation.pruneExpired()`.
    */

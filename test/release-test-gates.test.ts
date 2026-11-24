@@ -9,6 +9,7 @@ import {
 import {
   LINT_MAX_WARNINGS,
   RELEASE_GATE_COMMAND_STEPS,
+  releaseGateCommandSteps,
   formatDirtyTreeFailure,
 } from '../scripts/release-gate.mjs';
 
@@ -62,6 +63,7 @@ describe('release-readiness test gates', () => {
       label: 'Install dependencies from bun.lock',
       command: 'bun',
       args: ['install', '--frozen-lockfile'],
+      ci: false,
     });
 
     expect(
@@ -79,25 +81,46 @@ describe('release-readiness test gates', () => {
       label: 'Lint source',
       command: 'npm',
       args: ['run', 'lint', '--', '--max-warnings=387'],
+      ci: false,
     });
   });
 
-  it('keeps public API, clean build, pack, and publish checks ordered', () => {
-    const labels = RELEASE_GATE_COMMAND_STEPS.map((step) => step.label);
+  it('keeps behavioral tests independent of the build', () => {
+    const labels = releaseGateCommandSteps().map((step) => step.label);
 
-    expect(labels.indexOf('Type-check source')).toBeLessThan(
-      labels.indexOf('Check public API snapshot'),
-    );
-    expect(labels.indexOf('Check public API snapshot')).toBeLessThan(labels.indexOf('Lint source'));
     expect(labels.indexOf('Run tests')).toBeLessThan(labels.indexOf('Clean dist'));
     expect(labels.indexOf('Clean dist')).toBeLessThan(labels.indexOf('Build package'));
+    expect(labels).toEqual(
+      expect.arrayContaining([
+        'Install dependencies from bun.lock',
+        'Type-check source',
+        'Lint source',
+      ]),
+    );
+    const ciLabels = releaseGateCommandSteps({ ci: true }).map((step) => step.label);
+    expect(ciLabels).not.toContain('Install dependencies from bun.lock');
+    expect(ciLabels).not.toContain('Type-check source');
+    expect(ciLabels).not.toContain('Lint source');
+    expect(ciLabels).toEqual(
+      expect.arrayContaining([
+        'Check public API snapshot',
+        'Run tests',
+        'Build package',
+        'Audit package artifact guardrails',
+        'Run package CLI contract',
+        'Verify npm pack dry-run',
+        'Verify npm publish dry-run',
+      ]),
+    );
+  });
+
+  it('consumes the fresh build before packaging and publishing', () => {
+    const labels = RELEASE_GATE_COMMAND_STEPS.map((step) => step.label);
+
+    expect(labels.indexOf('Build package')).toBeLessThan(
+      labels.indexOf('Run package CLI contract'),
+    );
     expect(labels.indexOf('Build package')).toBeLessThan(labels.indexOf('Verify npm pack dry-run'));
-    expect(labels.indexOf('Assert package metadata artifacts')).toBeLessThan(
-      labels.indexOf('Audit package artifact guardrails'),
-    );
-    expect(labels.indexOf('Audit package artifact guardrails')).toBeLessThan(
-      labels.indexOf('Verify npm pack dry-run'),
-    );
     expect(labels.at(-1)).toBe('Verify npm publish dry-run');
   });
 

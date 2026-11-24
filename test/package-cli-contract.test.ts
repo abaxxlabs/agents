@@ -56,8 +56,16 @@ describe('package CLI contract', () => {
 
   beforeAll(() => {
     tempRoot = mkdtempSync(join(tmpdir(), 'agents-cli-contract-'));
-    run('npm', ['run', 'clean']);
-    run('npm', ['run', 'build']);
+    const binTarget = (
+      JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8')) as {
+        bin?: Record<string, string>;
+      }
+    ).bin?.agents;
+    if (!binTarget || !existsSync(resolve(ROOT, binTarget))) {
+      throw new Error(
+        'package CLI contract requires a fresh build: run `npm run build` first (the release gate orders this step post-build).',
+      );
+    }
   });
 
   afterAll(() => {

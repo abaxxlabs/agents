@@ -38,8 +38,7 @@ describeFn('Multi-instance AgentScope federation (live Postgres required)', () =
   beforeAll(async () => {
     pool = new Pool({ connectionString: DB_URL, max: 4 });
 
-    // Hygiene: remove rows left by prior runs encrypted with a different
-    // master key. Mirrors the pattern in agentscope-hygiene.
+    // Hygiene: drop rows left by prior runs encrypted with a different master key.
     await pool.query('DELETE FROM agent_keys').catch(() => undefined);
     await pool.query('DELETE FROM agents').catch(() => undefined);
 
@@ -50,9 +49,7 @@ describeFn('Multi-instance AgentScope federation (live Postgres required)', () =
     const masterKeyA = asMasterKey(Buffer.alloc(32, 0xaa));
     const masterKeyB = asMasterKey(Buffer.alloc(32, 0xbb));
 
-    // Each org gets isolated revocation + session stores. The base Postgres
-    // backend (agents/audit/context tables) is shared for test simplicity;
-    // in production each org would have a separate database or schema.
+    // Share Postgres while keeping each organization's session and revocation stores isolated.
     const storageA = composeStorageBackend(base, {
       revocation: new InMemoryRevocationStore(),
       sessions: new InMemorySessionStore(deriveSessionMacKey(masterKeyA)),
@@ -106,7 +103,6 @@ describeFn('Multi-instance AgentScope federation (live Postgres required)', () =
       audience: scopeB.verifierDid,
     });
 
-    // did:key self-resolves — no network call.
     const result = await scopeB.verifierInstance.verify(vp, {
       expectedAudience: scopeB.verifierDid,
       expectedSubject: agent.did,
@@ -129,7 +125,6 @@ describeFn('Multi-instance AgentScope federation (live Postgres required)', () =
       expiresIn: '4h',
     });
 
-    // VP is bound to org A's own verifier — not org B's.
     const vp = await createPresentation(credential, agent.did, agent.signer, {
       audience: scopeA.verifierDid,
     });

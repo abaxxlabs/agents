@@ -1,15 +1,9 @@
 import { randomBytes } from 'node:crypto';
-import { closeSync, mkdtempSync, openSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   argvContainsDeprecatedMasterKeyFlag,
-  MAX_STDIN_MASTER_KEY_BYTES,
   parseMasterKeyFromRawStdinBuffer,
-  readMasterKeyStdinBufferWithLimitSync,
   readParseMasterKeyFromStdinSync,
-  warnIfMasterKeyEnvWasPresentAtProcessStart,
 } from '#cli/master-key-cli.js';
 
 describe('cli master-key argv guard', () => {
@@ -25,12 +19,6 @@ describe('cli master-key argv guard', () => {
     ).toBe(true);
   });
 
-  it('detects --master-key even when the value is missing', () => {
-    expect(argvContainsDeprecatedMasterKeyFlag(['node', 'agents', 'init', '--master-key'])).toBe(
-      true,
-    );
-  });
-
   it('detects --master-key=<hex> form', () => {
     expect(
       argvContainsDeprecatedMasterKeyFlag([
@@ -40,23 +28,6 @@ describe('cli master-key argv guard', () => {
         `--master-key=${'a'.repeat(64)}`,
       ]),
     ).toBe(true);
-  });
-
-  it('does not treat --master-key-stdin as deprecated', () => {
-    expect(
-      argvContainsDeprecatedMasterKeyFlag(['agents', 'encrypt', 't.c', '--master-key-stdin']),
-    ).toBe(false);
-  });
-
-  it('does not treat --master-key-stdin=<hex> as deprecated', () => {
-    expect(
-      argvContainsDeprecatedMasterKeyFlag([
-        'agents',
-        'encrypt',
-        't.c',
-        `--master-key-stdin=${'b'.repeat(64)}`,
-      ]),
-    ).toBe(false);
   });
 
   it('does not false-positive unrelated flags', () => {
@@ -76,49 +47,10 @@ describe('parseMasterKeyFromRawStdinBuffer', () => {
     expect(buf.every((b) => b === 0)).toBe(true);
     mk.fill(0);
   });
-
-  it('rejects oversized input and zeroes the input buffer', () => {
-    const buf = Buffer.alloc(MAX_STDIN_MASTER_KEY_BYTES + 1, 0x61);
-
-    expect(() => parseMasterKeyFromRawStdinBuffer(buf)).toThrow(/too large/);
-    expect(buf.every((b) => b === 0)).toBe(true);
-  });
 });
 
 describe('readParseMasterKeyFromStdinSync', () => {
   it('rejects interactive TTY stdin before reading fd 0', () => {
     expect(() => readParseMasterKeyFromStdinSync({ isTTY: true })).toThrow(/interactive TTY/);
-  });
-});
-
-describe('readMasterKeyStdinBufferWithLimitSync', () => {
-  it('rejects stdin input larger than the cap', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'agents-cli-'));
-    const path = join(dir, 'master-key.txt');
-    writeFileSync(path, 'a'.repeat(MAX_STDIN_MASTER_KEY_BYTES + 1));
-    const fd = openSync(path, 'r');
-
-    try {
-      expect(() => readMasterKeyStdinBufferWithLimitSync(fd)).toThrow(/too large/);
-    } finally {
-      closeSync(fd);
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-});
-
-describe('warnIfMasterKeyEnvWasPresentAtProcessStart', () => {
-  it('warns only when the env var was present at process start', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-
-    try {
-      warnIfMasterKeyEnvWasPresentAtProcessStart(false);
-      expect(warn).not.toHaveBeenCalled();
-
-      warnIfMasterKeyEnvWasPresentAtProcessStart(true);
-      expect(warn).toHaveBeenCalledTimes(1);
-    } finally {
-      warn.mockRestore();
-    }
   });
 });

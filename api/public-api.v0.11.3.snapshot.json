@@ -132,6 +132,10 @@
         "kind": "type"
       },
       {
+        "name": "AuditEventKind",
+        "kind": "type"
+      },
+      {
         "name": "AuditLogger",
         "kind": "type+value"
       },
@@ -304,7 +308,15 @@
         "kind": "value"
       },
       {
+        "name": "createDwnSigner",
+        "kind": "value"
+      },
+      {
         "name": "createIdentityContext",
+        "kind": "value"
+      },
+      {
+        "name": "createInstanceIdentity",
         "kind": "value"
       },
       {
@@ -428,6 +440,10 @@
         "kind": "value"
       },
       {
+        "name": "DecryptionFailedError",
+        "kind": "type+value"
+      },
+      {
         "name": "decryptRow",
         "kind": "value"
       },
@@ -474,6 +490,10 @@
       {
         "name": "DiscoveryEndpointBlockedError",
         "kind": "type+value"
+      },
+      {
+        "name": "DwnSigner",
+        "kind": "type"
       },
       {
         "name": "encrypt",
@@ -550,6 +570,14 @@
       {
         "name": "InMemorySessionStore",
         "kind": "type+value"
+      },
+      {
+        "name": "InstanceIdentity",
+        "kind": "type"
+      },
+      {
+        "name": "InstanceIdentityOptions",
+        "kind": "type"
       },
       {
         "name": "isExpired",
@@ -654,6 +682,14 @@
       {
         "name": "mcpToolInputShapes",
         "kind": "value"
+      },
+      {
+        "name": "MessageAuditEvent",
+        "kind": "type"
+      },
+      {
+        "name": "MessageDirection",
+        "kind": "type"
       },
       {
         "name": "NormalizedDomainError",
@@ -766,6 +802,10 @@
       {
         "name": "RequestValidationError",
         "kind": "type+value"
+      },
+      {
+        "name": "resolveDidKey",
+        "kind": "value"
       },
       {
         "name": "resolveScopeCeiling",
@@ -1120,7 +1160,51 @@
         "kind": "value"
       },
       {
+        "name": "envList",
+        "kind": "value"
+      },
+      {
+        "name": "envValue",
+        "kind": "value"
+      },
+      {
         "name": "McpCliOptions",
+        "kind": "type"
+      },
+      {
+        "name": "McpHostAgents",
+        "kind": "type"
+      },
+      {
+        "name": "McpHostAttachment",
+        "kind": "type"
+      },
+      {
+        "name": "McpHostDatabase",
+        "kind": "type"
+      },
+      {
+        "name": "McpHostExtension",
+        "kind": "type"
+      },
+      {
+        "name": "McpHostExtensionContext",
+        "kind": "type"
+      },
+      {
+        "name": "McpHostFlags",
+        "kind": "type"
+      },
+      {
+        "name": "McpHostIdentity",
+        "kind": "type"
+      },
+      {
+        "name": "McpHostOptions",
+        "kind": "type"
+      },
+      {
+        "name": "McpServerExtension",
         "kind": "type"
       },
       {
@@ -1128,7 +1212,15 @@
         "kind": "type"
       },
       {
+        "name": "resolveMcpHostOptionsFromEnv",
+        "kind": "value"
+      },
+      {
         "name": "startMcpServer",
+        "kind": "value"
+      },
+      {
+        "name": "withMcpHostFlags",
         "kind": "value"
       }
     ],

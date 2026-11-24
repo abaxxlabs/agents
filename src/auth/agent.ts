@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-export { generateDidKey, createSigner, toExternalSigner } from './did-key.js';
+export { generateDidKey, createSigner, createDwnSigner, toExternalSigner } from './did-key.js';
 export type { IdSdkInstance } from '#types/id-sdk.js';
 export * from './agent-crud.js';
 export * from './credential-issuance.js';

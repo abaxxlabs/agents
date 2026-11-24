@@ -276,36 +276,33 @@ export async function assertVisitorIsolation(client, aliceA) {
   return { a, b, flowA, flowB };
 }
 
-// Mark both sandboxes differently, reset only visitor A, and prove A recovers
-// the canonical seed while B keeps its marker and can still run an authorized
-// query against its own protected data.
-export async function assertIndependentResetLeavesOtherUnchanged(isolation) {
+// A direct SQL write is confined to that request's temporary copy: the next
+// request from either visitor reads the canonical rows, and reset keeps its
+// contract response.
+export async function assertDirectSqlIsNotPersisted(isolation) {
   const { a, b, flowB } = isolation;
-  const markerA = 'ISO-A';
-  const markerB = 'ISO-B';
 
-  const updateA = await sandboxRaw(a.visitor, `UPDATE orders_plaintext SET status = '${markerA}' WHERE id = 1`);
-  assert.equal(updateA.status, 200, 'visitor A sandbox marker must return 200');
-  assert.ok(updateA.json?.ok === true && updateA.json?.rowCount === 1, 'visitor A sandbox marker must touch exactly one row');
-  const updateB = await sandboxRaw(b.visitor, `UPDATE orders_plaintext SET status = '${markerB}' WHERE id = 1`);
-  assert.equal(updateB.status, 200, 'visitor B sandbox marker must return 200');
-  assert.ok(updateB.json?.ok === true && updateB.json?.rowCount === 1, 'visitor B sandbox marker must touch exactly one row');
+  const updateA = await sandboxRaw(a.visitor, "UPDATE orders_plaintext SET status = 'ISO-A' WHERE id = 1");
+  assert.equal(updateA.status, 200, 'visitor A direct write must return 200');
+  assert.ok(updateA.json?.ok === true && updateA.json?.rowCount === 1, 'visitor A direct write must touch exactly one row');
+  const updateB = await sandboxRaw(b.visitor, "UPDATE orders_plaintext SET status = 'ISO-B' WHERE id = 1");
+  assert.equal(updateB.status, 200, 'visitor B direct write must return 200');
+  assert.ok(updateB.json?.ok === true && updateB.json?.rowCount === 1, 'visitor B direct write must touch exactly one row');
 
-  // The two sandboxes now hold different data; a reset must not cross that line.
   const statusA = await sandboxRaw(a.visitor, 'SELECT status FROM orders_plaintext WHERE id = 1');
   const statusB = await sandboxRaw(b.visitor, 'SELECT status FROM orders_plaintext WHERE id = 1');
-  assert.equal(statusA.json?.rows?.[0]?.status, markerA, 'visitor A sandbox must hold its own marker');
-  assert.equal(statusB.json?.rows?.[0]?.status, markerB, 'visitor B sandbox must hold its own marker');
+  assert.equal(statusA.json?.rows?.[0]?.status, 'OPEN', 'visitor A must read the canonical copy on the next request');
+  assert.equal(statusB.json?.rows?.[0]?.status, 'OPEN', 'visitor B must read the canonical copy on the next request');
 
   const resetA = await a.visitor.post('/api/sim/reset');
-  assert.equal(resetA.status, 200, 'visitor A sandbox reset must return 200');
-  assert.ok(resetA.json?.ok === true, 'visitor A sandbox reset must report ok');
-  assert.equal(resetA.json?.rows, 8, 'visitor A sandbox reset must restore the canonical eight rows');
+  assert.equal(resetA.status, 200, 'visitor A reset must return 200');
+  assert.ok(resetA.json?.ok === true, 'visitor A reset must report ok');
+  assert.equal(resetA.json?.rows, 8, 'visitor A reset keeps the contract row count');
 
   const afterA = await sandboxRaw(a.visitor, 'SELECT status FROM orders_plaintext WHERE id = 1');
-  assert.equal(afterA.json?.rows?.[0]?.status, 'OPEN', 'visitor A reset must restore the canonical status');
+  assert.equal(afterA.json?.rows?.[0]?.status, 'OPEN', 'reset must leave the copy canonical');
   const afterB = await sandboxRaw(b.visitor, 'SELECT status FROM orders_plaintext WHERE id = 1');
-  assert.equal(afterB.json?.rows?.[0]?.status, markerB, 'visitor A reset must leave visitor B sandbox unchanged');
+  assert.equal(afterB.json?.rows?.[0]?.status, 'OPEN', 'visitor A reset must not affect visitor B');
 
   const queryB = await runQuery(b.visitor, { agent: flowB.agent.did, credential: flowB.credential, sql: AUTHORIZED_SQL });
   assert.equal(queryB.status, 200, 'visitor B authorized query must still return 200 after visitor A reset');
@@ -319,7 +316,7 @@ export async function runRemoteSmoke(client, { readyDeadlineMs = 60_000, readyIn
   await assertBroadCredentialAllows(alice);
   await assertRestrictedIdentityCeiling(client);
   const isolation = await assertVisitorIsolation(client, alice);
-  await assertIndependentResetLeavesOtherUnchanged(isolation);
+  await assertDirectSqlIsNotPersisted(isolation);
 }
 
 const TARGET_ERROR =

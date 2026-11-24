@@ -8,7 +8,7 @@ sidebar_position: 1
 
 # Security boundaries
 
-Agents++ provides several independent controls. None of them should be treated as a replacement for least-privilege database roles, TLS, secret management, or operational separation.
+Agents++ provides several independent controls. None should be considered a substitute for least-privilege database roles, TLS, secret management, or operational separation.
 
 ## Authorization boundary
 
@@ -16,19 +16,19 @@ The credential and delegation chain are verified at the PostgreSQL query boundar
 
 ## Identity and authentication
 
-Agents receive cryptographic identity material and are bound to the human owner represented by the credential chain. Production human authentication uses the configured OIDC provider. Mock human identity is limited to development and test environments.
+Agents receive cryptographic identity material and are linked to the human owner identified by the credential chain. In production, human authentication uses the configured OIDC provider. Mock human identities are restricted to development and test environments.
 
 OIDC authentication uses an authorization-code flow with PKCE and a one-time state value. The current provider flow does not use an OIDC nonce, so deployments should rely on the configured issuer, audience, JWKS, PKCE, state, and transport controls as separate checks.
 
 ## Encryption boundary
 
-AES-256-GCM column encryption protects selected values at rest. It does not hide ciphertext length, query and row access patterns, or all database metadata. The master key must be supplied by the application and must not be committed to source control.
+AES-256-GCM column encryption protects selected values while they are at rest. However, it does not conceal ciphertext length, query and row access patterns, or all database metadata. The master key must be provided by the application and must not be committed to source control.
 
 ## Audit boundary
 
 When enabled, successful scoped queries can produce signed, hash-chained audit records. Application-role triggers reject ordinary changes to the audit table. Database owners, superusers, and roles able to remove or disable triggers remain outside that application-level boundary.
 
-Audit evidence is tamper-evident under those trust assumptions. It is not a guarantee that a privileged database operator cannot remove, replace, or roll back stored records. Rejection records may not have an agent signer available.
+Under the stated trust assumptions, audit evidence is tamper-evident. This does not guarantee that a privileged database operator cannot remove, replace, or roll back stored records. Rejection records may not have an agent signer available.
 
 ## Operational limits
 

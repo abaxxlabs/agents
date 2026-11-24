@@ -56,7 +56,7 @@ export function createComparisonModel({ request, direct, protectedPath, auditRec
     directMetrics.push(metric('policy', 'None', label));
     scopedMetrics.push(metric('policy', allowed ? 'Passed' : blocked ? 'Failed' : 'Not confirmed', label));
   }
-  directMetrics.push(metric('audit', 'None', 'Agents++ audit record'));
+  directMetrics.push(metric('audit', 'None', 'Audit record'));
   scopedMetrics.push(metric('audit', auditConfirmed ? 'Saved' : 'Not confirmed', 'Audit record'));
 
   let notice = null;
@@ -78,9 +78,9 @@ export function createComparisonModel({ request, direct, protectedPath, auditRec
 
   const operation = directOk && mutation ? {
     title: typeof raw.rowCount === 'number'
-      ? `${raw.rowCount} ${raw.rowCount === 1 ? 'row' : 'rows'} ${command === 'DELETE' ? 'deleted from' : 'updated in'} the demo sandbox`
-      : 'Operation executed in the demo sandbox',
-    description: 'The direct path executed this operation without checking an Agents++ credential. Sandbox data resets before each comparison.',
+      ? `${raw.rowCount} ${raw.rowCount === 1 ? 'row' : 'rows'} ${command === 'DELETE' ? 'deleted from' : 'updated in'} the per-request copy`
+      : 'Operation executed in the per-request copy',
+    description: 'The direct path executed this operation without checking an Agents++ credential. Each comparison runs against a throwaway copy that is discarded, so the change never reaches the shared fixture.',
   } : null;
   const directStatus = !directOk ? 'Request rejected'
     : mutation ? `Executed · ${command === 'DELETE' ? 'rows deleted' : 'rows updated'}`
@@ -99,7 +99,7 @@ export function createComparisonModel({ request, direct, protectedPath, auditRec
       notice: null,
       operation,
       error: directOk ? null : message(raw),
-      warning: raw.limitedBy ? 'The sandbox response reached its result limit; only the returned rows are shown.' : null,
+      warning: raw.limitedBy ? 'The copy response reached its result limit; only the returned rows are shown.' : null,
       auditId: null,
       auditConfirmed: false,
     },

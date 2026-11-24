@@ -26,22 +26,15 @@ import { CredentialMalformedError } from '#errors/index.js';
 import type { CredentialScope } from '#types/credential.js';
 
 type ImportedKey = Awaited<ReturnType<typeof importJWK>>;
-type ImportJwkFn = typeof importJWK;
 
 const KEY_CACHE_CAP = 256;
 
 const privateKeyCache = new Map<string, ImportedKey>();
 const publicKeyCache = new Map<string, ImportedKey>();
-let importJwkForKey: ImportJwkFn = importJWK;
 
 export function clearJwtKeyCachesForTest(): void {
   privateKeyCache.clear();
   publicKeyCache.clear();
-}
-
-export function setJwtImportJwkForTest(fn?: ImportJwkFn): void {
-  importJwkForKey = fn ?? importJWK;
-  clearJwtKeyCachesForTest();
 }
 
 function lruGet(cache: Map<string, ImportedKey>, key: string): ImportedKey | undefined {
@@ -138,7 +131,7 @@ export async function createJwt(payload: JwtPayload, privateKey: Uint8Array): Pr
   let key = lruGet(privateKeyCache, cacheKey);
   if (key === undefined) {
     const publicKey = ed25519.getPublicKey(privateKey);
-    key = await importJwkForKey(
+    key = await importJWK(
       {
         kty: 'OKP',
         crv: 'Ed25519',
@@ -167,7 +160,7 @@ export async function verifyJwtSignature(jwt: string, publicKey: Uint8Array): Pr
   const cachedKey = lruGet(publicKeyCache, cacheKey);
   const key =
     cachedKey ??
-    (await importJwkForKey(
+    (await importJWK(
       {
         kty: 'OKP',
         crv: 'Ed25519',

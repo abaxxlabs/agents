@@ -44,9 +44,9 @@ The next `docker compose up --build` creates a fresh database and key.
 
 ## Local demo boundaries
 
-`alice` and `bob` are fixed local mock identities, not production authentication. A browser login creates an opaque visitor session backed by its own database, `AgentScope`, pools, simulator, and mock sessions. Agent and audit records, protected orders, and direct-SQL changes belong to that visitor database, even when two visitors choose the same mock identity. The migrated, encrypted template is shared only as the source for new clones; mock identity and UI filtering are not production tenancy boundaries.
+`alice` and `bob` are fixed local mock identities, not production authentication. A browser login creates a signed visitor session cookie. Scoped queries read the shared read-only orders fixture through one process-wide PostgreSQL pool, while each visitor's agent identities, credentials and audit chain stay in a private in-memory SQLite store. The scoped pool defaults to 10 connections; set `PLAYGROUND_SHARED_POOL_MAX` to change it. Direct SQL uses a second process-wide pool with the restricted `agents_playground_naive` role and still runs inside a per-request temporary copy. No per-visitor PostgreSQL pool or database is created. Mock identity and UI filtering are not production tenancy boundaries.
 
-Visitor sessions have a configured inactivity TTL and active-session cap. Shutdown closes their resources before dropping their databases. On restart, old cookies are invalid and startup cleanup attempts to remove stale Playground-owned visitor databases. This cleanup is best-effort: databases that cannot safely be dropped are reported without preventing the Playground from starting.
+Visitor sessions are signed with an HMAC cookie. The signature is verified on any replica without a database read, and every visitor request then does one shared-store resolve; renewing routes add one touch. The SDK runtime stays local to the replica that created it, so the gateway must route the visitor back to that replica with session affinity. A request that lands on a replica without the runtime receives `410 SessionLost` with `detail: "start-a-new-session"`; the identity is never reassigned. The control database stores admission and expiry metadata and the keyed origin fingerprint. Absolute TTL defaults to 4 hours and inactivity TTL to 1 hour. Polling, rejected requests and probes never extend the inactivity deadline. A janitor runs on every replica, claims expired rows with `SKIP LOCKED`, releases capacity and closes locally expired runtimes. A graceful shutdown releases the rows of the sessions it closes, so a deploy does not hold the cap until the inactivity TTL. A restart loses only the live runtimes on that replica: later requests receive `410 SessionLost` with `detail: "start-a-new-session"` and the visitor authenticates again. The cookie is kept until that re-login so the old row can be released. There is no startup sweep. Replicas must share a synchronized clock.
 
 The Playground owns the HTTP and network boundary and validates request input. Agents++ remains responsible for validating credentials and enforcing agent ownership and query scope.
 
@@ -65,9 +65,35 @@ PLAYGROUND_TRUSTED_PROXY_IPS=10.0.0.12,10.0.0.0/24,2001:db8::/32
 
 API responses use `Cache-Control: no-store`. Responses include `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, and `Referrer-Policy: no-referrer`; public mode also sends HSTS. Unexpected server and database errors return a generic response and logs contain only the error type and safe error code. Expected validation, authorization, and bounded SQL-timeout messages remain available to the demo.
 
-`GET /healthz` reports process health without checking PostgreSQL or creating a visitor session. `GET /readyz` runs `SELECT 1` against the existing administrative pool and reports only ready/not-ready; neither probe provisions a visitor database. Readiness results, including failures, are cached in memory for two seconds per server instance, and concurrent probes share a pending check. Probe responses retain `Cache-Control: no-store`. Compose uses `/healthz` for its liveness check.
+`GET /healthz` reports process health without checking PostgreSQL or creating a visitor session. `GET /readyz` runs `SELECT 1` against the control pool and the shared fixture pool and reports only ready/not-ready; neither probe creates a visitor database. Readiness results, including failures, are cached in memory for two seconds per server instance, and concurrent probes share a pending check. Probe responses retain `Cache-Control: no-store`. Compose uses `/healthz` for its liveness check.
 
-New visitor sessions are limited per client IP to 10 attempts per 60 seconds by default. Configure `PLAYGROUND_NEW_SESSION_RATE_LIMIT` and `PLAYGROUND_NEW_SESSION_RATE_WINDOW_MS` to change those positive-integer values. Valid sessions can still be reused after the new-session limit is reached. Public mode uses `X-Forwarded-For` only after the socket peer passes the trusted-proxy check; the ingress must replace or append the actual client address to that header. This application-level rate limit still depends on the ingress sanitizing forwarded headers correctly and does not replace a gateway-wide limit.
+New visitor sessions are limited globally per client origin to 10 attempts per 60 seconds by default. The origin is the resolved client address, stored as an HMAC-SHA-256 fingerprint and exported as its first 12 hex characters, never as a raw IP. The window lives in PostgreSQL, so the limit is shared by every replica instead of multiplying by the pod count. Configure `PLAYGROUND_NEW_SESSION_RATE_LIMIT` and `PLAYGROUND_NEW_SESSION_RATE_WINDOW_MS` to change those positive-integer values. Valid sessions can still be reused after the new-session limit is reached. Public mode uses `X-Forwarded-For` only after the socket peer passes the trusted-proxy check; the ingress must replace or append the actual client address to that header. This application-level rate limit still depends on the ingress sanitizing forwarded headers correctly and does not replace a gateway-wide limit.
+
+## Sessions, metrics and connection budget
+
+The signed cookie carries only the sandbox identifier, issue time and absolute expiry. The cookie key is derived from `AGENTS_MASTER_KEY` with HKDF under a dedicated label; set `PLAYGROUND_SESSION_COOKIE_KEY` to a 64-character hex value to supply it explicitly. Every replica must share that key. The signature is verified without a database read, but each visitor request still resolves the shared session row, and renewing routes add one touch. The runtime is local, so session affinity is required for this milestone: the gateway must keep each visitor on the replica that owns the runtime. A valid cookie whose runtime is absent from the replica receives `410 SessionLost` rather than a silent reassignment; any-replica serving without affinity is not supported. The UI clears its state and asks the visitor to authenticate again.
+
+Session settings:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `PLAYGROUND_SESSION_ABSOLUTE_TTL_MS` | `14400000` (4 h) | Absolute session lifetime. Never extended by activity. |
+| `PLAYGROUND_SESSION_INACTIVITY_TTL_MS` | `3600000` (1 h) | Inactivity lifetime. Must not exceed the absolute TTL. The old `PLAYGROUND_VISITOR_INACTIVITY_TTL_MS` name is still accepted. |
+| `PLAYGROUND_MAX_VISITOR_SESSIONS` | `10` | Global active-session cap across replicas. |
+| `PLAYGROUND_SESSION_JANITOR_INTERVAL_MS` | `30000` | Janitor sweep interval. |
+| `PLAYGROUND_SESSION_JANITOR_BATCH_SIZE` | `100` | Maximum expired rows per sweep. |
+| `PLAYGROUND_SESSION_JANITOR_MAX_ATTEMPTS` | `3` | Bounded sweep retries before the next tick. |
+| `PLAYGROUND_SESSION_JANITOR_RETRY_DELAY_MS` | `250` | Linear backoff base between sweep retries. |
+
+`GET /metrics` exposes Prometheus text for active and expired sessions, admissions and rejections by keyed origin fingerprint (bounded to 128 distinct series, then `other`), request latency by fixed route and status, pool usage by pool and state, and parser errors. In `public` mode the endpoint sits behind the same trusted-proxy and Host/Proto boundary as the API: scrape it from the internal network with the forwarded headers the ingress normally supplies, or keep it off the public ingress. Scrapes are per replica. Restarted replicas keep their old session rows until the inactivity TTL, or until the visitor re-authenticates and the old row is released; graceful shutdown releases the rows of the sessions it closes. Size the global cap with that restart window in mind. The gateway must keep visitors on the replica that owns their runtime: a request that reaches another replica returns `410 SessionLost` with `detail: "start-a-new-session"`, and any-replica serving without affinity is not supported in this milestone.
+
+Connection budget per replica, with defaults:
+
+- shared fixture pool: 10 connections (`PLAYGROUND_SHARED_POOL_MAX`)
+- direct SQL pool: 2 connections (`PLAYGROUND_DIRECT_SQL_POOL_MAX`)
+- admission and session metadata pool: 4 connections (`PLAYGROUND_CONTROL_POOL_MAX`)
+
+That is 16 connections per replica, and no per-visitor connection pool. Ten replicas use 160 connections; add PgBouncer in transaction pooling before that reaches the PostgreSQL connection limit. The former per-visitor pools were 10 app + 2 direct connections each.
 
 ## Manual requirements
 
@@ -107,7 +133,7 @@ Check that PostgreSQL is accepting connections before proceeding (repeat while i
 docker exec abaxx-playground-pg pg_isready -U postgres -d postgres
 ```
 
-The container uses the image's default `postgres` database and administrative user. Setup and visitor-database provisioning require those administrative privileges. The Docker Engine version recommendation in Quick start also applies to this loopback publication.
+The container uses the image's default `postgres` database and administrative user. Setup requires those administrative privileges; the serving process does not. The Docker Engine version recommendation in Quick start also applies to this loopback publication.
 
 ### Initialize and start the Playground
 
@@ -122,13 +148,13 @@ Open [http://127.0.0.1:3100](http://127.0.0.1:3100). From a second terminal, che
 
 The `setup` and `start` scripts first validate that `node_modules/@abaxxlabs/agents` resolves to the repository root and that the required entrypoints are built.
 
-`npm run setup` is idempotent. It defaults to `postgresql://postgres:postgres@localhost:54322/postgres`, appends the missing `DATABASE_URL` and `AGENTS_MASTER_KEY` values to `.env` without erasing its existing content (new files are created in mode 0600; do not commit them), and applies the canonical migrations from `../../migrations`; it keeps no local copy. The protected fixture must retain its eight rows; the disposable direct-SQL fixture is reset to its canonical eight rows whenever setup runs.
+`npm run setup` is idempotent. It defaults to `postgresql://postgres:postgres@localhost:54322/postgres` and appends missing runtime configuration to `.env` without erasing its existing content (new files are created in mode 0600; do not commit them): `AGENTS_MASTER_KEY`, `PLAYGROUND_RUNTIME_DATABASE_URL`, `PLAYGROUND_SHARED_DATABASE_URL`, `PLAYGROUND_NAIVE_DB_PASSWORD` and the three sandbox database passwords. It never writes `DATABASE_URL`; that value is an input. It applies the canonical migrations from `../../migrations`; it keeps no local copy. It also rebuilds a dedicated `<database>_shared` copy for scoped reads, so the runtime database stays free of scoped traffic. Re-running setup rebuilds that copy and terminates active scoped connections. Setup creates and preserves a separate `<database>_control` database for global admission, expiry metadata and per-origin rate windows; it never receives visitor connections and the serving process reaches it with the restricted runtime role. The database name must be at most 55 characters so `<database>_control` fits PostgreSQL's 63-byte identifier limit. The protected fixture must retain its eight rows; the disposable direct-SQL fixture is reset to its canonical eight rows whenever setup runs.
 
 The setup claims the database with its own marker before creating or encrypting the business tables. If it finds `orders`, `orders_plaintext` or a canonical `agents` table without Playground tracking, it stops and demands a fresh dedicated database instead of assuming ownership or inferring previous migrations.
 
 ## External PostgreSQL with Compose
 
-Use a dedicated database and provide a hostname reachable from the container. On Linux, `host.docker.internal` is mapped to the Docker host. The `playground` database must already exist (setup creates tables and roles, never the database). External setup currently requires a PostgreSQL superuser or an equivalent administrative provisioning account with the full privileges setup needs to create roles, set role passwords, and transfer table ownership. A database owner with `CREATEROLE` alone is not currently supported. The running Playground uses this administrative account to clone and clean up visitor databases; each visitor's data routes use the restricted `agents_playground_app` role. Setup creates the demo's `agents_playground_naive` role for that visitor's direct-SQL comparison table. Run setup first, then start the Playground without the Compose PostgreSQL dependency:
+Use a dedicated database and provide a hostname reachable from the container. On Linux, `host.docker.internal` is mapped to the Docker host. The `playground` database must already exist (setup creates tables, roles and the derived `<database>_shared` and `<database>_control` databases, never the runtime database itself). External setup currently requires a PostgreSQL superuser or an equivalent administrative provisioning account with the full privileges setup needs to create databases, create roles, set role passwords, transfer table ownership, and revoke/grant `TEMPORARY` on the database. A database owner with `CREATEROLE` alone is not currently supported. The running Playground reaches the admission control database with the restricted `agents_playground_app` role and never holds administrative credentials; scoped queries use the same restricted role, while direct SQL uses the separate `agents_playground_naive` role. Setup creates the demo's `agents_playground_naive` role for the shared direct-SQL comparison fixture. Run setup first, then start the Playground without the Compose PostgreSQL dependency:
 
 From `demo/playground`:
 
@@ -160,7 +186,7 @@ See Docker's [ignore-file rules](https://docs.docker.com/build/building/context/
 
 ## Compose verification
 
-The end-to-end check builds a disposable stack, verifies template and visitor seed counts, visitor-scoped direct SQL and authorized decryption, restarts the application, checks stale-cookie invalidation, graceful shutdown and closed database pools, performs a full volume reset, exercises an external PostgreSQL path without the Compose database (including a clean early failure for an unprivileged setup user), and removes its test resources:
+The end-to-end check builds a disposable stack, verifies fixture seed counts, visitor-scoped direct SQL and authorized decryption, the signed session cookie, restart session-loss responses, graceful shutdown and closed database pools, performs a full volume reset, exercises an external PostgreSQL path without the Compose database (including a clean early failure for an unprivileged setup user), and removes its test resources:
 
 From `demo/playground`:
 
@@ -170,11 +196,22 @@ npm run test:compose
 
 Set `PLAYGROUND_SMOKE_BASE_URL` to a deployed HTTPS origin to run the HTTP-only remote smoke against that service instead: no local containers are started and PostgreSQL is not queried directly. The value must be a bare origin without a path, query, or credentials; an empty or invalid value fails before either smoke starts.
 
-Each remote run opens three visitor sessions (Alice, Bob, and a second Alice for the isolation checks). The server holds a session until its inactivity TTL elapses and the HTTP surface exposes no logout, so several runs started within one TTL window can reach `PLAYGROUND_MAX_VISITOR_SESSIONS` (default 10) and receive a 503; the effective session cap and TTL depend on the deployed instance's configuration.
+Each remote run opens three visitor sessions (Alice, Bob, and a second Alice for the isolation checks). The server holds a session until its inactivity TTL elapses and the HTTP surface exposes no logout, so several runs started within one TTL window can reach `PLAYGROUND_MAX_VISITOR_SESSIONS` (default 10) and receive a 503; the effective session cap and TTL depend on the deployed instance's configuration. No visitor database is provisioned.
+
+## Removing pre-cutover visitor databases
+
+Releases before the shared-fixture cutover created one `agents_playground_visitor_*` database per login. The current server never creates or drops them. Inspect the leftovers with the administrative connection, then drop only the databases that pass the ownership, marker and idle-connection checks:
+
+```bash
+DATABASE_URL=<administrative-url> npm run cleanup:visitor-databases           # dry run
+DATABASE_URL=<administrative-url> npm run cleanup:visitor-databases -- --apply
+```
+
+The script refuses any candidate whose name does not match, is a template, is owned by another role, lost the Playground ownership marker, or still has open connections. It is idempotent.
 
 ## Shared-row SQL isolation proof
 
-This bounded, non-serving proof builds the canonical Playground image from the current checkout by default and reuses its native SQLite runtime proof. It does not duplicate that image packaging or runtime lifecycle implementation. The current serving path, database provisioning, SQL routes and canonical migrations remain unchanged.
+This bounded, non-serving proof builds the canonical Playground image from the current checkout by default and reuses its native SQLite runtime proof. It does not duplicate that image packaging or runtime lifecycle implementation. It does not change the current serving path, SQL routes or canonical migrations.
 
 From `demo/playground`, with Docker and host Node.js 22+ available:
 
@@ -242,7 +279,7 @@ See [recorded local evidence](reports/sqlite-runtime-proof.md). The result is a 
 
 ## Worker ownership, draining and fencing proof
 
-This bounded, non-serving proof is the initial gate for the scalability composition on top of the recorded SQLite runtime and SQL isolation proofs. It does not change the current serving path, provisioning, SQL routes or migrations, and it does not claim production migration, capacity, high availability or durable-session behavior.
+This bounded, non-serving proof is the initial gate for the scalability composition on top of the recorded SQLite runtime and SQL isolation proofs. It does not change the current serving path, SQL routes or migrations, and it does not claim production migration, capacity, high availability or durable-session behavior.
 
 From `demo/playground`, with Node.js 22+ on the host and Docker available:
 
@@ -277,7 +314,7 @@ Use `npm run build:css` for a one-off production CSS build.
 3. **Issue credential** checking columns. As **bob**, checking `price` returns `ScopeExceedsCeilingError`.
 4. **Supervisor→worker delegation**: issue a credential as alice and delegate to the worker a subset that is equal to or more restricted than it. The UI selects only the plain columns by default; the chain cannot widen the scope.
 5. **SQL console**: `SELECT *`, `DELETE` and hidden mutations in CTEs are rejected before execution.
-6. **Audit trail**: queries and policy rejections are signed and chained to the previous record. The verify button checks the hash links; it does not verify each record's signatures.
+6. **Audit record**: the access comparison shows whether the query or policy rejection has a saved audit record.
 
 ## Structure
 
@@ -294,8 +331,13 @@ scripts/sqlite-runtime-proof/          # fixture, SDK scenarios, lifecycle and r
 scripts/worker-routing-fencing-proof.mjs # local real-image routing/drain/fencing organizer
 scripts/worker-routing-fencing-proof/    # catalog, fenced executor, router, driver
 src/server.mjs                         # server bootstrap and lifecycle
-src/visitor-http.mjs                   # node:http API and visitor session routing
-src/routes-sim.mjs                     # simulator endpoints
+src/visitor-http.mjs                   # node:http API, signed cookie resolution and route metrics
+src/visitor-session-cookie.mjs         # HMAC cookie issue and verify policy
+src/visitor-session-store.mjs          # global admission, expiry and per-origin rate limit
+src/visitor-session-janitor.mjs        # bounded periodic expiration sweep
+src/playground-metrics.mjs             # Prometheus text registry
+src/visitor-session-registry.mjs       # per-replica SDK runtimes
+src/routes-sim.mjs                     # simulator endpoints over the shared pools
 public/                                # framework-free frontend
 styles/tailwind.css                     # theme, breakpoints, and minimal reset
 test/                                  # playground integration contracts

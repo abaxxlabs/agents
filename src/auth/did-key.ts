@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { generateKeyPairSync, createPrivateKey, createPublicKey } from 'node:crypto';
-import type { AgentSigner } from '#types/auth.js';
+import { generateKeyPairSync, createPrivateKey, createPublicKey, sign } from 'node:crypto';
+import type { AgentSigner, DwnSigner } from '#types/auth.js';
 import { createJwt } from '#crypto/jwt.js';
 import { base58Encode } from '#crypto/base58.js';
 import { REDACTED_SIGNER, withRedactedSerialization } from '#crypto/redact.js';
+
+const ED25519_PKCS8_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex');
 
 /** Generate a deterministic Ed25519 did:key from a 32-byte seed. Same seed = same DID. */
 export function generateDidKeyFromSeed(seed: Buffer): {
@@ -24,9 +26,8 @@ export function generateDidKeyFromSeed(seed: Buffer): {
   publicKey: Uint8Array;
   privateKey: Uint8Array;
 } {
-  const pkcs8Header = Buffer.from('302e020100300506032b657004220420', 'hex');
   const privKeyObj = createPrivateKey({
-    key: Buffer.concat([pkcs8Header, seed]),
+    key: Buffer.concat([ED25519_PKCS8_PREFIX, seed]),
     format: 'der',
     type: 'pkcs8',
   });
@@ -74,6 +75,26 @@ export function createSigner(privateKey: Uint8Array): AgentSigner {
     {
       signJwt(payload: Record<string, unknown>): Promise<string> {
         return createJwt(payload, key);
+      },
+    },
+    () => REDACTED_SIGNER,
+  );
+  return Object.freeze(signer);
+}
+
+/** Create a DwnSigner for a did:key whose Ed25519 seed is `privateKey`. Key material stays in the closure. */
+export function createDwnSigner(did: string, privateKey: Uint8Array): DwnSigner {
+  const key = createPrivateKey({
+    key: Buffer.concat([ED25519_PKCS8_PREFIX, Buffer.from(privateKey)]),
+    format: 'der',
+    type: 'pkcs8',
+  });
+  const signer = withRedactedSerialization(
+    {
+      keyId: `${did}#${did.split(':').pop()}`,
+      algorithm: 'EdDSA' as const,
+      async sign(content: Uint8Array): Promise<Uint8Array> {
+        return new Uint8Array(sign(null, content, key));
       },
     },
     () => REDACTED_SIGNER,

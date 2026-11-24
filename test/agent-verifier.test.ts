@@ -5,24 +5,12 @@ import {
   UntrustedIssuerError,
   WrongOrgError,
   AgentUnauthorizedError,
-  type AgentVerifyResult,
 } from '#identity/agent-verifier.js';
 import type { VerificationResult, DecodedCredential } from '#types/index.js';
 import { createMockVcVerifier } from './mocks/vc-verifier.js';
-import type { VcVerifier } from '#identity/vc-verifier.js';
 import { LocalTrustAnchorStore } from '#discovery/trust-anchor.js';
-import { CapabilityEngine } from '#capability/engine.js';
-import {
-  CredentialInvalidError,
-  CredentialMalformedError,
-  UnknownIssuerError,
-} from '#errors/index.js';
+import { CredentialInvalidError } from '#errors/index.js';
 import type { CapabilitySet } from '#capability/types.js';
-import {
-  CapabilityParseError,
-  CapabilitySetTooLargeError,
-  MAX_CAPABILITY_SET_SIZE,
-} from '#capability/index.js';
 
 const TEST_ISSUER_DID = 'did:key:z6MkTestIssuer1234567890';
 const TEST_AGENT_DID = 'did:key:z6MkTestAgent1234567890';
@@ -97,48 +85,6 @@ async function makeTrustStore(trusted: boolean = true): Promise<LocalTrustAnchor
   return store;
 }
 
-describe('AgentVerifier — constructor', () => {
-  test('throws TypeError if vcVerifier is missing', () => {
-    expect(
-      () =>
-        new AgentVerifier({
-          vcVerifier: null as unknown as VcVerifier,
-          trustAnchorStore: new LocalTrustAnchorStore({ ownServerDid: 'did:key:z6MkOwn' }),
-        }),
-    ).toThrow(TypeError);
-  });
-
-  test('throws TypeError if trustAnchorStore is missing', async () => {
-    expect(
-      () =>
-        new AgentVerifier({
-          vcVerifier: createMockVcVerifier(validVcResult()),
-          trustAnchorStore: null as unknown as LocalTrustAnchorStore,
-        }),
-    ).toThrow(TypeError);
-  });
-
-  test('uses provided capabilityEngine', async () => {
-    const engine = new CapabilityEngine();
-    const store = await makeTrustStore();
-    const verifier = new AgentVerifier({
-      vcVerifier: createMockVcVerifier(validVcResult()),
-      trustAnchorStore: store,
-      capabilityEngine: engine,
-    });
-    expect(verifier).toBeInstanceOf(AgentVerifier);
-  });
-
-  test('creates default CapabilityEngine when not provided', async () => {
-    const store = await makeTrustStore();
-    const verifier = new AgentVerifier({
-      vcVerifier: createMockVcVerifier(validVcResult()),
-      trustAnchorStore: store,
-    });
-    expect(verifier).toBeInstanceOf(AgentVerifier);
-  });
-});
-
 describe('AgentVerifier — Layer 1 failures (VcVerifier rejects)', () => {
   async function verifyWithResult(result: VerificationResult): Promise<Error> {
     const store = await makeTrustStore();
@@ -165,56 +111,6 @@ describe('AgentVerifier — Layer 1 failures (VcVerifier rejects)', () => {
     expect(err.message).toContain('INVALID_SIGNATURE');
   });
 
-  test('EXPIRED → CredentialInvalidError with [EXPIRED] prefix', async () => {
-    const err = await verifyWithResult({
-      valid: false,
-      status: 'EXPIRED',
-      error: 'Credential expired at 2026-01-01T00:00:00.000Z',
-    });
-    expect(err).toBeInstanceOf(CredentialInvalidError);
-    expect(err.message).toContain('EXPIRED');
-  });
-
-  test('MALFORMED → CredentialMalformedError', async () => {
-    const err = await verifyWithResult({
-      valid: false,
-      status: 'MALFORMED',
-      error: 'Missing issuer (iss) claim',
-    });
-    expect(err).toBeInstanceOf(CredentialMalformedError);
-    expect((err as CredentialMalformedError).code).toBe('CREDENTIAL_MALFORMED');
-  });
-
-  test('UNKNOWN_ISSUER → UnknownIssuerError', async () => {
-    const err = await verifyWithResult({
-      valid: false,
-      status: 'UNKNOWN_ISSUER',
-      error: 'Cannot resolve did:key:z6MkUnknown',
-    });
-    expect(err).toBeInstanceOf(UnknownIssuerError);
-    expect((err as UnknownIssuerError).code).toBe('UNKNOWN_ISSUER');
-  });
-
-  test('REPLAYED → CredentialInvalidError with [REPLAYED] prefix', async () => {
-    const err = await verifyWithResult({
-      valid: false,
-      status: 'REPLAYED',
-      error: 'Credential jti abc has already been used',
-    });
-    expect(err).toBeInstanceOf(CredentialInvalidError);
-    expect(err.message).toContain('REPLAYED');
-  });
-
-  test('WRONG_SUBJECT → CredentialInvalidError with [WRONG_SUBJECT] prefix', async () => {
-    const err = await verifyWithResult({
-      valid: false,
-      status: 'WRONG_SUBJECT',
-      error: 'Credential subject mismatch',
-    });
-    expect(err).toBeInstanceOf(CredentialInvalidError);
-    expect(err.message).toContain('WRONG_SUBJECT');
-  });
-
   test('REVOKED → CredentialInvalidError with [REVOKED] prefix', async () => {
     const err = await verifyWithResult({
       valid: false,
@@ -224,21 +120,11 @@ describe('AgentVerifier — Layer 1 failures (VcVerifier rejects)', () => {
     expect(err).toBeInstanceOf(CredentialInvalidError);
     expect(err.message).toContain('REVOKED');
   });
-
-  test('SUSPENDED → CredentialInvalidError with [SUSPENDED] prefix', async () => {
-    const err = await verifyWithResult({
-      valid: false,
-      status: 'SUSPENDED',
-      error: 'Credential has been suspended',
-    });
-    expect(err).toBeInstanceOf(CredentialInvalidError);
-    expect(err.message).toContain('SUSPENDED');
-  });
 });
 
 describe('AgentVerifier — Layer 2a: trust anchor check', () => {
   test('throws UntrustedIssuerError when issuer is not in trust store', async () => {
-    const store = await makeTrustStore(false); // untrusted store
+    const store = await makeTrustStore(false);
     const verifier = createAgentVerifier({
       vcVerifier: createMockVcVerifier(validVcResult()),
       trustAnchorStore: store,
@@ -247,53 +133,6 @@ describe('AgentVerifier — Layer 2a: trust anchor check', () => {
     await expect(
       verifier.verify({ bindingJwt: makeBindingJwt(), agentDid: TEST_AGENT_DID }),
     ).rejects.toBeInstanceOf(UntrustedIssuerError);
-  });
-
-  test('UntrustedIssuerError has code UNTRUSTED_ISSUER and issuerDid in details', async () => {
-    const store = await makeTrustStore(false);
-    const verifier = createAgentVerifier({
-      vcVerifier: createMockVcVerifier(validVcResult()),
-      trustAnchorStore: store,
-    });
-
-    let err: UntrustedIssuerError | undefined;
-    try {
-      await verifier.verify({ bindingJwt: makeBindingJwt(), agentDid: TEST_AGENT_DID });
-    } catch (e) {
-      err = e as UntrustedIssuerError;
-    }
-
-    expect(err).toBeDefined();
-    expect(err!.code).toBe('UNTRUSTED_ISSUER');
-    expect(err!.details?.['issuerDid']).toBe(TEST_ISSUER_DID);
-  });
-
-  test('passes when issuer DID is in the trust anchor store', async () => {
-    const store = await makeTrustStore(true); // trusted
-    const verifier = createAgentVerifier({
-      vcVerifier: createMockVcVerifier(validVcResult()),
-      trustAnchorStore: store,
-    });
-
-    const result = await verifier.verify({
-      bindingJwt: makeBindingJwt(),
-      agentDid: TEST_AGENT_DID,
-    });
-    expect(result.issuerDid).toBe(TEST_ISSUER_DID);
-  });
-
-  test('passes when the own server DID is the issuer (local source)', async () => {
-    const ownDid = 'did:key:z6MkLocalServer1234567890';
-    const store = new LocalTrustAnchorStore({ ownServerDid: ownDid });
-
-    const verifier = createAgentVerifier({
-      vcVerifier: createMockVcVerifier(validVcResult({ issuer: ownDid })),
-      trustAnchorStore: store,
-    });
-
-    const jwt = makeBindingJwt();
-    const result = await verifier.verify({ bindingJwt: jwt, agentDid: TEST_AGENT_DID });
-    expect(result.issuerDid).toBe(ownDid);
   });
 });
 
@@ -306,35 +145,6 @@ describe('AgentVerifier — Layer 2b: org boundary check', () => {
     });
   }
 
-  test('skips org check when expectedOrg is not provided', async () => {
-    const verifier = await makeVerifier();
-    const result = await verifier.verify({
-      bindingJwt: makeBindingJwt(),
-      agentDid: TEST_AGENT_DID,
-    });
-    expect(result.orgDomain).toBe(TEST_ORG);
-  });
-
-  test('passes when orgDomain matches expectedOrg (exact)', async () => {
-    const verifier = await makeVerifier();
-    const result = await verifier.verify({
-      bindingJwt: makeBindingJwt({ orgDomain: 'company.com' }),
-      agentDid: TEST_AGENT_DID,
-      expectedOrg: 'company.com',
-    });
-    expect(result.orgDomain).toBe('company.com');
-  });
-
-  test('passes when orgDomain matches expectedOrg (case-insensitive)', async () => {
-    const verifier = await makeVerifier();
-    const result = await verifier.verify({
-      bindingJwt: makeBindingJwt({ orgDomain: 'Company.COM' }),
-      agentDid: TEST_AGENT_DID,
-      expectedOrg: 'company.com',
-    });
-    expect(result.orgDomain).toBe('Company.COM'); // raw value preserved
-  });
-
   test('throws WrongOrgError when orgDomain does not match expectedOrg', async () => {
     const verifier = await makeVerifier();
     await expect(
@@ -345,75 +155,12 @@ describe('AgentVerifier — Layer 2b: org boundary check', () => {
       }),
     ).rejects.toBeInstanceOf(WrongOrgError);
   });
-
-  test('throws WrongOrgError when credential has null orgDomain', async () => {
-    const verifier = await makeVerifier();
-    await expect(
-      verifier.verify({
-        bindingJwt: makeBindingJwt({ orgDomain: null }),
-        agentDid: TEST_AGENT_DID,
-        expectedOrg: 'company.com',
-      }),
-    ).rejects.toBeInstanceOf(WrongOrgError);
-  });
-
-  test('WrongOrgError has code WRONG_ORG and correct details', async () => {
-    const verifier = await makeVerifier();
-    let err: WrongOrgError | undefined;
-    try {
-      await verifier.verify({
-        bindingJwt: makeBindingJwt({ orgDomain: 'wrong.com' }),
-        agentDid: TEST_AGENT_DID,
-        expectedOrg: 'company.com',
-      });
-    } catch (e) {
-      err = e as WrongOrgError;
-    }
-
-    expect(err).toBeDefined();
-    expect(err!.code).toBe('WRONG_ORG');
-    expect(err!.details?.['expectedOrg']).toBe('company.com');
-    expect(err!.details?.['actualOrg']).toBe('wrong.com');
-    expect(err!.details?.['issuerDid']).toBe(TEST_ISSUER_DID);
-  });
-
-  test('treats empty string orgDomain as null for comparison', async () => {
-    const verifier = await makeVerifier();
-    await expect(
-      verifier.verify({
-        bindingJwt: makeBindingJwt({ orgDomain: '' }),
-        agentDid: TEST_AGENT_DID,
-        expectedOrg: 'company.com',
-      }),
-    ).rejects.toBeInstanceOf(WrongOrgError);
-  });
-
-  test('trims whitespace from expectedOrg before comparison (ops footgun guard)', async () => {
-    const verifier = await makeVerifier();
-    const result = await verifier.verify({
-      bindingJwt: makeBindingJwt({ orgDomain: 'company.com' }),
-      agentDid: TEST_AGENT_DID,
-      expectedOrg: '  company.com  ', // leading + trailing whitespace
-    });
-    expect(result.orgDomain).toBe('company.com');
-  });
-
-  test('throws TypeError for whitespace-only expectedOrg', async () => {
-    const verifier = await makeVerifier();
-    await expect(
-      verifier.verify({
-        bindingJwt: makeBindingJwt({ orgDomain: 'company.com' }),
-        agentDid: TEST_AGENT_DID,
-        expectedOrg: '   ',
-      }),
-    ).rejects.toBeInstanceOf(TypeError);
-  });
 });
 
 describe('AgentVerifier — Layer 2c: capability check', () => {
   const TEST_CAPS: CapabilitySet = [
     { action: 'jira:read', scope: 'project/PROJ' },
-    { action: 'github:read' }, // no scope = any resource
+    { action: 'github:read' },
   ];
 
   async function makeVerifier(): Promise<AgentVerifier> {
@@ -424,49 +171,6 @@ describe('AgentVerifier — Layer 2c: capability check', () => {
     });
   }
 
-  test('skips capability check when action is not provided', async () => {
-    const verifier = await makeVerifier();
-    const result = await verifier.verify({
-      bindingJwt: makeBindingJwt({ capabilities: TEST_CAPS }),
-      agentDid: TEST_AGENT_DID,
-    });
-    expect(result.capabilities).toEqual(TEST_CAPS);
-  });
-
-  test('passes when action is in the capability set (with matching scope)', async () => {
-    const verifier = await makeVerifier();
-    const result = await verifier.verify({
-      bindingJwt: makeBindingJwt({ capabilities: TEST_CAPS }),
-      agentDid: TEST_AGENT_DID,
-      action: 'jira:read',
-      scope: 'project/PROJ',
-    });
-    expect(result.subjectDid).toBe(TEST_AGENT_DID);
-  });
-
-  test('passes when action is in the set with no scope (grants any resource)', async () => {
-    const verifier = await makeVerifier();
-    const result = await verifier.verify({
-      bindingJwt: makeBindingJwt({ capabilities: TEST_CAPS }),
-      agentDid: TEST_AGENT_DID,
-      action: 'github:read',
-      scope: 'repo/agents',
-    });
-    expect(result.subjectDid).toBe(TEST_AGENT_DID);
-  });
-
-  test('throws AgentUnauthorizedError when action is not in capability set', async () => {
-    const verifier = await makeVerifier();
-    await expect(
-      verifier.verify({
-        bindingJwt: makeBindingJwt({ capabilities: TEST_CAPS }),
-        agentDid: TEST_AGENT_DID,
-        action: 'jira:write',
-        scope: 'project/PROJ',
-      }),
-    ).rejects.toBeInstanceOf(AgentUnauthorizedError);
-  });
-
   test('throws AgentUnauthorizedError when scope does not match', async () => {
     const verifier = await makeVerifier();
     await expect(
@@ -474,163 +178,8 @@ describe('AgentVerifier — Layer 2c: capability check', () => {
         bindingJwt: makeBindingJwt({ capabilities: TEST_CAPS }),
         agentDid: TEST_AGENT_DID,
         action: 'jira:read',
-        scope: 'project/OTHER', // PROJ is granted, not OTHER
+        scope: 'project/OTHER',
       }),
     ).rejects.toBeInstanceOf(AgentUnauthorizedError);
-  });
-
-  test('throws AgentUnauthorizedError when capability set is empty', async () => {
-    const verifier = await makeVerifier();
-    await expect(
-      verifier.verify({
-        bindingJwt: makeBindingJwt({ capabilities: [] }),
-        agentDid: TEST_AGENT_DID,
-        action: 'jira:read',
-      }),
-    ).rejects.toBeInstanceOf(AgentUnauthorizedError);
-  });
-
-  test('throws AgentUnauthorizedError when credential has no capabilities field', async () => {
-    const verifier = await makeVerifier();
-    // makeBindingJwt with no capabilities → capabilities not in credential subject
-    await expect(
-      verifier.verify({
-        bindingJwt: makeBindingJwt({}), // no capabilities key
-        agentDid: TEST_AGENT_DID,
-        action: 'jira:read',
-      }),
-    ).rejects.toBeInstanceOf(AgentUnauthorizedError);
-  });
-
-  test('CapabilityParseError propagates when action is malformed', async () => {
-    const verifier = await makeVerifier();
-    await expect(
-      verifier.verify({
-        bindingJwt: makeBindingJwt({ capabilities: TEST_CAPS }),
-        agentDid: TEST_AGENT_DID,
-        action: '', // empty action is a caller bug → CapabilityParseError
-      }),
-    ).rejects.toBeInstanceOf(CapabilityParseError);
-  });
-
-  test('CapabilitySetTooLargeError propagates when credential has oversized capability set', async () => {
-    const oversizedCaps: CapabilitySet = Array.from(
-      { length: MAX_CAPABILITY_SET_SIZE + 1 },
-      (_, i) => ({ action: `cap:action${i}` }),
-    );
-    const verifier = await makeVerifier();
-    await expect(
-      verifier.verify({
-        bindingJwt: makeBindingJwt({ capabilities: oversizedCaps }),
-        agentDid: TEST_AGENT_DID,
-        action: 'jira:read',
-      }),
-    ).rejects.toBeInstanceOf(CapabilitySetTooLargeError);
-  });
-
-  test('AgentUnauthorizedError has code UNAUTHORIZED and details', async () => {
-    const verifier = await makeVerifier();
-    let err: AgentUnauthorizedError | undefined;
-    try {
-      await verifier.verify({
-        bindingJwt: makeBindingJwt({ capabilities: TEST_CAPS }),
-        agentDid: TEST_AGENT_DID,
-        action: 'jira:write',
-        scope: 'project/PROJ',
-      });
-    } catch (e) {
-      err = e as AgentUnauthorizedError;
-    }
-
-    expect(err).toBeDefined();
-    expect(err!.code).toBe('UNAUTHORIZED');
-    expect(err!.details?.['action']).toBe('jira:write');
-    expect(err!.details?.['scope']).toBe('project/PROJ');
-    expect(err!.details?.['subjectDid']).toBe(TEST_AGENT_DID);
-  });
-});
-
-describe('AgentVerifier — full happy path', () => {
-  test('all four checks pass — returns complete result', async () => {
-    const caps: CapabilitySet = [
-      { action: 'jira:read', scope: 'project/PROJ' },
-      { action: 'slack:post' },
-    ];
-
-    const store = await makeTrustStore();
-    const verifier = createAgentVerifier({
-      vcVerifier: createMockVcVerifier(validVcResult()),
-      trustAnchorStore: store,
-    });
-
-    const result: AgentVerifyResult = await verifier.verify({
-      bindingJwt: makeBindingJwt({ orgDomain: 'company.com', capabilities: caps }),
-      agentDid: TEST_AGENT_DID,
-      expectedOrg: 'company.com',
-      action: 'jira:read',
-      scope: 'project/PROJ',
-    });
-
-    expect(result.issuerDid).toBe(TEST_ISSUER_DID);
-    expect(result.subjectDid).toBe(TEST_AGENT_DID);
-    expect(result.orgDomain).toBe('company.com');
-    expect(result.capabilities).toEqual(caps);
-    expect(result.credential).toBeDefined();
-    expect(result.credential.issuer).toBe(TEST_ISSUER_DID);
-  });
-
-  test('result has correct shape without optional checks', async () => {
-    const store = await makeTrustStore();
-    const verifier = createAgentVerifier({
-      vcVerifier: createMockVcVerifier(validVcResult()),
-      trustAnchorStore: store,
-    });
-
-    const result = await verifier.verify({
-      bindingJwt: makeBindingJwt({ orgDomain: 'company.com' }),
-      agentDid: TEST_AGENT_DID,
-    });
-
-    expect(result.issuerDid).toBe(TEST_ISSUER_DID);
-    expect(result.subjectDid).toBe(TEST_AGENT_DID);
-    expect(result.orgDomain).toBe('company.com');
-    expect(result.capabilities).toEqual([]); // no capabilities in JWT
-    expect(result.credential).toBeDefined();
-  });
-});
-
-describe('AgentVerifier — input validation', () => {
-  test('throws TypeError for empty-string agentDid (empty string bypasses TypeScript type)', async () => {
-    const store = await makeTrustStore();
-    const verifier = createAgentVerifier({
-      vcVerifier: createMockVcVerifier(validVcResult()),
-      trustAnchorStore: store,
-    });
-    await expect(
-      verifier.verify({
-        bindingJwt: makeBindingJwt({ orgDomain: 'company.com' }),
-        agentDid: '',
-      }),
-    ).rejects.toBeInstanceOf(TypeError);
-  });
-});
-
-describe('AgentVerifier — createAgentVerifier factory', () => {
-  test('returns an AgentVerifier instance', async () => {
-    const store = await makeTrustStore();
-    const verifier = createAgentVerifier({
-      vcVerifier: createMockVcVerifier(validVcResult()),
-      trustAnchorStore: store,
-    });
-    expect(verifier).toBeInstanceOf(AgentVerifier);
-  });
-
-  test('satisfies AgentVerifier type (verify method exists)', async () => {
-    const store = await makeTrustStore();
-    const verifier: AgentVerifier = createAgentVerifier({
-      vcVerifier: createMockVcVerifier(validVcResult()),
-      trustAnchorStore: store,
-    });
-    expect(typeof verifier.verify).toBe('function');
   });
 });

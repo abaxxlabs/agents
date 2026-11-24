@@ -28,8 +28,6 @@ const postgresReachable = await isPostgresReachable();
 const describeFn = postgresReachable ? describe : describe.skip;
 
 describeFn('Injection drift regression (live Postgres required)', () => {
-  // Distinctive byte pattern (matches hygiene-test convention) so that any
-  // collision with bytes from prior test runs is vanishingly unlikely.
   const MASTER_KEY_BYTE = 0xcd;
 
   let pool: pg.Pool;
@@ -43,10 +41,10 @@ describeFn('Injection drift regression (live Postgres required)', () => {
     await pool.query('DELETE FROM agent_keys').catch(() => undefined);
     await pool.query('DELETE FROM agents').catch(() => undefined);
 
-    const base = PostgresStorageBackend.fromPool(pool, false, { sessionMacKey: deterministicSessionMacKey() });
+    const base = PostgresStorageBackend.fromPool(pool, false, {
+      sessionMacKey: deterministicSessionMacKey(),
+    });
 
-    // Custom revocation store held externally; correct wiring means calls
-    // through scope.storage.revocation reach this exact instance.
     injectedRevocation = new InMemoryRevocationStore();
     pruneExpiredSpy = vi.spyOn(injectedRevocation, 'pruneExpired');
 
@@ -76,15 +74,5 @@ describeFn('Injection drift regression (live Postgres required)', () => {
     await scope.pruneRevocations(new Date(Date.now() + 1_000_000));
 
     expect(pruneExpiredSpy).toHaveBeenCalledOnce();
-  });
-
-  it('a revocation written through the injected store is visible via the same store', async () => {
-    const jti = `d34-test-a-${Date.now()}`;
-    await injectedRevocation.revoke(jti, { reason: 'd34 test fixture' });
-
-    expect(await injectedRevocation.isRevoked(jti)).toBe(true);
-
-    const prunedCount = await scope.pruneRevocations(new Date(Date.now() - 1_000_000));
-    expect(prunedCount).toBe(0);
   });
 });

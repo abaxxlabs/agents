@@ -25,8 +25,8 @@
 
 import { createPrivateKey, createPublicKey } from 'node:crypto';
 import type { KeystoreBackend } from './keystore.js';
-import type { AgentSigner } from '#types/index.js';
-import { generateDidKey, createSigner } from '#auth/agent.js';
+import type { AgentSigner, DwnSigner } from '#types/index.js';
+import { generateDidKey, createSigner, createDwnSigner } from '#auth/agent.js';
 import { VcVerifier } from './vc-verifier.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -55,6 +55,12 @@ export interface ServerIdentity {
    * Only exposes signJwt(). Key material is never accessible from outside.
    */
   signer: AgentSigner;
+  /**
+   * Signs DWN messages as this DID, so DWN nodes can authorize writes the server delegates.
+   * Same key as `signer`; only the signature envelope differs. Always set on identities this
+   * library creates; optional so hand-built identities keep compiling.
+   */
+  dwnSigner?: DwnSigner;
   /**
    * Raw public key bytes (32-byte Ed25519).
    * Safe to share — used by VcVerifier for offline verification.
@@ -142,12 +148,13 @@ async function generateServerIdentity(
   await keystore.write(KEYSTORE_PRIVATE_KEY, Buffer.from(privateKey).toString('hex'));
 
   const signer = createSigner(privateKey);
+  const dwnSigner = createDwnSigner(did, privateKey);
 
   if (verifier) {
     verifier.registerKey(did, publicKey);
   }
 
-  return { did, signer, publicKey, isNew: true };
+  return { did, signer, dwnSigner, publicKey, isNew: true };
 }
 
 /**
@@ -171,10 +178,11 @@ function loadServerIdentity(
   const publicKey = new Uint8Array(pubKeyDer.subarray(12)); // Ed25519 SPKI: 12-byte prefix + 32-byte key
 
   const signer = createSigner(privateKeyBytes);
+  const dwnSigner = createDwnSigner(did, privateKeyBytes);
 
   if (verifier) {
     verifier.registerKey(did, publicKey);
   }
 
-  return { did, signer, publicKey, isNew: false };
+  return { did, signer, dwnSigner, publicKey, isNew: false };
 }

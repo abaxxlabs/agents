@@ -23,6 +23,8 @@ interface AgentToolDependencies {
   services: Pick<AgentToolServices, 'agents'>;
   session: AuthenticatedSession;
   logger?: Logger;
+  /** Host extension hooks, called after the agent exists. A throw or a rejection is logged. */
+  onAgentCreated?: Array<(agent: { did: string }) => void | Promise<void>>;
 }
 
 export function registerCreateAgentTool(server: McpServer, deps: AgentToolDependencies): void {
@@ -42,6 +44,18 @@ export function registerCreateAgentTool(server: McpServer, deps: AgentToolDepend
           name,
           ownerDid: ownerDid ?? deps.session.humanDid,
         });
+        const hookFailed = (err: unknown) => {
+          deps.logger?.warn('[agents] agent-created hook failed', {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        };
+        for (const hook of deps.onAgentCreated ?? []) {
+          try {
+            void Promise.resolve(hook({ did: createdAgent.did })).catch(hookFailed);
+          } catch (err) {
+            hookFailed(err);
+          }
+        }
         return {
           content: [
             {

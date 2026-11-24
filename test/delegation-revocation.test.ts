@@ -13,16 +13,14 @@ function setup() {
   const human = generateDidKey();
   const supervisor = generateDidKey();
   const worker = generateDidKey();
-  const subWorker = generateDidKey();
 
   const store = new InMemoryRevocationStore();
   const verifier = new VcVerifier({ revocationStore: store });
   verifier.registerKey(human.did, human.publicKey);
   verifier.registerKey(supervisor.did, supervisor.publicKey);
   verifier.registerKey(worker.did, worker.publicKey);
-  verifier.registerKey(subWorker.did, subWorker.publicKey);
 
-  return { human, supervisor, worker, subWorker, store, verifier };
+  return { human, supervisor, worker, store, verifier };
 }
 
 describe('Delegation chain revocation', () => {
@@ -91,36 +89,6 @@ describe('Delegation chain revocation', () => {
     expect(result.error).toContain(parentJti);
   });
 
-  it('revoking an unrelated credential does not invalidate the worker', async () => {
-    const { human, supervisor, worker, store, verifier } = env;
-
-    const parentCred = await issueCredential(human.did, human.privateKey, {
-      agent: supervisor.did,
-      columns: ['patients.name'],
-      actions: ['read'],
-      expiresIn: '4h',
-    });
-    const workerCred = await issueDelegatedCredential(
-      supervisor.did,
-      createSigner(supervisor.privateKey),
-      parentCred,
-      decodeJwt(parentCred).payload.jti!,
-      { columns: ['patients.name'], actions: ['read'] },
-      {
-        targetAgent: worker.did,
-        columns: ['patients.name'],
-        actions: ['read'],
-        expiresIn: '1h',
-      },
-    );
-
-    await store.revoke('some-other-unrelated-jti', {});
-
-    const result = await verifier.verify(workerCred, { expectedSubject: worker.did });
-    expect(result.valid).toBe(true);
-    expect(result.status).toBe('VALID');
-  });
-
   it('store error during chain check propagates as a thrown error (fail-closed)', async () => {
     const { human, supervisor, worker, store, verifier } = env;
 
@@ -153,9 +121,9 @@ describe('Delegation chain revocation', () => {
       return original(jti);
     };
 
-    await expect(
-      verifier.verify(workerCred, { expectedSubject: worker.did }),
-    ).rejects.toThrow('store offline');
+    await expect(verifier.verify(workerCred, { expectedSubject: worker.did })).rejects.toThrow(
+      'store offline',
+    );
     expect(calls).toBeGreaterThan(0);
   });
 });

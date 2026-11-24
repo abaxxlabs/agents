@@ -222,6 +222,15 @@ The `challenge` MCP tool is for Verifiable-Presentation freshness and replay pro
 
 Enforcement is identical across both MCP transports. The deployment shape determines where the trust boundary sits, not how enforcement works.
 
+### Host extensions
+
+`startMcpServer({ extensions })` and `createMcpServer({ extensions })` accept host extensions: modules that add tools and a lifecycle to the MCP host without the library knowing what they do.
+
+- `attach(context)` runs once the scope and the session exist. The context carries the registered agents, the instance audit logger, the session, the master key, the persistent server identity (when loaded) and where the host keeps its data. An extension that returns `null` stays off.
+- `needsHostIdentity` makes the host load the persistent server identity before attaching.
+- The attachment's `registerTools(server)` runs on every MCP server the host creates, after every library tool. `onAgentCreated` runs after `create-agent-identity`; a throw or a rejection is logged.
+- `start()` runs before the transport accepts clients; a rejection stops the host with exit code 1 after the shutdown steps. `stop()` runs once at shutdown, in reverse order of attachment.
+
 ## Security model
 
 - **Agents++ signatures use Ed25519** -- agent credentials and signed audit records use Ed25519/EdDSA; OIDC ID-token verification accepts an explicit asymmetric allowlist of RSA, RSA-PSS, ECDSA, and EdDSA algorithms

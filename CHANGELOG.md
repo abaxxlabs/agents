@@ -1,5 +1,108 @@
 # Changelog
 
+## [0.73.0] - 2026-11-24
+
+### Added
+
+- demo, docs, test: changes.
+
+## [0.72.0] - 2026-11-24
+
+### Added
+
+- demo, docs: changes; .github, scripts: internal changes.
+- packages: internal changes.
+
+## [0.71.0] - 2026-11-23
+
+### Added
+
+- demo: changes.
+
+## [0.70.0] - 2026-11-23
+
+### Added
+
+- .github, packages: internal changes.
+
+## [0.69.0] - 2026-11-20
+
+### Added
+
+- .github, packages: internal changes.
+
+## [0.68.0] - 2026-11-19
+
+### Added
+
+- demo, docs, test: changes.
+
+## [0.67.1] - 2026-11-19
+
+### Fixed
+
+- demo: changes.
+
+## [0.67.0] - 2026-11-19
+
+### Added
+
+- docs, packages, test: internal changes.
+
+## [0.66.0] - 2026-11-17
+
+### Added
+
+- packages: internal changes.
+
+## [0.65.2] - 2026-11-17
+
+### Fixed
+
+- docs, packages: internal changes.
+
+## [0.65.1] - 2026-11-16
+
+### Fixed
+
+- scripts: changes; .github, scripts, test: internal changes.
+
+## [0.65.0] - 2026-11-13
+
+### Added
+
+- api, src, test: changes; docs, packages, scripts, test: internal changes.
+
+## [0.64.1] - 2026-11-12
+
+### Fixed
+
+- packages, test: internal changes.
+
+## [0.64.0] - 2026-11-12
+
+### Added
+
+- .github, demo, test: changes; scripts: internal changes.
+
+## [0.63.0] - 2026-11-12
+
+### Added
+
+- repository, src, test: changes; packages, test: internal changes.
+
+## [0.62.0] - 2026-11-12
+
+### Added
+
+- api, repository, scripts, src, test: changes; .github, docs, packages, scripts, test: internal changes.
+
+## [0.61.0] - 2026-11-11
+
+### Added
+
+- src, test: changes; docs: internal changes.
+
 ## [0.60.1] - 2026-11-10
 
 ### Fixed

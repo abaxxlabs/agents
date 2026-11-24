@@ -1,53 +1,55 @@
 ---
 id: concepts-overview
-title: Core concepts
+title: Authorization and Audit Model
 description: The identity, credential, scope, query, encryption, and audit model in Agents++.
 slug: /concepts/overview
 sidebar_position: 1
 ---
 
-# Core concepts
+# Authorization and Audit Model
 
-Agents++ is an authorization and audit layer for AI-agent systems. It does not run the agent, choose a model, or orchestrate tools. It gives the application a way to identify an agent, bind it to human authority, enforce a read scope at the PostgreSQL boundary, and produce evidence of the decision.
+The identity, credential, scope, query, encryption, and audit model in Agents++.
+
+Agents++ is an authorization and audit layer for AI agent systems. It does not execute agents, select models, or orchestrate tools. Instead, it enables applications to identify agents, bind them to human authority, enforce read scopes at the PostgreSQL boundary, and generate audit evidence for successful scoped queries when auditing is enabled.
 
 ## Identity
 
-Each created agent receives a DID and an Ed25519 keypair. The agent identity is associated with the authenticated human owner. That owner binding is checked when credentials and delegation chains are used.
+Each agent receives a DID and an Ed25519 keypair when created. Its identity is linked to the authenticated human owner, and that binding is checked when credentials and delegation chains are used.
 
 Agents++ keeps three roles separate:
 
-- The **human** is the authority who authenticates and authorizes an agent.
-- The **agent** is the execution principal that presents a scoped credential.
-- The **server** is the verifier and policy enforcer for the request.
+- The **human** authenticates and authorizes the agent.
+- The **agent** submits the request using a scoped credential.
+- The **server** verifies the request and enforces policy.
 
-A DID is a cryptographic identifier. It is not, by itself, proof of a person's legal identity.
+A DID is a cryptographic identifier; it does not, in and of itself, establish a person's legal identity.
 
 ## Human authentication
 
-Production human authentication uses the configured OpenID Connect provider. The authorization-code flow uses PKCE and a one-time state value before creating an `AuthenticatedSession`. Development and tests can use the explicitly gated mock identity path instead.
+In production, human authentication uses the configured OpenID Connect provider. The authorization code flow employs PKCE and a one-time state value before creating an `AuthenticatedSession`. Development and testing may instead use the explicitly gated mock identity path.
 
-The session carries the human identity and the maximum scope that identity may issue. It can then create agents, issue credentials, and revoke credentials according to the configured policy.
+The session carries the human identity and defines the maximum scope that identity may issue. It can then create agents, issue credentials, and revoke them according to the configured policy.
 
 ## Verifier binding
 
-The server's verifier DID identifies the server that is expected to validate a Verifiable Presentation. Remote query paths can bind the presentation audience to that DID, preventing a presentation created for one server from being replayed against another server.
+The server's verifier DID identifies the server expected to validate a Verifiable Presentation. Remote query paths can bind the presentation’s audience to that DID, preventing a presentation created for one server from being replayed against another.
 
 ## Credentials
 
-A credential states what an agent may read, which actions are allowed, and how long the authorization remains valid. Credentials are signed and can be delegated to another agent only as a strict subset of the source scope.
+A credential specifies what an agent may read, which actions it may perform, and how long the authorization remains valid. Credentials are signed and can be delegated to another agent only with a scope no wider than the source's scope.
 
 ## Scope enforcement
 
 The `ScopeEngine` is the query boundary for PostgreSQL data:
 
-1. Verify the credential, signatures, expiration, revocation, and delegation bindings.
-2. Parse the requested SQL with the PostgreSQL parser.
-3. Reject mutations and references outside the declared table or columns.
-4. Execute only an authorized read.
-5. Decrypt only columns that the scope permits, when column encryption is enabled.
-6. Record an audit event, signed when the required signer is available, when audit logging is enabled.
+1. Verify credentials, signatures, expiration, revocation, and delegation bindings.
+2. Parse the requested SQL using the PostgreSQL parser.
+3. Reject mutations and references outside the single declared table or its permitted columns.
+4. Execute only authorized reads.
+5. When column encryption is enabled, decrypt only columns that the scope permits.
+6. When audit logging is enabled, record an audit event, signed when the required signer is available.
 
-The current implementation authorizes read-only `SELECT` queries. It does not filter unauthorized writes after execution and it does not authorize arbitrary external APIs.
+The current implementation authorizes read-only `SELECT` queries. It does not filter unauthorized writes after execution, nor does it authorize arbitrary external APIs.
 
 ## Encryption
 

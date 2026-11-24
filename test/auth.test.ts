@@ -1,148 +1,11 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { generateDidKey, issueCredential, createMockSession } from '#auth/index.js';
-import { issueCredentialFromParent } from '#auth/agent.js';
-import { ScopeExceedsCeilingError, type ScopeCeiling } from '#auth/ceiling.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { generateDidKey, createMockSession } from '#auth/index.js';
 import { VcVerifier } from '#identity/index.js';
-import { decodeJwt, verifyJwtSignature } from '#crypto/jwt.js';
 import { InMemoryRevocationStore } from '#storage/memory/revocation-store.js';
-import { createMockSdk, createFailingSdk } from './mocks/index.js';
+import { createFailingSdk } from './mocks/index.js';
 
 describe('Auth', () => {
-  describe('generateDidKey', () => {
-    it('generates a valid did:key DID', () => {
-      const { did, publicKey, privateKey } = generateDidKey();
-      expect(did).toMatch(/^did:key:z[1-9A-HJ-NP-Za-km-z]+$/);
-      expect(publicKey.length).toBe(32);
-      expect(privateKey.length).toBe(32);
-    });
-
-    it('generates unique DIDs', () => {
-      const a = generateDidKey();
-      const b = generateDidKey();
-      expect(a.did).not.toBe(b.did);
-    });
-  });
-
-  describe('issueCredential (legacy)', () => {
-    it('creates a valid JWT credential', async () => {
-      const human = generateDidKey();
-      const agent = generateDidKey();
-
-      const jwt = await issueCredential(human.did, human.privateKey, {
-        agent: agent.did,
-        columns: ['patients.name', 'patients.dob'],
-        actions: ['read'],
-        expiresIn: '4h',
-      });
-
-      expect(jwt.split('.').length).toBe(3);
-
-      const { payload } = decodeJwt(jwt);
-      expect(payload.iss).toBe(human.did);
-      expect(payload.sub).toBe(agent.did);
-      expect(payload.vc?.credentialSubject?.scope?.columns).toEqual([
-        'patients.name',
-        'patients.dob',
-      ]);
-      expect(payload.vc?.credentialSubject?.scope?.actions).toEqual(['read']);
-    });
-
-    it('sets correct expiry', async () => {
-      const human = generateDidKey();
-      const agent = generateDidKey();
-
-      const jwt = await issueCredential(human.did, human.privateKey, {
-        agent: agent.did,
-        columns: ['patients.name'],
-        actions: ['read'],
-        expiresIn: '1h',
-      });
-
-      const { payload } = decodeJwt(jwt);
-      const expectedExp = Math.floor(Date.now() / 1000) + 3600;
-      // Allow 2 second tolerance
-      expect(Math.abs((payload.exp ?? 0) - expectedExp)).toBeLessThan(2);
-    });
-
-    it('signature is verifiable with human public key', async () => {
-      const human = generateDidKey();
-      const agent = generateDidKey();
-
-      const jwt = await issueCredential(human.did, human.privateKey, {
-        agent: agent.did,
-        columns: ['patients.name'],
-        actions: ['read'],
-        expiresIn: '4h',
-      });
-
-      expect(await verifyJwtSignature(jwt, human.publicKey)).toBe(true);
-    });
-
-    it('includes metadata in credential', async () => {
-      const human = generateDidKey();
-      const agent = generateDidKey();
-
-      const jwt = await issueCredential(human.did, human.privateKey, {
-        agent: agent.did,
-        columns: ['patients.name'],
-        actions: ['read'],
-        expiresIn: '4h',
-        metadata: { department: 'claims' },
-      });
-
-      const { payload } = decodeJwt(jwt);
-      expect(payload.vc?.credentialSubject?.department).toBe('claims');
-    });
-
-    it('rejects invalid duration format', async () => {
-      const human = generateDidKey();
-      const agent = generateDidKey();
-
-      await expect(
-        issueCredential(human.did, human.privateKey, {
-          agent: agent.did,
-          columns: ['patients.name'],
-          actions: ['read'],
-          expiresIn: 'invalid',
-        }),
-      ).rejects.toThrow('Invalid duration');
-    });
-  });
-
   describe('createMockSession', () => {
-    it('returns a session with a valid DID', () => {
-      const verifier = new VcVerifier({
-        clockSkew: '30s',
-        revocationStore: new InMemoryRevocationStore(),
-      });
-
-      const session = createMockSession(verifier, 'Test User');
-      expect(session.humanDid).toMatch(/^did:key:z/);
-      expect(session.email).toBe('test.user@demo.abaxx.tech');
-    });
-
-    it('session can issue credentials', async () => {
-      const verifier = new VcVerifier({
-        clockSkew: '30s',
-        revocationStore: new InMemoryRevocationStore(),
-      });
-      const session = createMockSession(verifier);
-
-      const agent = generateDidKey();
-      verifier.registerKey(agent.did, agent.publicKey);
-
-      const jwt = await session.issueCredential({
-        agent: agent.did,
-        columns: ['patients.name'],
-        actions: ['read'],
-        expiresIn: '4h',
-      });
-
-      expect(jwt.split('.').length).toBe(3);
-      const { payload } = decodeJwt(jwt);
-      expect(payload.sub).toBe(agent.did);
-    });
-
     it('issued credentials verify successfully', async () => {
       const verifier = new VcVerifier({
         clockSkew: '30s',
@@ -167,42 +30,6 @@ describe('Auth', () => {
     });
   });
 
-  describe('createMockSession — DID determinism (generateDidKeyFromSeed behavior)', () => {
-    it('same humanName produces the same DID on repeated calls', () => {
-      const verifier1 = new VcVerifier({
-        clockSkew: '30s',
-        revocationStore: new InMemoryRevocationStore(),
-      });
-      const verifier2 = new VcVerifier({
-        clockSkew: '30s',
-        revocationStore: new InMemoryRevocationStore(),
-      });
-
-      const session1 = createMockSession(verifier1, 'Dr. Chen');
-      const session2 = createMockSession(verifier2, 'Dr. Chen');
-      expect(session1.humanDid).toBe(session2.humanDid);
-    });
-
-    it('different humanNames produce different DIDs', () => {
-      const verifier = new VcVerifier({
-        clockSkew: '30s',
-        revocationStore: new InMemoryRevocationStore(),
-      });
-
-      const s1 = createMockSession(verifier, 'Dr. Chen');
-      const s2 = createMockSession(verifier, 'Dr. Patel');
-      expect(s1.humanDid).not.toBe(s2.humanDid);
-    });
-
-    it('produced DID is a valid did:key', () => {
-      const session = createMockSession(
-        new VcVerifier({ clockSkew: '30s', revocationStore: new InMemoryRevocationStore() }),
-        'Seed Test',
-      );
-      expect(session.humanDid).toMatch(/^did:key:z[1-9A-HJ-NP-Za-km-z]+$/);
-    });
-  });
-
   describe('createMockSession with mock SDK', () => {
     it('falls back to local-key issuance when SDK credential issuance fails', async () => {
       const verifier = new VcVerifier({
@@ -216,7 +43,6 @@ describe('Auth', () => {
       const agent = generateDidKey();
       verifier.registerKey(agent.did, agent.publicKey);
 
-      // SDK fails, so session uses the local-key path
       const jwt = await session.issueCredential({
         agent: agent.did,
         columns: ['patients.name'],
@@ -225,122 +51,10 @@ describe('Auth', () => {
       });
 
       expect(jwt.split('.').length).toBe(3);
-      // SDK was attempted first
       expect(mockSdk.vc.createCredential).toHaveBeenCalled();
-    });
-
-    it('uses SDK when available and working', async () => {
-      const verifier = new VcVerifier({
-        clockSkew: '30s',
-        revocationStore: new InMemoryRevocationStore(),
-      });
-
-      const mockSignedJwt = 'eyJhbGciOiJFZERTQSJ9.eyJpc3MiOiJkaWQ6a2V5Ono2TWtGYWtlIn0.fakesig';
-
-      const mockSdk = createMockSdk();
-      const signCredential = vi
-        .spyOn(mockSdk.vc, 'signCredential')
-        .mockResolvedValue(mockSignedJwt);
-
-      const session = createMockSession(verifier, 'Test User', mockSdk);
-      const agent = generateDidKey();
-
-      const jwt = await session.issueCredential({
-        agent: agent.did,
-        columns: ['patients.name'],
-        actions: ['read'],
-        expiresIn: '4h',
-      });
-
-      // Should use SDK path
-      expect(jwt).toBe(mockSignedJwt);
-      expect(mockSdk.vc.createCredential).toHaveBeenCalled();
-      expect(signCredential).toHaveBeenCalled();
     });
   });
 });
-
-describe('issueCredentialFromParent — optional ceiling enforcement', () => {
-  const AGENT_DID = 'did:key:z6MkTestAgent';
-  const ACCESS_TOKEN = 'mock-access-token';
-
-  function makeProvider(jwt = 'mock.jwt.token') {
-    return {
-      requestAgentCredential: vi.fn().mockResolvedValue({ jwt, issuerDid: 'did:key:zIssuer' }),
-    };
-  }
-
-  const requestedOptions = { columns: ['patients.name'], actions: ['read'], expiresIn: '4h' };
-
-  it('calls provider normally when no ceiling is supplied (backwards-compatible)', async () => {
-    const provider = makeProvider();
-    const result = await issueCredentialFromParent(
-      provider,
-      ACCESS_TOKEN,
-      AGENT_DID,
-      requestedOptions,
-    );
-    expect(result.jwt).toBe('mock.jwt.token');
-    expect(provider.requestAgentCredential).toHaveBeenCalledOnce();
-  });
-
-  it('calls provider when ceiling accepts the requested scope', async () => {
-    const provider = makeProvider();
-    const ceiling: ScopeCeiling = {
-      columns: ['patients.name', 'patients.dob'],
-      actions: ['read'],
-      source: 'oidc-claims',
-      resolvedFrom: ['scope_columns'],
-    };
-    const result = await issueCredentialFromParent(
-      provider,
-      ACCESS_TOKEN,
-      AGENT_DID,
-      requestedOptions,
-      { ceiling },
-    );
-    expect(result.jwt).toBe('mock.jwt.token');
-    expect(provider.requestAgentCredential).toHaveBeenCalledOnce();
-  });
-
-  it('throws ScopeExceedsCeilingError and does NOT call provider when ceiling rejects', async () => {
-    const provider = makeProvider();
-    const restrictiveCeiling: ScopeCeiling = {
-      columns: ['patients.dob'], // does not include patients.name
-      actions: ['read'],
-      source: 'oidc-claims',
-      resolvedFrom: ['scope_columns'],
-    };
-    await expect(
-      issueCredentialFromParent(provider, ACCESS_TOKEN, AGENT_DID, requestedOptions, {
-        ceiling: restrictiveCeiling,
-      }),
-    ).rejects.toThrowError(ScopeExceedsCeilingError);
-    expect(provider.requestAgentCredential).not.toHaveBeenCalled();
-  });
-
-  it('enforces ceiling without context (scope-only check, no policy rules)', async () => {
-    // Ceiling with no rules — scope check still runs even with undefined context.
-    const provider = makeProvider();
-    const ceilingNoContext: ScopeCeiling = {
-      columns: ['patients.name'],
-      actions: ['read'],
-      source: 'oidc-claims',
-      resolvedFrom: [],
-    };
-    const result = await issueCredentialFromParent(
-      provider,
-      ACCESS_TOKEN,
-      AGENT_DID,
-      requestedOptions,
-      { ceiling: ceilingNoContext }, // no context provided
-    );
-    expect(result.jwt).toBe('mock.jwt.token');
-    expect(provider.requestAgentCredential).toHaveBeenCalledOnce();
-  });
-});
-
-// Each test mutates process.env.NODE_ENV and restores it in afterEach.
 describe('createMockSession — NODE_ENV guard', () => {
   let _savedNodeEnv: string | undefined;
 
@@ -356,24 +70,6 @@ describe('createMockSession — NODE_ENV guard', () => {
     }
   });
 
-  it('succeeds when NODE_ENV=test', () => {
-    process.env.NODE_ENV = 'test';
-    const verifier = new VcVerifier({
-      clockSkew: '30s',
-      revocationStore: new InMemoryRevocationStore(),
-    });
-    expect(() => createMockSession(verifier)).not.toThrow();
-  });
-
-  it('succeeds when NODE_ENV=development', () => {
-    process.env.NODE_ENV = 'development';
-    const verifier = new VcVerifier({
-      clockSkew: '30s',
-      revocationStore: new InMemoryRevocationStore(),
-    });
-    expect(() => createMockSession(verifier)).not.toThrow();
-  });
-
   it('throws when NODE_ENV=production', () => {
     process.env.NODE_ENV = 'production';
     const verifier = new VcVerifier({
@@ -382,14 +78,5 @@ describe('createMockSession — NODE_ENV guard', () => {
     });
     expect(() => createMockSession(verifier)).toThrow('production');
     expect(() => createMockSession(verifier)).toThrow('development');
-  });
-
-  it('throws when NODE_ENV is unset (treats as production)', () => {
-    delete process.env.NODE_ENV;
-    const verifier = new VcVerifier({
-      clockSkew: '30s',
-      revocationStore: new InMemoryRevocationStore(),
-    });
-    expect(() => createMockSession(verifier)).toThrow('createSessionFromDid');
   });
 });

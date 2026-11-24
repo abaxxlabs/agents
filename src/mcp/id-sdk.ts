@@ -26,6 +26,7 @@
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { IdSdkInstance } from '#types/id-sdk.js';
@@ -94,16 +95,17 @@ function findUp(startDir: string, relativePath: string): string | undefined {
 /**
  * Resolve the vendored server path without `import.meta.url`.
  * CJS output cannot use import.meta — resolution is CWD-based with a package-install fallback.
+ * The result is always absolute, so it means the same thing to a child with another cwd.
  */
 export function resolveVendoredIdSdkMcpServerPath(cwd = process.cwd()): string {
   const explicit = process.env.AGENTS_ID_SDK_MCP_SERVER;
   if (explicit) {
-    return explicit;
+    return path.resolve(cwd, explicit);
   }
 
   const fromCwd = findUp(cwd, path.join('vendor', 'id-sdk-mcp', 'server.mjs'));
   if (fromCwd) {
-    return fromCwd;
+    return path.resolve(fromCwd);
   }
 
   try {
@@ -122,7 +124,64 @@ export function resolveVendoredIdSdkMcpServerPath(cwd = process.cwd()): string {
     // Fall through to the relative path so callers get a useful spawn error.
   }
 
-  return path.join(cwd, 'vendor', 'id-sdk-mcp', 'server.mjs');
+  return path.resolve(cwd, 'vendor', 'id-sdk-mcp', 'server.mjs');
+}
+
+/**
+ * Directory of this module file in both the ESM and the CJS build.
+ * The CJS build cannot contain `import.meta`, so ESM reads its own file from a V8 call site.
+ */
+function thisModuleDir(): string | undefined {
+  // `node -e` defines a global `__filename` of "[eval]"; only an absolute one is this module.
+  if (typeof __filename === 'string' && path.isAbsolute(__filename)) {
+    return path.dirname(__filename);
+  }
+  const original = Error.prepareStackTrace;
+  try {
+    Error.prepareStackTrace = (_error, callSites) => callSites;
+    const callSites = new Error().stack as unknown as NodeJS.CallSite[] | undefined;
+    const fileName = callSites?.[0]?.getFileName();
+    if (!fileName) {
+      return undefined;
+    }
+    return path.dirname(fileName.startsWith('file:') ? fileURLToPath(fileName) : fileName);
+  } catch {
+    return undefined;
+  } finally {
+    Error.prepareStackTrace = original;
+  }
+}
+
+function hasIdSdk(sdkDir: string): boolean {
+  return existsSync(path.join(sdkDir, 'esm', 'index.js'));
+}
+
+/**
+ * Absolute path of the vendored id-sdk directory (`<dir of server.mjs>/sdk`).
+ *
+ * Order: the directory next to the server named by `AGENTS_ID_SDK_MCP_SERVER`; the SDK shipped
+ * with this library, located from this module file (`src/mcp`, `dist/mcp` or `dist/cjs/mcp`);
+ * and only then a search upward from the working directory. Code that runs with key material
+ * should not be chosen by where the host process happened to start.
+ */
+export function resolveVendoredIdSdkDir(): string {
+  const explicit = process.env.AGENTS_ID_SDK_MCP_SERVER;
+  if (explicit) {
+    return path.join(path.dirname(path.resolve(explicit)), 'sdk');
+  }
+
+  const moduleDir = thisModuleDir();
+  if (moduleDir) {
+    const shipped = [
+      path.resolve(moduleDir, '..', '..', 'vendor', 'id-sdk-mcp', 'sdk'),
+      path.resolve(moduleDir, '..', '..', '..', 'vendor', 'id-sdk-mcp', 'sdk'),
+    ].find(hasIdSdk);
+    if (shipped) {
+      return shipped;
+    }
+  }
+
+  return path.join(path.dirname(resolveVendoredIdSdkMcpServerPath()), 'sdk');
 }
 
 function withoutFunctionValues(value: unknown): unknown {
@@ -216,7 +275,12 @@ export function createIdSdkMcpAdapter(
       return callTool('vc_get_signer_options', {
         issuerDid,
         subjectDid,
-      }) as Promise<{ kid: string; issuerDid: string; subjectDid: string; signer: (data: Uint8Array) => Promise<Uint8Array> }>;
+      }) as Promise<{
+        kid: string;
+        issuerDid: string;
+        subjectDid: string;
+        signer: (data: Uint8Array) => Promise<Uint8Array>;
+      }>;
     },
 
     verifyJWT(jwt: string): Promise<boolean> {
@@ -224,7 +288,11 @@ export function createIdSdkMcpAdapter(
     },
 
     decodeJWT(jwt: string) {
-      return callTool('vc_decode_jwt', { jwt }) as Promise<{ header: Record<string, unknown>; payload: Record<string, unknown>; signature: string }>;
+      return callTool('vc_decode_jwt', { jwt }) as Promise<{
+        header: Record<string, unknown>;
+        payload: Record<string, unknown>;
+        signature: string;
+      }>;
     },
 
     parseJWT(jwt: string): Promise<unknown> {
@@ -262,7 +330,10 @@ export function createIdSdkMcpAdapter(
 
   const did = {
     resolve(didUrl: string) {
-      return callTool('did_resolve', { didUrl }) as Promise<{ didDocument: unknown; didResolutionMetadata: unknown }>;
+      return callTool('did_resolve', { didUrl }) as Promise<{
+        didDocument: unknown;
+        didResolutionMetadata: unknown;
+      }>;
     },
 
     create(createOptions: Record<string, unknown> = {}): Promise<unknown> {

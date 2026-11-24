@@ -36,6 +36,7 @@ import {
   registerVerifyChainTool,
 } from './audit-tools.js';
 import { registerIdentityTools } from './identity-tools.js';
+import type { McpServerExtension } from './extension.js';
 
 /**
  * Session-bound inputs for MCP tool registration.
@@ -67,6 +68,8 @@ export interface ToolDependencies {
   bindingExpiry?: number;
   orgDomain?: string | null;
   credentialMaxTtlMs?: number;
+  /** Host extensions: their tools are registered after every library tool. */
+  extensions?: readonly McpServerExtension[];
 }
 
 export type ToolServiceFallbackDependencies = {
@@ -115,7 +118,12 @@ export function registerTools(
   };
 
   registerQueryTool(server, core);
-  registerCreateAgentTool(server, core);
+  registerCreateAgentTool(server, {
+    ...core,
+    onAgentCreated: (deps.extensions ?? []).flatMap((extension) =>
+      extension.onAgentCreated ? [(agent) => extension.onAgentCreated?.(agent)] : [],
+    ),
+  });
   registerIssueCredentialTool(server, credentials);
   registerRevokeCredentialTool(server, credentials);
   registerDelegateCredentialTool(server, credentials);
@@ -124,17 +132,22 @@ export function registerTools(
   registerListAgentsTool(server, core);
   registerVerifyChainTool(server, core);
 
-  if (!deps.serverIdentity) return;
-  registerIdentityTools(
-    server,
-    {
-      session: deps.session,
-      trustAnchorStore: deps.trustAnchorStore,
-      challengeStore: deps.challengeStore,
-      rateLimiter: deps.rateLimiter,
-      bindingSource: deps,
-      logger,
-    },
-    deps.serverIdentity,
-  );
+  if (deps.serverIdentity) {
+    registerIdentityTools(
+      server,
+      {
+        session: deps.session,
+        trustAnchorStore: deps.trustAnchorStore,
+        challengeStore: deps.challengeStore,
+        rateLimiter: deps.rateLimiter,
+        bindingSource: deps,
+        logger,
+      },
+      deps.serverIdentity,
+    );
+  }
+
+  for (const extension of deps.extensions ?? []) {
+    extension.registerTools?.(server);
+  }
 }

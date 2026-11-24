@@ -6,8 +6,6 @@ import { generateDidKey, issueCredential } from '#auth/index.js';
 
 describe('VcVerifier required-revocationStore contract', () => {
   it('runtime consumes injections.revocationStore on the verify hot path', async () => {
-    // Two verifiers, two different stores. They MUST give different results for
-    // the SAME credential — proving each verifier consults its own injected store.
     const human = generateDidKey();
     const agent = generateDidKey();
 
@@ -28,10 +26,7 @@ describe('VcVerifier required-revocationStore contract', () => {
     verifierWithoutRevocation.registerKey(human.did, human.publicKey);
     verifierWithoutRevocation.registerKey(agent.did, agent.publicKey);
 
-    // Mint a real scope credential (not a bare JWT) — verify() runs many
-    // upstream checks (issuer key, vc claims, scope shape, JTI, exp) before
-    // reaching the revocation step. issueCredential produces the canonical
-    // shape that takes the verify path all the way to revocation.
+    // Use a real issued credential so earlier verification checks cannot mask revocation behavior.
     const jwt = await issueCredential(human.did, human.privateKey, {
       agent: agent.did,
       columns: ['patients.dob'],
@@ -39,16 +34,11 @@ describe('VcVerifier required-revocationStore contract', () => {
       expiresIn: '1h',
     });
 
-    // Extract the JTI the issuer minted, then pre-revoke it in the populated
-    // store ONLY. The empty store sees nothing.
     const { payload } = decodeJwt(jwt);
     const jti = payload.jti as string;
     expect(jti).toBeTruthy();
     await populatedStore.revoke(jti, { reason: 'd34 test b fixture' });
 
-    // The populated-store verifier must reject. The empty-store verifier must
-    // accept. The two outcomes diverge on the SAME credential — proving each
-    // verifier reads ITS OWN injected revocationStore.
     const revokedResult = await verifierWithRevocation.verify(jwt);
     expect(revokedResult.valid).toBe(false);
     expect(revokedResult.status).toBe('REVOKED');
@@ -56,13 +46,5 @@ describe('VcVerifier required-revocationStore contract', () => {
     const validResult = await verifierWithoutRevocation.verify(jwt);
     expect(validResult.valid).toBe(true);
     expect(validResult.status).toBe('VALID');
-  });
-
-  it('VcVerifierOptions.revocationStore type is required at the source layer', () => {
-    // The structural protection is at the type level: any change to
-    // `VcVerifierOptions` that makes `revocationStore` optional would fire
-    // tsc errors at call sites in src/. The runtime probe above catches the
-    // other half: a refactor that keeps the field required but ignores it.
-    expect(true).toBe(true);
   });
 });

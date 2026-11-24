@@ -8,25 +8,19 @@ sidebar_position: 2
 
 # Security limitations
 
-Agents++ provides independent identity, authorization, encryption, and audit controls. These controls work within explicit trust assumptions and do not replace database privileges, TLS, or secret-management practices.
+Read [Security boundaries](index.md) for the controls and their trust assumptions. This page covers additional deployment limits and operator responsibilities.
 
 ## Authorization limits
 
-The implemented business-data query policy is read-only PostgreSQL `SELECT` enforcement. It rejects unauthorized tables, columns, and mutations before execution.
-
-A direct PostgreSQL connection bypasses this application-level policy. Production deployments must control database credentials and roles separately.
+The [authorization boundary](index.md#authorization-boundary) applies only to queries routed through `ScopeEngine`; direct PostgreSQL connections bypass it. Production deployments must control database credentials and roles separately.
 
 ## Encryption limits
 
-AES-256-GCM protects only columns explicitly configured for encryption. A database observer may still see schema metadata, ciphertext length, IV and tag metadata, and query or row access patterns.
-
-The master key is supplied by the application. It must be stored in an appropriate secret-management system and never committed to source control.
+In addition to the metadata described in the [encryption boundary](index.md#encryption-boundary), a database observer can see IV and authentication-tag metadata. Store the application-supplied master key in an appropriate secret-management system.
 
 ## Audit limits
 
-When enabled, successful scoped queries can produce signed, hash-chained records. This makes the application audit stream tamper-evident under the configured storage and key assumptions.
-
-It is not an absolute immutability guarantee. Database owners, superusers, and roles able to remove or disable triggers remain outside the application-level audit boundary. Some rejection records may not have an agent signer available.
+The [audit boundary](index.md#audit-boundary) explains tamper evidence, privileged-role exclusions, and why some rejection records may be unsigned.
 
 ## Revocation limits
 

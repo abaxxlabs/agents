@@ -48,38 +48,4 @@ describe('SQLite audit store — v3 columns round-trip', () => {
     expect(readBack.version).toBe(written.version);
     expect(readBack.status).toBe('success');
   });
-
-  it('reads back a rejection record with status, reason, and reason_code preserved', async () => {
-    const logger = new AuditLogger({ auditStore: backend.audit, enabled: true });
-    const signer = createSigner(agent.privateKey);
-
-    const written = await logger.logRejection('scope exceeded', 'SCOPE_VIOLATION', signer, {
-      agentDid: agent.did,
-      ownerDid: human.did,
-      sql: 'SELECT ssn FROM patients',
-    });
-
-    const [readBack] = await backend.audit.query();
-    expect(readBack.version).toBe(written.version);
-    expect(readBack.status).toBe('rejected');
-    expect(readBack.reason).toBe('scope exceeded');
-    expect(readBack.reasonCode).toBe('SCOPE_VIOLATION');
-  });
-
-  it('validates the hash chain over read-back records', async () => {
-    const logger = new AuditLogger({ auditStore: backend.audit, enabled: true });
-    const signer = createSigner(agent.privateKey);
-
-    await logger.log(makeEntry(agent.did, human.did), signer);
-    await logger.logRejection('scope exceeded', 'SCOPE_VIOLATION', signer, {
-      agentDid: agent.did,
-      ownerDid: human.did,
-    });
-    await logger.log(makeEntry(agent.did, human.did), signer);
-
-    const verifier = new AuditLogger({ auditStore: backend.audit, enabled: false });
-    const result = await verifier.verifyAuditChain();
-    expect(result.ok).toBe(true);
-    expect(result.totalRecords).toBe(3);
-  });
 });

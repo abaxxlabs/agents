@@ -17,6 +17,7 @@
  * MCP Server Entry Point — parse CLI args, initialize AgentScope, start server.
  *
  * Usage: agents mcp --db <url> [--mock <name>] [--tls-cert <path> --tls-key <path>] [--insecure] [--allow-no-auth] [--single-instance]
+ *        [--keystore <path>]
  *
  * Boot order: the HTTP transport installs bearer authentication before the MCP SDK
  * dispatches a request.
@@ -32,6 +33,15 @@ import { getLogger } from '#observability/logger.js';
 import type { StorageBackend } from '#storage/types.js';
 import { FixedWindowRateLimiter } from '#transport/index.js';
 import { createMcpServer, connectStdio } from './server.js';
+import {
+  attachHostExtensions,
+  createHostShutdown,
+  extensionStopper,
+  loadHostIdentity,
+  startHostExtension,
+} from './host-boot.js';
+import type { AttachedExtension } from './host-boot.js';
+import type { McpHostExtension } from './extension.js';
 import { createMcpBearerAuth, type McpBearerAuth } from './auth.js';
 import { createMcpHttpHandler } from './http-handler.js';
 import {
@@ -42,6 +52,23 @@ import {
 
 export { createMcpServer } from './server.js';
 export type { McpServerOptions } from './server.js';
+export {
+  envList,
+  envValue,
+  resolveMcpHostOptionsFromEnv,
+  withMcpHostFlags,
+  type McpHostFlags,
+  type McpHostOptions,
+} from './host-env.js';
+export type {
+  McpHostAgents,
+  McpHostAttachment,
+  McpHostDatabase,
+  McpHostExtension,
+  McpHostExtensionContext,
+  McpHostIdentity,
+  McpServerExtension,
+} from './extension.js';
 
 export interface McpCliOptions {
   db: string;
@@ -72,6 +99,12 @@ export interface McpCliOptions {
   logger?: Logger;
   /** Pre-built `StorageBackend`. When provided, the production refusal gate and coherency warning are skipped. */
   storage?: StorageBackend;
+  /** JSON keystore holding the persistent server identity. Setting it loads that identity. */
+  keystorePath?: string;
+  /** Peer server DIDs to trust. Setting any loads the persistent server identity. */
+  trustedServers?: readonly string[];
+  /** Host extensions, attached in order once the scope and the session exist. */
+  extensions?: readonly McpHostExtension[];
 }
 
 type AgentScopeConstructor = (typeof import('#sql/index.js'))['AgentScope'];
@@ -188,12 +221,26 @@ export async function startMcpServer(options: McpCliOptions): Promise<void> {
     assertMcpHttpBearerAuthOrExit(options, log, bearerResolution);
   }
 
+  const extensions = options.extensions ?? [];
+
   log('Connecting to database...');
   const AgentScopeCtor = await loadAgentScope();
   const masterKey = resolveMasterKeyFromEnv();
   const nodeEnv = process.env.NODE_ENV;
   const devMode =
     process.env.AGENTS_DEV_MODE === 'true' || nodeEnv === 'development' || nodeEnv === 'test';
+
+  const identity = await loadHostIdentity({
+    keystorePath: options.keystorePath,
+    trustedServers: options.trustedServers,
+    required: extensions.some((extension) => extension.needsHostIdentity === true),
+    devMode,
+    logger: mcpLogger,
+  });
+  if (identity) {
+    const anchors = identity.trustAnchors.list().length;
+    log(`Server DID ${identity.serverIdentity.did} (trust anchors: ${anchors})`);
+  }
 
   // Freeze to ensure both AgentScope and any GenericOidcProvider use the same array.
   const extraConsumerDomains = Object.freeze(
@@ -211,7 +258,17 @@ export async function startMcpServer(options: McpCliOptions): Promise<void> {
         orgBoundary: { extraConsumerDomains },
       }),
     },
-    { masterKey, logger: mcpLogger, ...(storage && { storage }) },
+    {
+      masterKey,
+      logger: mcpLogger,
+      ...(storage && { storage }),
+      ...(identity && {
+        serverIdentity: {
+          did: identity.serverIdentity.did,
+          publicKey: identity.serverIdentity.publicKey,
+        },
+      }),
+    },
   );
 
   log('Authenticating session...');
@@ -240,18 +297,96 @@ export async function startMcpServer(options: McpCliOptions): Promise<void> {
     },
   });
 
-  const mcpServer = createMcpServer({
-    scope,
-    session,
-    auditLogger: scope.auditLoggerInstance,
-    logger: mcpLogger,
-    rateLimiter,
-    credentialMaxTtlMs: scope.credentialMaxTtlMs,
-  });
+  // Registered before anything that can fail, so a failed attach or start releases the scope and
+  // every extension already attached.
+  const shutdown = createHostShutdown({ log, exit: (code) => process.exit(code) });
+  shutdown.defer(() => scope.close());
+  const stoppers: Array<() => Promise<void>> = [];
+  let attached: AttachedExtension[];
+  try {
+    attached = await attachHostExtensions(
+      extensions,
+      {
+        agents: {
+          getRegisteredAgent: (did) => scope.getRegisteredAgent(did),
+          listRegisteredAgents: () => scope.listRegisteredAgents(),
+        },
+        auditLogger: scope.auditLoggerInstance,
+        session,
+        masterKey,
+        identity: identity && {
+          serverIdentity: identity.serverIdentity,
+          trustAnchors: identity.trustAnchors,
+        },
+        database: storage ? { kind: 'injected' } : { kind: 'postgres', connectionString: db },
+        devMode,
+        logger: mcpLogger,
+        log: (message) => log(message),
+      },
+      (extension) => {
+        const stop = extensionStopper(extension, mcpLogger);
+        stoppers.push(stop);
+        shutdown.defer(stop);
+      },
+    );
+  } catch (err) {
+    log(`Extension failed to attach: ${err instanceof Error ? err.message : String(err)}`);
+    await shutdown.run(1);
+    return;
+  }
+
+  let mcpServer: ReturnType<typeof createMcpServer>;
+  try {
+    mcpServer = createMcpServer({
+      scope,
+      session,
+      auditLogger: scope.auditLoggerInstance,
+      logger: mcpLogger,
+      rateLimiter,
+      credentialMaxTtlMs: scope.credentialMaxTtlMs,
+      extensions: attached.map((extension) => extension.attachment),
+      ...(identity && {
+        serverIdentity: identity.serverIdentity,
+        trustAnchorStore: identity.trustAnchors,
+      }),
+    });
+  } catch (err) {
+    // For example an extension tool whose name a library tool already uses.
+    log(`MCP server could not be created: ${err instanceof Error ? err.message : String(err)}`);
+    await shutdown.run(1);
+    return;
+  }
+
+  // once: a second signal falls back to the default handler and ends a stuck shutdown.
+  process.once('SIGINT', () => void shutdown.run());
+  process.once('SIGTERM', () => void shutdown.run());
+
+  // Started before the transport accepts clients so a failure never reaches a live session.
+  const startExtensions = async (): Promise<boolean> => {
+    for (const [index, extension] of attached.entries()) {
+      const started = await startHostExtension(extension, stoppers[index]);
+      if (started.ok) continue;
+      // A start cut short by a signal is the shutdown doing its job, not a failed boot.
+      if (shutdown.underWay) {
+        await shutdown.run();
+        return false;
+      }
+      log(`Extension ${extension.name} failed to start: ${started.error}`);
+      await shutdown.run(1);
+      return false;
+    }
+    return true;
+  };
 
   if (transport === 'stdio') {
+    if (!(await startExtensions())) return;
     log('MCP server starting on stdio...');
     await connectStdio(mcpServer);
+    // The SDK stdio transport does not watch stdin, so a closed pipe is the disconnect signal.
+    const onDisconnect = () => void shutdown.run();
+    process.stdin.once('end', onDisconnect);
+    process.stdin.once('close', onDisconnect);
+    mcpServer.server.onclose = onDisconnect;
     log('MCP server running on stdio');
   } else {
     // bearerResolution was computed and validated by the boot gate above.
@@ -278,24 +413,15 @@ export async function startMcpServer(options: McpCliOptions): Promise<void> {
       server = http.createServer(handler);
       log(`MCP server starting on HTTP ${bindHost}:${port} (insecure)...`);
     }
+    shutdown.defer(() => {
+      server.close();
+    });
+    shutdown.defer(() => httpHandler.closeAll());
 
+    if (!(await startExtensions())) return;
     server.listen(port, bindHost, () => {
       const proto = tlsCert ? 'https' : 'http';
       log(`MCP server running at ${proto}://${bindHost}:${port}`);
     });
-
-    let shuttingDown = false;
-    const shutdown = async () => {
-      if (shuttingDown) return;
-      shuttingDown = true;
-      log('Shutting down...');
-      await httpHandler.closeAll();
-      server.close();
-      await scope.close();
-      process.exit(0);
-    };
-
-    process.on('SIGINT', shutdown);
-    process.on('SIGTERM', shutdown);
   }
 }

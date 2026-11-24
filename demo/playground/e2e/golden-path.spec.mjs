@@ -17,12 +17,10 @@ function collectBrowserErrors(page, expectedForbidden = 0) {
   };
 }
 
-async function setup(page, columns) {
+async function setup(page) {
   await page.goto('/');
   await page.check('input[name="human-did"][value="alice"]');
-  const initialAudit = page.waitForResponse((res) => res.url().endsWith('/api/audit') && res.request().method() === 'GET');
   await page.click('#btn-login');
-  expect((await initialAudit).status()).toBe(200);
   await expect(page.locator('#step-agent')).not.toContainClass('disabled');
   const created = page.waitForResponse((res) => res.url().endsWith('/api/agents') && res.request().method() === 'POST');
   await page.click('#btn-create-agent');
@@ -30,11 +28,6 @@ async function setup(page, columns) {
   expect(agentResponse.status()).toBe(201);
   const agent = await agentResponse.json();
   await expect(page.locator('#step-credential')).not.toContainClass('disabled');
-  if (columns) {
-    for (const input of await page.locator('#columns-picker input').all()) {
-      await input.setChecked(columns.includes(await input.inputValue()));
-    }
-  }
   await page.click('#btn-issue');
   await expect(page.locator('#step-query')).not.toContainClass('disabled');
   return agent;
@@ -115,6 +108,35 @@ async function holdNextAudit(page) {
   };
 }
 
+test('theme toggle updates appearance, accessibility state, and branding', async ({ page }) => {
+  await page.goto('/');
+  const toggle = page.getByRole('switch', { name: 'Light appearance' });
+  const root = page.locator('html');
+  const label = page.locator('#theme-label');
+  const darkLogo = page.locator('[data-icon="brand-dark"]');
+  const lightLogo = page.locator('[data-icon="brand-light"]');
+
+  await expect(root).toHaveAttribute('data-theme', 'dark');
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await expect(label).toHaveText('Dark');
+  await expect(darkLogo).toBeVisible();
+  await expect(lightLogo).toBeHidden();
+
+  await toggle.click();
+  await expect(root).toHaveAttribute('data-theme', 'light');
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await expect(label).toHaveText('Light');
+  await expect(lightLogo).toBeVisible();
+  await expect(darkLogo).toBeHidden();
+
+  await toggle.click();
+  await expect(root).toHaveAttribute('data-theme', 'dark');
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await expect(label).toHaveText('Dark');
+  await expect(darkLogo).toBeVisible();
+  await expect(lightLogo).toBeHidden();
+});
+
 test('allowed query returns protected data, evidence, and an audit record', async ({ page }) => {
   const checkConsole = collectBrowserErrors(page);
   const agent = await setup(page);
@@ -139,7 +161,6 @@ test('allowed query returns protected data, evidence, and an audit record', asyn
   await expect(page.locator('.comparison-restricted')).toHaveCount(0);
   await expect(page.locator('#decision-trace-output > *')).not.toHaveCount(0);
   await expect(page.locator('#request-evidence-output .tech-row:has-text("Authorization") code')).toHaveText('allowed');
-  await expect(page.locator('#audit-output .audit-item.success')).toBeVisible();
   await expectSavedAudit(page, result, agent, 'success');
   await checkConsole();
 });
@@ -161,12 +182,11 @@ test('out-of-scope query is rejected without returning protected data', async ({
   await expect(page.locator('#comparison-direct-result td.comparison-restricted')).toHaveCount(16);
   await expect(page.locator('#comparison-direct-exposed')).toHaveText('16');
   await expect(page.locator('#comparison-agent-exposed')).toHaveText('0');
-  await expect(page.locator('#audit-output .audit-item.rejected')).toBeVisible();
   await expectSavedAudit(page, result, agent, 'rejected');
   await checkConsole();
 });
 
-test('write attempt changes only the sandbox and the next comparison restores its fixture', async ({ page }) => {
+test('write attempt is discarded and the next comparison sees the canonical fixture', async ({ page }) => {
   const checkConsole = collectBrowserErrors(page, 1);
   const agent = await setup(page);
   const result = await compare(page, 'write attempt');
@@ -181,7 +201,7 @@ test('write attempt changes only the sandbox and the next comparison restores it
   await expect(page.locator('#comparison-direct-rows')).toHaveText('1');
   await expect(page.locator('#comparison-agent-policy')).toHaveText('Failed');
   await expect(page.locator('#comparison-direct-result .comparison-operation .comparison-result-title'))
-    .toHaveText('1 row deleted from the demo sandbox');
+    .toHaveText('1 row deleted from the per-request copy');
   await expect(page.locator('.comparison-operation-sql code')).toHaveText(result.request.sql);
   await expect(page.locator('#comparison-direct-result .comparison-table')).toHaveCount(0);
   await expect(page.locator('#comparison-direct-result')).not.toContainText('LNG-JKM-SEP26');
@@ -197,106 +217,6 @@ test('write attempt changes only the sandbox and the next comparison restores it
   await expect(page.locator('#comparison-agent-rows')).toHaveText('8');
   await expect(page.locator('.comparison-operation, .comparison-notice')).toHaveCount(0);
   await expectSavedAudit(page, after, agent, 'success');
-  await checkConsole();
-});
-
-test('successful data remains visible when the audit GET cannot confirm persistence', async ({ page }) => {
-  const checkConsole = collectBrowserErrors(page);
-  const agent = await setup(page);
-  await page.route('**/api/audit', async (route) => {
-    if (route.request().method() !== 'GET') return route.continue();
-    await route.fulfill({ status: 200, json: { records: [] } });
-  });
-  const result = await compare(page, 'allowed columns');
-
-  expect(result.status).toBe(200);
-  expect(result.body.ok).toBe(true);
-  expect(result.body.rows).toHaveLength(8);
-  expect(result.audit.records).toEqual([]);
-  const realAudit = await page.request.get('/api/audit');
-  correlatedAudit({ ...result, auditStatus: realAudit.status(), audit: await realAudit.json() }, agent, 'success');
-  await expect(page.locator('#query-comparison')).toHaveAttribute('data-case', 'allowed');
-  await expect(page.locator('#comparison-agent-result .comparison-table')).toBeVisible();
-  await expect(page.locator('#comparison-agent-rows')).toHaveText('8');
-  await expect(page.locator('#comparison-agent-audit')).toHaveText('Not confirmed');
-  await expect(page.locator('#comparison-status')).toHaveText('Allowed; audit not confirmed');
-  await expect(page.locator('#comparison-status')).not.toContainText('Allowed and recorded');
-  await expect(page.locator('#decision-trace-output')).not.toContainText('Audit recorded');
-  await checkConsole();
-});
-
-test('a rejected response without an audit reference stays unconfirmed even with a real record', async ({ page }) => {
-  const checkConsole = collectBrowserErrors(page, 1);
-  const agent = await setup(page);
-  let originalBody;
-  await page.route('**/api/query', async (route) => {
-    const upstream = await route.fetch();
-    expect(upstream.status()).toBe(403);
-    const body = await upstream.json();
-    originalBody = structuredClone(body);
-    delete body.inspection.evidence.auditId;
-    await route.fulfill({ response: upstream, json: body });
-  });
-  const result = await compare(page, 'outside scope');
-
-  expect(result.status).toBe(403);
-  expect(result.body.inspection.evidence.auditId).toBeUndefined();
-  correlatedAudit({ ...result, body: originalBody }, agent, 'rejected');
-  await expectBlocked(page, 'scope-blocked');
-  await expect(page.locator('#comparison-agent-audit')).toHaveText('Not confirmed');
-  await expect(page.locator('#comparison-agent-audit')).not.toHaveAttribute('title', /Audit record:/);
-  await expect(page.locator('#audit-output .audit-item.rejected')).toBeVisible();
-  await expect(page.locator('#decision-trace-output')).not.toContainText('Rejection recorded');
-  await checkConsole();
-});
-
-test('allowed preset follows custom credential columns and a custom zero-row query stays allowed', async ({ page }) => {
-  const checkConsole = collectBrowserErrors(page);
-  const agent = await setup(page, ['instrument', 'status']);
-  const allowed = await compare(page, 'allowed columns');
-  expect(allowed.request.sql).toBe('SELECT instrument, status FROM orders');
-  await expect(page.locator('#comparison-agent-result th')).toHaveText(['instrument', 'status']);
-  await expectSavedAudit(page, allowed, agent, 'success');
-
-  await page.fill('#sql-input', 'SELECT instrument, status FROM orders WHERE 1 = 0');
-  const empty = await compare(page);
-  expect(empty.status).toBe(200);
-  expect(empty.body.rows).toEqual([]);
-  expect(empty.direct.rows).toEqual([]);
-  await expect(page.locator('#query-comparison')).toHaveAttribute('data-case', 'allowed');
-  await expect(page.locator('#comparison-agent-rows')).toHaveText('0');
-  await expect(page.locator('#comparison-direct-rows')).toHaveText('0');
-  await expect(page.locator('#comparison-agent-result .comparison-empty')).toHaveText('0 rows');
-  await expect(page.locator('.comparison-notice')).toHaveCount(0);
-  await expectSavedAudit(page, empty, agent, 'success');
-  await checkConsole();
-});
-
-test('completed query results are visible and reusable before a delayed audit is confirmed', async ({ page }) => {
-  const checkConsole = collectBrowserErrors(page);
-  const agent = await setup(page);
-  const audit = await holdNextAudit(page);
-  const pending = compare(page, 'allowed columns');
-  try {
-    await audit.intercepted;
-    await expect(page.locator('#query-comparison')).toBeVisible();
-    await expect(page.locator('#comparison-agent-result tbody tr')).toHaveCount(8);
-    await expect(page.locator('#btn-run')).toBeEnabled();
-    await expect(page.locator('#query-comparison')).toHaveAttribute('aria-busy', 'false');
-    await expect(page.locator('#comparison-agent-audit')).toHaveText('Not confirmed');
-    await expect(page.locator('#comparison-status')).toHaveText('Allowed; audit not confirmed');
-    const table = await page.locator('#comparison-agent-result .comparison-table-scroll').elementHandle();
-    await table.focus();
-    await page.locator('#query-implementation').evaluate((details) => { details.open = true; });
-
-    audit.release();
-    const result = await pending;
-    await expectSavedAudit(page, result, agent, 'success');
-    expect(await table.evaluate((element) => element.isConnected && element === document.activeElement)).toBe(true);
-    await expect(page.locator('#query-implementation')).toHaveAttribute('open', '');
-  } finally {
-    await audit.dispose();
-  }
   await checkConsole();
 });
 

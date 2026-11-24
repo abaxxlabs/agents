@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
 import { spawn, spawnSync } from 'node:child_process';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash } from 'node:crypto';
 
 const projectName = `agents-playground-test-${process.pid}`;
 const externalDatabaseName = `${projectName}-external-db`;
@@ -23,7 +23,7 @@ const commandEnv = {
 delete commandEnv.PLAYGROUND_MASTER_KEY;
 let postgresContainer = 'postgres';
 let visitorCookie;
-let visitorDatabase;
+const sharedDatabase = 'playground_shared';
 
 function run(command, args) {
   const result = spawnSync(command, args, {
@@ -52,10 +52,17 @@ function psql(database, sql, role = 'postgres') {
     : run('docker', ['exec', postgresContainer, ...args]);
 }
 
-function visitorDatabases() {
-  const names = psql('postgres',
-    "SELECT datname FROM pg_database WHERE datname ~ '^agents_playground_visitor_[0-9a-f]{32}$' ORDER BY datname");
-  return names ? names.split('\n') : [];
+function visitorDatabaseCount() {
+  return Number(psql('postgres',
+    "SELECT count(*) FROM pg_database WHERE datname ~ '^agents_playground_visitor_[0-9a-f]{32}$'"));
+}
+
+function cleanupVisitorDatabases(args = []) {
+  return spawnSync('docker', [
+    'compose', '--project-name', projectName, 'exec', '-T',
+    '-e', `DATABASE_URL=${commandEnv.PLAYGROUND_DATABASE_URL}`,
+    'playground', 'node', 'scripts/cleanup-visitor-databases.mjs', ...args,
+  ], { cwd: new URL('..', import.meta.url), env: commandEnv, encoding: 'utf8' });
 }
 
 function configFingerprint() {
@@ -76,34 +83,31 @@ function masterKeyFingerprint() {
   ]);
 }
 
-function databaseState(database = visitorDatabase) {
+function databaseState(database = sharedDatabase) {
   return psql(database,
     "SELECT (SELECT count(*) FROM orders), (SELECT count(*) FROM orders_plaintext), (SELECT count(*) FROM agent_keys WHERE table_name = 'orders'), (SELECT count(*) FROM agent_columns WHERE table_name = 'orders' AND is_encrypted)");
 }
 
 const SNAPSHOT_SQL = [
-  'agents',
-  'revoked_credentials',
-  'agent_audit',
   'orders',
   'orders_plaintext',
 ].map((table) => `SELECT row_to_json(t) FROM ${table} t`).join('\nUNION ALL\n');
 
-function stateSnapshot(database = visitorDatabase) {
+function stateSnapshot(database = sharedDatabase) {
   const rows = psql(database, SNAPSHOT_SQL);
   return rows ? rows.split('\n').sort() : [];
 }
 
-function assertStateUnchanged(before, database = visitorDatabase) {
-  const after = stateSnapshot(database);
+function assertStateUnchanged(before) {
+  const after = stateSnapshot();
   const added = after.filter((row) => !before.includes(row));
   const removed = before.filter((row) => !after.includes(row));
   assert.deepEqual(added, [], `request added state rows:\n${added.join('\n')}`);
   assert.deepEqual(removed, [], `request removed state rows:\n${removed.join('\n')}`);
 }
 
-function tableFingerprint(table) {
-  const rows = psql(visitorDatabase, `SELECT row_to_json(t)::text FROM ${table} t`);
+function tableFingerprint(table, database = sharedDatabase) {
+  const rows = psql(database, `SELECT row_to_json(t)::text FROM ${table} t`);
   return rows ? rows.split('\n').sort() : [];
 }
 
@@ -138,7 +142,7 @@ function fetchWithCookie(cookie) {
 }
 
 async function createIndependentSession(humanDid) {
-  const databasesBefore = visitorDatabases();
+  const databasesBefore = visitorDatabaseCount();
   const response = await smokeFetch('/api/login', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -147,10 +151,9 @@ async function createIndependentSession(humanDid) {
   const session = await response.json();
   assert.ok(response.ok, `independent login (${humanDid}) returned ${response.status}: ${JSON.stringify(session)}`);
   const cookie = response.headers.get('set-cookie')?.split(';', 1)[0];
-  assert.match(cookie, /^visitorSessionId=[A-Za-z0-9_-]{43}$/, `independent login (${humanDid}) must set an opaque visitor cookie`);
-  const created = visitorDatabases().filter((database) => !databasesBefore.includes(database));
-  assert.equal(created.length, 1, `independent login (${humanDid}) must provision exactly one visitor database`);
-  return { session, cookie, database: created[0], fetchAs: fetchWithCookie(cookie) };
+  assert.match(cookie, /^visitorSessionId=v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/, `independent login (${humanDid}) must set a signed visitor cookie`);
+  assert.equal(visitorDatabaseCount(), databasesBefore, `independent login (${humanDid}) must not create a visitor database`);
+  return { session, cookie, fetchAs: fetchWithCookie(cookie) };
 }
 
 async function authorizedQuery({ fetchAs, agent, credential, label }) {
@@ -194,7 +197,7 @@ async function request(path, init = {}) {
 }
 
 async function login() {
-  const databasesBefore = visitorDatabases();
+  const databasesBefore = visitorDatabaseCount();
   const response = await visitorFetch('/api/login', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -203,14 +206,8 @@ async function login() {
   const session = await response.json();
   assert.ok(response.ok, `/api/login returned ${response.status}: ${JSON.stringify(session)}`);
   const cookie = response.headers.get('set-cookie')?.split(';', 1)[0];
-  assert.match(cookie, /^visitorSessionId=[A-Za-z0-9_-]{43}$/);
-  const created = visitorDatabases().filter((database) => !databasesBefore.includes(database));
-  if (cookie === visitorCookie) {
-    assert.deepEqual(created, [], 'reusing a session must not provision another database');
-  } else {
-    assert.equal(created.length, 1, 'a new session must provision exactly one visitor database');
-    visitorDatabase = created[0];
-  }
+  assert.match(cookie, /^visitorSessionId=v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/);
+  assert.equal(visitorDatabaseCount(), databasesBefore, 'a login must not create a visitor database');
   visitorCookie = cookie;
   return session;
 }
@@ -268,9 +265,8 @@ async function assertOutOfScopeQueryIsRejectedAndNotExecuted() {
   assert.equal(controlBody.rows?.[0]?.instrument, 'EU-CARBON-DEC26',
     'out-of-scope control: broad-credential query must return the deterministic seed row');
 
-  const ordersBefore = tableFingerprint('orders');
+  const ordersBefore = tableFingerprint('orders', sharedDatabase);
   const plaintextBefore = tableFingerprint('orders_plaintext');
-  const auditCountBefore = psql(visitorDatabase, 'SELECT count(*) FROM agent_audit');
 
   const rejected = await visitorFetch('/api/query', {
     method: 'POST',
@@ -287,16 +283,73 @@ async function assertOutOfScopeQueryIsRejectedAndNotExecuted() {
   assert.equal(body.inspection?.evidence?.authorization, 'rejected', 'out-of-scope query evidence must report rejected');
 
   const audit = await (await visitorFetch('/api/audit')).json();
-  const rejection = audit.records.find((record) => record.queryHash === queryHash && record.status === 'rejected');
-  assert.ok(rejection, `audit must record the rejected SQL with hash ${queryHash}`);
+  const rejections = audit.records.filter((record) => record.queryHash === queryHash && record.status === 'rejected');
+  assert.equal(rejections.length, 1, `audit must record exactly one rejected SQL with hash ${queryHash}`);
+  const [rejection] = rejections;
   assert.equal(rejection.agentDid, agent.did, 'rejection record must be attributed to the querying agent');
   assert.equal(rejection.reasonCode, 'SCOPE_VIOLATION', 'rejection record must carry the scope-violation reason code');
   assert.equal(rejection.rowCount, 0, 'rejection record must report zero executed rows');
 
-  assert.deepEqual(tableFingerprint('orders'), ordersBefore, 'rejected query must not modify protected orders');
+  assert.deepEqual(tableFingerprint('orders', sharedDatabase), ordersBefore, 'rejected query must not modify the shared protected orders');
   assert.deepEqual(tableFingerprint('orders_plaintext'), plaintextBefore, 'rejected query must not modify the comparison sandbox');
-  assert.equal(psql(visitorDatabase, 'SELECT count(*) FROM agent_audit'), String(Number(auditCountBefore) + 1),
-    'rejected query must add exactly one audit record');
+}
+
+async function assertScopedQueriesReadSharedFixture() {
+  assert.equal(
+    psql('postgres', `SELECT count(*) FROM pg_database WHERE datname = '${sharedDatabase}'`),
+    '1',
+    'setup must create the shared fixture database',
+  );
+  assert.equal(
+    psql('postgres', `SELECT has_database_privilege('${appRole}', '${sharedDatabase}', 'CONNECT')`),
+    't',
+    'the app role must connect to the shared fixture database',
+  );
+  assert.equal(
+    psql(sharedDatabase, `SELECT has_table_privilege('${appRole}', 'agents', 'INSERT')`),
+    'f',
+    'the app role must not write agents to the shared fixture',
+  );
+  assert.equal(
+    psql(sharedDatabase, `SELECT has_table_privilege('${appRole}', 'agent_audit', 'INSERT')`),
+    'f',
+    'the app role must not write audit records to the shared fixture',
+  );
+  assert.equal(
+    psql(sharedDatabase, "SELECT to_regprocedure('public.reset_orders_plaintext_sandbox()') IS NULL"),
+    't',
+    'the app role must not reset the shared fixture',
+  );
+
+  const session = await login();
+  const agent = await request('/api/agents', {
+    method: 'POST',
+    body: JSON.stringify({ humanDid: session.humanDid, name: `shared-proof-${Date.now()}` }),
+  });
+  const { credential } = await request('/api/credentials', {
+    method: 'POST',
+    body: JSON.stringify({
+      humanDid: session.humanDid,
+      agent: agent.did,
+      columns: ['orders.instrument'],
+      expiresIn: '5m',
+    }),
+  });
+
+  try {
+    psql(sharedDatabase, "UPDATE orders SET instrument = 'SHARED-PROOF' WHERE id = 1");
+    const proof = await request('/api/query', {
+      method: 'POST',
+      body: JSON.stringify({
+        agent: agent.did,
+        credential,
+        sql: "SELECT instrument FROM orders WHERE instrument = 'SHARED-PROOF'",
+      }),
+    });
+    assert.equal(proof.rows?.[0]?.instrument, 'SHARED-PROOF', 'scoped query must read the shared fixture');
+  } finally {
+    psql(sharedDatabase, "UPDATE orders SET instrument = 'LNG-JKM-SEP26' WHERE id = 1");
+  }
 }
 
 async function assertRestrictedIdentityCannotObtainEncryptedColumns() {
@@ -311,7 +364,7 @@ async function assertRestrictedIdentityCannotObtainEncryptedColumns() {
   const agent = await created.json();
   assert.equal(created.status, 201, `bob agent creation returned ${created.status}: ${JSON.stringify(agent)}`);
 
-  const before = stateSnapshot(bob.database);
+  const before = stateSnapshot(sharedDatabase);
   const denied = await bob.fetchAs('/api/credentials', {
     method: 'POST',
     body: JSON.stringify({
@@ -327,7 +380,7 @@ async function assertRestrictedIdentityCannotObtainEncryptedColumns() {
   assert.match(deniedBody.message, /exceeds session ceiling/, 'denial must cite the session ceiling');
   assert.match(deniedBody.message, /orders\.price/, 'denial must name the excess column');
   assert.equal(deniedBody.credential, undefined, 'no credential may be issued to bob for encrypted columns');
-  assertStateUnchanged(before, bob.database);
+  assertStateUnchanged(before);
 
   const allowed = await bob.fetchAs('/api/credentials', {
     method: 'POST',
@@ -371,7 +424,6 @@ async function assertConcurrentVisitorSessionsAreIsolated() {
   const first = await createIndependentSession('alice');
   const second = await createIndependentSession('alice');
   assert.notEqual(first.cookie, second.cookie, 'each alice login must mint a distinct opaque cookie');
-  assert.notEqual(first.database, second.database, 'each alice session must own a distinct database');
 
   const [flowFirst, flowSecond] = await Promise.all([
     runProtectedFlow(first, 'iso-first-agent'),
@@ -405,24 +457,25 @@ async function assertConcurrentVisitorSessionsAreIsolated() {
   return { first, second, flowFirst, flowSecond };
 }
 
-async function assertIndependentResetLeavesOtherSessionUnchanged({ first, second, flowSecond }) {
+async function assertDirectWriteDoesNotPersistAcrossSessions({ first, second, flowSecond }) {
   const update = await second.fetchAs('/api/sim/raw', {
     method: 'POST',
     body: JSON.stringify({ sql: "UPDATE orders_plaintext SET status = 'ISO-B' WHERE id = 1" }),
   });
   const updateBody = await update.json();
-  assert.equal(update.status, 200, `visitor B sandbox marker write must return 200, got ${update.status}: ${JSON.stringify(updateBody)}`);
-  assert.equal(updateBody.ok, true, 'visitor B sandbox marker write must succeed');
-  assert.equal(updateBody.rowCount, 1, 'visitor B sandbox marker must touch exactly one row');
-  assert.equal(psql(second.database, "SELECT status FROM orders_plaintext WHERE id = 1"), 'ISO-B',
-    'visitor B sandbox marker must be persisted before the reset');
+  assert.equal(update.status, 200, `visitor B direct write must return 200, got ${update.status}: ${JSON.stringify(updateBody)}`);
+  assert.equal(updateBody.ok, true, 'visitor B direct write must succeed');
+  assert.equal(updateBody.rowCount, 1, 'visitor B direct write must touch exactly one row');
+  assert.equal(psql(sharedDatabase, "SELECT status FROM orders_plaintext WHERE id = 1"), 'OPEN',
+    'the visitor write must not persist in the shared fixture');
 
-  const before = stateSnapshot(second.database);
+  const before = stateSnapshot(sharedDatabase);
   const reset = await first.fetchAs('/api/sim/reset', { method: 'POST' });
   const resetBody = await reset.json();
   assert.equal(reset.status, 200, `visitor A sandbox reset must return 200, got ${reset.status}: ${JSON.stringify(resetBody)}`);
-  assert.equal(resetBody.rows, 8, 'visitor A sandbox reset must restore the canonical sandbox rows');
-  assert.deepEqual(stateSnapshot(second.database), before, 'visitor A reset must leave visitor B protected, comparison, agent, and audit state unchanged');
+  assert.equal(resetBody.ok, true, 'visitor A sandbox reset must report ok');
+  assert.equal(resetBody.rows, 8, 'visitor A sandbox reset keeps the contract row count');
+  assert.deepEqual(stateSnapshot(sharedDatabase), before, 'visitor A reset must leave visitor B protected and comparison state unchanged');
 
   await authorizedQuery({ fetchAs: second.fetchAs, agent: flowSecond.agent, credential: flowSecond.credential, label: 'visitor B post-reset' });
 }
@@ -499,6 +552,7 @@ async function assertBrowserRequestsRejected() {
 }
 
 async function directSimulatorRead() {
+  const fixtureBefore = tableFingerprint('orders_plaintext');
   const result = await request('/api/sim/raw', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -510,17 +564,9 @@ async function directSimulatorRead() {
   assert.equal(result.rowCount, undefined);
   assert.equal(result.rows[0].count, 8);
 
-  const qualified = await request('/api/sim/raw', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ sql: 'SELECT COUNT(*)::int AS count FROM public.orders_plaintext' }),
-  });
-  assert.equal(qualified.ok, true);
-  assert.equal(qualified.rows[0].count, 8);
-
-  // The connection identity is a property of the naive pool, not of the SQL
+  // The connection identity is a property of the direct pool, not of the SQL
   // surface: verify it directly as that role.
-  const identity = psql(visitorDatabase, 'SELECT current_user', 'agents_playground_naive');
+  const identity = psql(sharedDatabase, 'SELECT current_user', 'agents_playground_naive');
   assert.equal(identity, 'agents_playground_naive');
 
   async function rawRejected(sql, expected) {
@@ -541,6 +587,8 @@ async function directSimulatorRead() {
   await rawRejected('SELECT COUNT(*) FROM orders', /relation "orders" is not allowed/);
   await rawRejected('SELECT * FROM agents', /relation "agents" is not allowed/);
   await rawRejected('SELECT * FROM pg_catalog.pg_user', /relation "pg_catalog.pg_user" is not allowed/);
+  await rawRejected('SELECT COUNT(*)::int AS count FROM public.orders_plaintext', /relation "public\.orders_plaintext" is not allowed/);
+  await rawRejected('UPDATE public.orders_plaintext SET status = \'X\' WHERE id = 1', /relation "public\.orders_plaintext" is not allowed/);
   await rawRejected('SELECT id FROM orders_plaintext; DELETE FROM orders_plaintext', /exactly one statement is allowed/);
   await rawRejected('SELECT pg_sleep(5) FROM orders_plaintext LIMIT 1', /function "pg_sleep" is not allowed/);
   await rawRejected("SELECT set_config('statement_timeout', '1ms', true) FROM orders_plaintext LIMIT 1", /function "set_config" is not allowed/);
@@ -556,7 +604,10 @@ async function directSimulatorRead() {
   await rawRejected('SELECT * INTO copied_orders FROM orders_plaintext', /SELECT INTO is not allowed/);
   await rawRejected('SELECT * FROM orders_plaintext FOR UPDATE', /locking clauses/);
   await rawRejected('SELECT * FROM (SELECT * FROM orders_plaintext) t', /FROM table expression "RangeSubselect"/);
+  await rawRejected('SELECT instrument FROM orders_plaintext WHERE id = (SELECT min(id) FROM orders_plaintext)', /subqueries are not allowed/);
+  await rawRejected('SELECT instrument FROM orders_plaintext WHERE id IN (SELECT id FROM orders_plaintext)', /subqueries are not allowed/);
 
+  const beforeWrites = tableFingerprint('orders_plaintext');
   const update = await request('/api/sim/raw', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -564,6 +615,12 @@ async function directSimulatorRead() {
   });
   assert.equal(update.ok, true);
   assert.equal(update.rowCount, 1);
+  const afterUpdate = await request('/api/sim/raw', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ sql: 'SELECT COUNT(*)::int AS count FROM orders_plaintext' }),
+  });
+  assert.equal(afterUpdate.rows[0].count, 8, 'the update must not persist in the shared fixture');
 
   const deletion = await request('/api/sim/raw', {
     method: 'POST',
@@ -577,8 +634,11 @@ async function directSimulatorRead() {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ sql: 'SELECT COUNT(*)::int AS count FROM orders_plaintext' }),
   });
-  assert.equal(afterDeletion.rows[0].count, 7);
+  assert.equal(afterDeletion.rows[0].count, 8, 'the deletion must not persist in the shared fixture');
+  assert.deepEqual(tableFingerprint('orders_plaintext'), beforeWrites,
+    'direct SQL writes must leave public.orders_plaintext unchanged');
   const reset = await request('/api/sim/reset', { method: 'POST' });
+  assert.equal(reset.ok, true);
   assert.equal(reset.rows, 8);
   const afterReset = await request('/api/sim/raw', {
     method: 'POST',
@@ -590,7 +650,7 @@ async function directSimulatorRead() {
   const pruned = await request('/api/sim/raw', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ sql: 'DELETE FROM orders_plaintext WHERE id = (SELECT min(id) FROM orders_plaintext)' }),
+    body: JSON.stringify({ sql: 'DELETE FROM orders_plaintext WHERE id = 1' }),
   });
   assert.equal(pruned.ok, true);
   assert.equal(pruned.rowCount, 1);
@@ -609,7 +669,7 @@ async function directSimulatorRead() {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ sql: 'SELECT COUNT(*)::int AS count FROM orders_plaintext' }),
   });
-  assert.equal(resetSkipped.rows[0].count, 7);
+  assert.equal(resetSkipped.rows[0].count, 8);
 
   const boundaryReset = await visitorFetch('/api/sim/reset', {
     method: 'POST',
@@ -618,6 +678,37 @@ async function directSimulatorRead() {
   });
   assert.equal(boundaryReset.status, 200);
   assert.equal((await boundaryReset.json()).rows, 8);
+  assert.deepEqual(tableFingerprint('orders_plaintext'), fixtureBefore,
+    'no direct SQL request may modify the shared plaintext fixture');
+}
+
+function assertDirectRoleIsReadOnly() {
+  assert.throws(
+    () => psql(sharedDatabase, "UPDATE orders_plaintext SET status = 'X' WHERE id = 1", 'agents_playground_naive'),
+    /permission denied for table orders_plaintext/,
+  );
+  assert.throws(
+    () => psql(sharedDatabase, 'DELETE FROM orders_plaintext WHERE id = 1', 'agents_playground_naive'),
+    /permission denied for table orders_plaintext/,
+  );
+  assert.equal(
+    psql(sharedDatabase, "SELECT to_regprocedure('public.reset_orders_plaintext_sandbox()') IS NULL"),
+    't',
+    'the SECURITY DEFINER reset function must be gone',
+  );
+  // Setup grants TEMPORARY on the shared database to the direct role only.
+  // Assert both: the invariant setup owns, and the privilege the direct path
+  // actually needs on the database that executes it.
+  assert.equal(
+    psql('postgres', `SELECT has_database_privilege('agents_playground_naive', '${sharedDatabase}', 'TEMPORARY') || '|' || has_database_privilege('agents_playground_app', '${sharedDatabase}', 'TEMPORARY')`),
+    'true|false',
+    'the shared database must grant TEMPORARY only to the direct role',
+  );
+  assert.equal(
+    psql(sharedDatabase, "SELECT has_database_privilege('agents_playground_naive', current_database(), 'TEMPORARY')::text"),
+    'true',
+    'the direct role must be able to create its temporary copy on the shared database',
+  );
 }
 
 async function assertRuntimeRoleRestricted() {
@@ -657,21 +748,47 @@ async function timedRaw(sql) {
   return { status: response.status, body, ms: Date.now() - startedAt };
 }
 
-function naiveSessionSettings() {
-  return psql(visitorDatabase,
-    "SELECT current_setting('statement_timeout') || '|' || current_setting('lock_timeout')", 'agents_playground_naive');
+// current_setting() only reads the caller's own session, so a fresh psql
+// connection always reports defaults and cannot observe the pool. The residue
+// that can actually hurt is visible in the shared catalog and activity views:
+// a temporary table that outlived its transaction, or a pooled backend left
+// inside one.
+function directSessionResidue() {
+  // A temp table created inside an open transaction is invisible to other sessions in pg_class;
+  // the idle-in-transaction count below covers that case.
+  return psql(sharedDatabase, [
+    "SELECT (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace",
+    "WHERE n.nspname LIKE 'pg_temp_%' AND c.relname = 'orders_plaintext')",
+    "|| '|' || (SELECT count(*) FROM pg_stat_activity",
+    "WHERE application_name = 'agents-playground-direct' AND datname = current_database()",
+    "AND (state = 'idle in transaction' OR state = 'idle in transaction (aborted)'))",
+    "|| '|' || (SELECT count(*) FROM pg_stat_activity",
+    "WHERE application_name = 'agents-playground-direct' AND datname = current_database()",
+    "AND state = 'active')",
+  ].join(' '));
+}
+
+function assertNoDirectSessionResidue(label) {
+  const [survivingCopies, openTransactions, busyBackends] = directSessionResidue().split('|');
+  assert.equal(survivingCopies, '0', `${label}: no temporary orders_plaintext may outlive its transaction`);
+  assert.equal(openTransactions, '0', `${label}: no pooled direct-SQL backend may stay inside a transaction`);
+  assert.equal(busyBackends, '0', `${label}: no pooled direct-SQL backend may stay busy`);
 }
 
 async function assertDirectSqlLimitsDoNotLeak() {
-  assert.equal(naiveSessionSettings(), '0|0', 'pool sessions must carry no persistent timeouts');
+  assertNoDirectSessionResidue('post-timeout');
   const fast = await timedRaw('SELECT COUNT(*)::int AS count FROM orders_plaintext');
   assert.equal(fast.body.ok, true);
   assert.ok(fast.ms < 2000, `post-timeout query must not be delayed (${fast.ms}ms)`);
 }
 
+const SLOW_DIRECT_SQL =
+  'SELECT count(*) FROM orders_plaintext a, orders_plaintext b, orders_plaintext c, ' +
+  'orders_plaintext d, orders_plaintext e, orders_plaintext f, orders_plaintext g, ' +
+  'orders_plaintext h, orders_plaintext i, orders_plaintext j';
+
 async function assertPoolAcquisitionIsBounded() {
-  const sql = 'SELECT count(*) FROM orders_plaintext a, orders_plaintext b';
-  const requests = await Promise.all([timedRaw(sql), timedRaw(sql), timedRaw(sql)]);
+  const requests = await Promise.all([timedRaw(SLOW_DIRECT_SQL), timedRaw(SLOW_DIRECT_SQL), timedRaw(SLOW_DIRECT_SQL)]);
   for (const request of requests) {
     assert.equal(request.status, 200);
     assert.equal(request.body.ok, false);
@@ -681,71 +798,60 @@ async function assertPoolAcquisitionIsBounded() {
 }
 
 async function assertStatementTimeout() {
-  psql(visitorDatabase,
-    "INSERT INTO orders_plaintext (instrument, side, quantity, price, counterparty, status) " +
-    "SELECT 'TIMEOUT-SEED', 'BUY', 1, 1, 'x', 'OPEN' FROM generate_series(1, 1000000)");
-  assert.equal(
-    psql(visitorDatabase, "SELECT count(*) FROM orders_plaintext WHERE instrument = 'TIMEOUT-SEED'"),
-    '1000000',
-  );
-  try {
-    const slow = await timedRaw('SELECT count(*) FROM orders_plaintext a, orders_plaintext b');
-    assert.equal(slow.body.ok, false);
-    assert.equal(slow.body.error, 'TimeoutError');
-    assert.equal(slow.body.kind, 'statement');
-    assert.match(slow.body.message, /statement_timeout/);
-    assert.ok(slow.ms >= 2000, `cancelled before the 2s statement timeout (${slow.ms}ms)`);
-    assert.ok(slow.ms < 30_000, `statement timeout did not cancel the query (${slow.ms}ms)`);
-    await assertDirectSqlLimitsDoNotLeak();
-    await assertPoolAcquisitionIsBounded();
-  } finally {
-    psql(visitorDatabase, "DELETE FROM orders_plaintext WHERE instrument = 'TIMEOUT-SEED'");
-  }
+  const slow = await timedRaw(SLOW_DIRECT_SQL);
+  assert.equal(slow.body.ok, false);
+  assert.equal(slow.body.error, 'TimeoutError');
+  assert.equal(slow.body.kind, 'statement');
+  assert.match(slow.body.message, /statement_timeout/);
+  assert.ok(slow.ms >= 2000, `cancelled before the 2s statement timeout (${slow.ms}ms)`);
+  assert.ok(slow.ms < 30_000, `statement timeout did not cancel the query (${slow.ms}ms)`);
+  await assertDirectSqlLimitsDoNotLeak();
+  await assertPoolAcquisitionIsBounded();
   assert.equal(databaseState(), '8|8|2|2');
 }
 
-async function assertLockTimeout() {
-  // One implicit transaction: take the row lock with FOR UPDATE, then stay in
-  // the transaction (holding it) for the duration of the pg_sleep.
+async function assertPublicTableLockDoesNotBlockCopy() {
+  // A lock on the shared fixture must not reach the per-request copy: the
+  // direct path only touches pg_temp.
   const lockerScript =
-    'SELECT * FROM orders_plaintext WHERE id = 1 FOR UPDATE; ' +
+    'LOCK TABLE orders_plaintext IN ACCESS EXCLUSIVE MODE; ' +
     'SELECT pg_sleep(300);';
   const child = spawn(
     'docker',
-    ['compose', '--project-name', projectName, 'exec', '-T', 'postgres', 'psql', '-U', 'postgres', '-d', visitorDatabase, '-Atc', lockerScript],
+    ['compose', '--project-name', projectName, 'exec', '-T', 'postgres', 'psql', '-U', 'postgres', '-d', sharedDatabase, '-Atc', lockerScript],
     { cwd: new URL('..', import.meta.url), env: commandEnv, stdio: ['ignore', 'pipe', 'pipe'] },
   );
   let lockerPid = null;
   try {
     const deadline = Date.now() + 30_000;
     for (;;) {
-      lockerPid = psql(visitorDatabase,
+      lockerPid = psql(sharedDatabase,
         "SELECT pid FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND query LIKE '%pg_sleep(300)%' LIMIT 1");
       if (lockerPid !== '') break;
       if (Date.now() > deadline || child.exitCode !== null) {
-        throw new Error(`row lock holder never appeared (exit=${child.exitCode}, stdout=${child.stdout.read()})`);
+        throw new Error(`lock holder never appeared (exit=${child.exitCode}, stdout=${child.stdout.read()})`);
       }
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
-    const before = psql(visitorDatabase, 'SELECT status FROM orders_plaintext WHERE id = 1');
     const blocked = await timedRaw("UPDATE orders_plaintext SET status = 'LOCKED' WHERE id = 1");
-    assert.equal(blocked.body.ok, false);
-    assert.equal(blocked.body.error, 'TimeoutError');
-    assert.equal(blocked.body.kind, 'lock');
-    assert.match(blocked.body.message, /lock_timeout/);
-    assert.ok(blocked.ms >= 1000, `cancelled before the 1s lock timeout (${blocked.ms}ms)`);
-    assert.ok(blocked.ms < 15_000, `lock timeout did not cancel the query (${blocked.ms}ms)`);
-    const after = psql(visitorDatabase, 'SELECT status FROM orders_plaintext WHERE id = 1');
-    assert.equal(after, before, 'the timed-out UPDATE must not have been applied');
+    assert.equal(
+      psql(sharedDatabase,
+        "SELECT count(*) FROM pg_locks WHERE relation = 'public.orders_plaintext'::regclass AND mode = 'AccessExclusiveLock' AND granted"),
+      '1',
+      'the public fixture lock must be held before the request',
+    );
+    assert.equal(blocked.body.ok, true, `locked public table must not block the copy: ${JSON.stringify(blocked.body)}`);
+    assert.equal(blocked.body.rowCount, 1);
+    assert.ok(blocked.ms < 5000, `the copy must not wait on the public lock (${blocked.ms}ms)`);
     await assertDirectSqlLimitsDoNotLeak();
   } finally {
     if (lockerPid) {
-      psql(visitorDatabase, `SELECT pg_terminate_backend(${Number(lockerPid)})`);
+      psql(sharedDatabase, `SELECT pg_terminate_backend(${Number(lockerPid)})`);
     }
     child.kill('SIGKILL');
     const deadline = Date.now() + 10_000;
     while (Date.now() < deadline) {
-      const holders = psql(visitorDatabase,
+      const holders = psql(sharedDatabase,
         "SELECT count(*) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND query LIKE '%pg_sleep(300)%'");
       if (holders === '0') break;
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -754,35 +860,31 @@ async function assertLockTimeout() {
 }
 
 async function assertResultLimits() {
-  const seed = 'ROWLIM';
-  psql(visitorDatabase,
-    `INSERT INTO orders_plaintext (instrument, side, quantity, price, counterparty, status) ` +
-    `SELECT '${seed}', 'BUY', 1, 1, 'x', 'OPEN' FROM generate_series(1, 150)`);
-  try {
-    const limited = await timedRaw('SELECT id, instrument FROM orders_plaintext');
-    assert.equal(limited.status, 200);
-    assert.equal(limited.body.ok, true);
-    assert.equal(limited.body.command, 'SELECT');
-    assert.equal(limited.body.rowsReturned, 100);
-    assert.equal(limited.body.rows.length, 100);
-    assert.equal(limited.body.limitedBy, 'rows');
-    assert.equal(limited.body.rowCount, undefined);
-    assert.ok(Buffer.byteLength(JSON.stringify(limited.body, null, 2), 'utf8') <= 64 * 1024);
-  } finally {
-    psql(visitorDatabase, `DELETE FROM orders_plaintext WHERE instrument = '${seed}'`);
-  }
-  assert.equal(databaseState(), '8|8|2|2');
+  const limited = await timedRaw(
+    'SELECT a.id, a.instrument, a.counterparty FROM orders_plaintext a, orders_plaintext b, orders_plaintext c',
+  );
+  assert.equal(limited.status, 200);
+  assert.equal(limited.body.ok, true);
+  assert.equal(limited.body.command, 'SELECT');
+  assert.equal(limited.body.rowsReturned, 100);
+  assert.equal(limited.body.rows.length, 100);
+  assert.equal(limited.body.limitedBy, 'rows');
+  assert.equal(limited.body.rowCount, undefined);
+  assert.ok(Buffer.byteLength(JSON.stringify(limited.body, null, 2), 'utf8') <= 64 * 1024);
 
-  psql(visitorDatabase, "UPDATE orders_plaintext SET counterparty = repeat('x', 200000) WHERE id = 1");
-  try {
-    const bytewise = await timedRaw('SELECT id, counterparty FROM orders_plaintext WHERE id = 1');
-    assert.equal(bytewise.body.ok, true);
-    assert.equal(bytewise.body.limitedBy, 'responseBytes');
-    assert.equal(bytewise.body.rowsReturned, 0);
-    assert.ok(Buffer.byteLength(JSON.stringify(bytewise.body, null, 2), 'utf8') <= 64 * 1024);
-  } finally {
-    psql(visitorDatabase, "UPDATE orders_plaintext SET counterparty = 'Meridian Energy' WHERE id = 1");
-  }
+  // The request body is capped at 64 KiB (MAX_BODY_BYTES), so a literal large
+  // enough to cross the response cap cannot be sent. Project a numeric that
+  // expands to ~100 KB server-side instead: the first row alone exceeds the
+  // response budget, so the cursor returns no rows and reports the byte limit.
+  const bytes = await timedRaw('SELECT counterparty, 1e100000 AS pad FROM orders_plaintext');
+  assert.equal(bytes.status, 200);
+  assert.equal(bytes.body.ok, true);
+  assert.equal(bytes.body.command, 'SELECT');
+  assert.equal(bytes.body.rowsReturned, 0);
+  assert.equal(bytes.body.rows.length, 0);
+  assert.equal(bytes.body.limitedBy, 'responseBytes');
+  assert.equal(bytes.body.rowCount, undefined);
+  assert.ok(Buffer.byteLength(JSON.stringify(bytes.body, null, 2), 'utf8') <= 64 * 1024);
   assert.equal(databaseState(), '8|8|2|2');
 }
 
@@ -797,11 +899,71 @@ const CANONICAL_PLAINTEXT_ROWS = [
   '8|LNG-JKM-DEC26|BUY|150|13.30|Hokuto Gas|OPEN',
 ];
 
-async function assertResetRestoresSandboxWithoutTouchingProtectedData() {
+function directBackendStates() {
+  return psql(sharedDatabase,
+    "SELECT state FROM pg_stat_activity WHERE application_name = 'agents-playground-direct' AND datname = current_database()");
+}
+
+async function assertPoolBackendsRunConcurrently() {
+  // Idle connections left by earlier tests prove nothing, so hold both pool
+  // connections busy and sample the backends while the requests are in flight.
+  const slow = [timedRaw(SLOW_DIRECT_SQL), timedRaw(SLOW_DIRECT_SQL)];
+  // Let the fetch calls reach the server before the first synchronous psql sample.
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  const deadline = Date.now() + 1500;
+  let active = 0;
+  for (;;) {
+    active = directBackendStates().split('\n').filter((state) => state === 'active').length;
+    if (active >= 2 || Date.now() > deadline) break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  const results = await Promise.all(slow);
+  assert.ok(active >= 2, `both pooled backends must run a request at the same time, saw ${active} active`);
+  for (const result of results) {
+    assert.equal(result.status, 200);
+    assert.equal(result.body.error, 'TimeoutError');
+  }
+}
+
+async function assertConcurrentCopiesDoNotLeak() {
+  // The direct pool is capped at 2 by design (assertPoolAcquisitionIsBounded
+  // saturates it). These are 50 concurrent requests over the pool's
+  // connections, not 50 distinct sessions.
+  await assertPoolBackendsRunConcurrently();
+  const operations = [
+    ...Array.from({ length: 25 }, () => ({
+      label: 'delete',
+      run: timedRaw('DELETE FROM orders_plaintext WHERE id = 1'),
+    })),
+    ...Array.from({ length: 25 }, () => ({
+      label: 'select',
+      run: timedRaw('SELECT COUNT(*)::int AS count FROM orders_plaintext'),
+    })),
+  ];
+  const results = await Promise.all(operations.map(async ({ label, run }) => ({ label, result: await run })));
+  for (const { label, result } of results) {
+    assert.equal(result.status, 200);
+    assert.equal(result.body.ok, true, `${label} concurrent copy must succeed: ${JSON.stringify(result.body)}`);
+    if (label === 'delete') {
+      assert.equal(result.body.rowCount, 1, 'each delete must touch exactly one row of its own copy');
+    } else {
+      assert.equal(result.body.rows[0].count, 8, 'each select must see its own canonical copy');
+    }
+  }
+  // Reusing one connection for many transactions is what would fail if a
+  // temporary table survived a rollback: CREATE TEMP TABLE has no IF NOT EXISTS,
+  // so the next request on that connection would answer ok:false. A write that
+  // reached a shared or surviving copy would make a concurrent select read 7.
+  assertNoDirectSessionResidue('after burst');
+  assert.equal(databaseState(), '8|8|2|2');
+}
+
+async function assertWritesStayInTheTemporaryCopy() {
   const ordersBefore = tableFingerprint('orders');
-  const auditBefore = tableFingerprint('agent_audit');
+  const auditBefore = await request('/api/audit');
+  const plaintextBefore = tableFingerprint('orders_plaintext');
   assert.ok(ordersBefore.length > 0, 'orders fingerprint must capture encrypted rows');
-  assert.ok(auditBefore.length > 0, 'agent_audit fingerprint must capture history rows');
+  assert.ok(auditBefore.records.length > 0, 'audit trail must capture history rows');
 
   const updated = await request('/api/sim/raw', {
     method: 'POST',
@@ -819,27 +981,46 @@ async function assertResetRestoresSandboxWithoutTouchingProtectedData() {
   assert.equal(deleted.ok, true);
   assert.equal(deleted.rowCount, 1);
 
+  const snapshot = await request('/api/sim/raw', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ sql: 'SELECT id, status FROM orders_plaintext ORDER BY id' }),
+  });
+  assert.equal(snapshot.rowsReturned, 8, 'each request must start from the canonical eight rows');
+  assert.equal(snapshot.rows.find((row) => row.id === 1)?.status, 'OPEN');
+  assert.equal(snapshot.rows.find((row) => row.id === 3)?.status, 'FILLED');
+
+  const full = await request('/api/sim/raw', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ sql: 'SELECT * FROM orders_plaintext ORDER BY id' }),
+  });
+  assert.equal(full.rowsReturned, 8);
+  assert.ok(full.rows.every((row) => row.created_at === '2026-01-01T00:00:00.000Z'),
+    `the copy must expose the fixture timestamp, got ${JSON.stringify(full.rows.map((row) => row.created_at))}`);
+  assert.equal(psql(sharedDatabase,
+    "SELECT count(*) FROM orders_plaintext WHERE created_at = '2026-01-01T00:00:00Z'"), '8',
+    'the public fixture must expose the same timestamp as the copy');
+
   const reset = await request('/api/sim/reset', { method: 'POST' });
+  assert.equal(reset.ok, true);
   assert.equal(reset.rows, 8);
 
-  const canonical = psql(visitorDatabase,
+  const canonical = psql(sharedDatabase,
     'SELECT id || \'|\' || instrument || \'|\' || side || \'|\' || quantity || \'|\' || ' +
     'price || \'|\' || counterparty || \'|\' || status FROM orders_plaintext ORDER BY id');
   assert.equal(canonical, CANONICAL_PLAINTEXT_ROWS.join('\n'));
 
+  assert.deepEqual(tableFingerprint('orders_plaintext'), plaintextBefore,
+    'direct SQL must not modify the shared plaintext fixture');
   assert.deepEqual(tableFingerprint('orders'), ordersBefore, 'reset must not modify orders');
-  assert.deepEqual(
-    tableFingerprint('agent_audit'),
-    auditBefore,
-    'reset must not modify agent_audit',
-  );
 }
 
 function assertSameNetworkRejected() {
   // A sibling container on the project network may not pass as local by
   // writing a loopback Host header; only the network-assigned source
   // address decides locality.
-  const before = stateSnapshot('playground');
+  const before = stateSnapshot();
   const script = `
     const http = require('node:http');
     function call(path, body) {
@@ -875,7 +1056,7 @@ function assertSameNetworkRejected() {
       `(exit ${result.status})\n${result.stdout}\n${result.stderr}`,
     );
   }
-  assertStateUnchanged(before, 'playground');
+  assertStateUnchanged(before);
 }
 
 async function waitForPlayground() {
@@ -958,8 +1139,49 @@ try {
   assert.equal(databaseState('playground'), '8|8|2|2');
   const templateBefore = stateSnapshot('playground');
   assert.ok(templateBefore.length > 0, 'template snapshot must capture demo rows');
-  assert.deepEqual(visitorDatabases(), [], 'health probes, status, and static requests must not provision a visitor');
+  assert.equal(visitorDatabaseCount(), 0, 'health probes, status, and static requests must not create a visitor database');
   assert.equal(roleState(appRole), `${appRole}|false|false|false|false|false|false|0`);
+  assert.equal(
+    psql('postgres', `SELECT has_database_privilege('${appRole}', 'playground_control', 'CONNECT')`),
+    't',
+    'the restricted app role must reach the control database',
+  );
+  assert.equal(
+    psql('playground_control', `SELECT has_table_privilege('${appRole}', 'playground_sandbox_session', 'INSERT')`),
+    't',
+    'the restricted app role must write admission rows',
+  );
+  assert.equal(
+    psql('playground_control', `SELECT has_table_privilege('${appRole}', 'playground_sandbox_session', 'UPDATE')`),
+    't',
+    'the restricted app role must renew admission rows',
+  );
+  assert.equal(
+    psql('playground_control', `SELECT has_table_privilege('${appRole}', 'playground_new_session_window', 'DELETE')`),
+    't',
+    'the restricted app role must prune origin rate windows',
+  );
+  const createDenied = spawnSync('docker', [
+    'compose', '--project-name', projectName, 'exec', '-T', 'postgres',
+    'psql', '-U', appRole, '-d', 'playground', '-v', 'VERBOSITY=verbose',
+    '-Atc', `CREATE DATABASE agents_playground_should_not_exist_${process.pid}`,
+  ], { cwd: new URL('..', import.meta.url), env: commandEnv, encoding: 'utf8' });
+  assert.notEqual(createDenied.status, 0, 'the restricted app role must not create databases');
+  assert.match(
+    `${createDenied.stdout}${createDenied.stderr}`,
+    /42501|permission denied to create database/,
+    'database creation must fail with the PostgreSQL privilege error',
+  );
+  assert.doesNotMatch(
+    compose(['exec', '-T', 'playground', 'printenv']),
+    /^(PLAYGROUND_ADMIN_DATABASE_URL|DATABASE_URL)=/m,
+    'the serving container must not receive administrative database credentials',
+  );
+  assert.doesNotMatch(
+    compose(['exec', '-T', 'playground', 'cat', '/var/lib/playground/.env']),
+    /^PLAYGROUND_ADMIN_DATABASE_URL=/m,
+    'the persisted runtime configuration must not hold administrative credentials',
+  );
   assert.equal(
     roleState('agents_playground_naive'),
     'agents_playground_naive|false|false|false|false|false|false|0',
@@ -969,47 +1191,88 @@ try {
   await existingValidationsStillFailClosed();
   await assertBrowserRequestsRejected();
   await directSimulatorRead();
+  assertDirectRoleIsReadOnly();
   await assertRuntimeRoleRestricted();
   await assertStatementTimeout();
-  await assertLockTimeout();
+  await assertPublicTableLockDoesNotBlockCopy();
   await assertResultLimits();
-  await assertResetRestoresSandboxWithoutTouchingProtectedData();
+  await assertConcurrentCopiesDoNotLeak();
+  await assertWritesStayInTheTemporaryCopy();
   await assertOutOfScopeQueryIsRejectedAndNotExecuted();
+  await assertScopedQueriesReadSharedFixture();
   await assertRestrictedIdentityCannotObtainEncryptedColumns();
   const isolatedSessions = await assertConcurrentVisitorSessionsAreIsolated();
-  await assertIndependentResetLeavesOtherSessionUnchanged(isolatedSessions);
+  await assertDirectWriteDoesNotPersistAcrossSessions(isolatedSessions);
   assert.deepEqual(stateSnapshot('playground'), templateBefore, 'visitor requests must not modify the template');
   const initialFingerprint = configFingerprint();
   const initialMasterKeyFingerprint = masterKeyFingerprint();
 
   psql('playground', 'DELETE FROM orders_plaintext WHERE id = (SELECT min(id) FROM orders_plaintext)');
   assert.equal(databaseState('playground'), '8|7|2|2');
+  compose(['stop', '--timeout', '15', 'playground']);
   compose(['run', '--rm', 'setup']);
+  compose(['up', '--detach', '--wait', 'playground']);
+  await waitForPlayground();
   assert.equal(databaseState('playground'), '8|8|2|2');
 
   const expiredCookie = visitorCookie;
-  const staleVisitor = `agents_playground_visitor_${randomBytes(16).toString('hex')}`;
-  const unmarkedVisitor = `agents_playground_visitor_${randomBytes(16).toString('hex')}`;
-  psql('postgres', `CREATE DATABASE "${staleVisitor}" TEMPLATE playground`);
-  psql('postgres', `CREATE DATABASE "${unmarkedVisitor}"`);
   compose(['restart', 'playground']);
   await waitForPlayground();
   assert.equal(configFingerprint(), initialFingerprint);
   assert.equal(masterKeyFingerprint(), initialMasterKeyFingerprint);
   assert.equal(databaseState('playground'), '8|8|2|2');
-  assert.deepEqual(visitorDatabases(), [unmarkedVisitor], 'startup must remove owned clones but preserve unmarked databases');
-  psql('postgres', `DROP DATABASE "${unmarkedVisitor}"`);
   const staleSession = await visitorFetch('/api/agents');
-  assert.equal(staleSession.status, 401, 'restart must invalidate old browser cookies');
+  assert.equal(staleSession.status, 410, 'restart must return an explicit session-lost response');
+  const staleBody = await staleSession.json();
+  assert.equal(staleBody.error, 'SessionLost');
+  assert.equal(staleBody.detail, 'start-a-new-session');
   await authorizedRead();
   assert.notEqual(visitorCookie, expiredCookie);
+
+  const metrics = await smokeFetch('/metrics');
+  assert.equal(metrics.status, 200, 'metrics endpoint must be available');
+  const metricsText = await metrics.text();
+  assert.match(metricsText, /^# TYPE playground_admissions_total counter$/m);
+  assert.match(metricsText, /^playground_sessions_active \d+$/m);
+  assert.match(metricsText, /playground_pool_connections\{pool="shared",state="total"\}/);
+
+  const cleanupMarked = `agents_playground_visitor_${'b'.repeat(32)}`;
+  const cleanupUnmarked = `agents_playground_visitor_${'c'.repeat(32)}`;
+  psql('postgres', `CREATE DATABASE ${cleanupMarked}`);
+  psql('postgres', `CREATE DATABASE ${cleanupUnmarked}`);
+  psql(cleanupMarked,
+    'CREATE TABLE demo_playground_metadata (key text PRIMARY KEY, value text NOT NULL); ' +
+    "INSERT INTO demo_playground_metadata (key, value) VALUES ('owner', 'agents-demo-playground')");
+
+  const cleanupDryRun = cleanupVisitorDatabases();
+  assert.equal(cleanupDryRun.status, 0, cleanupDryRun.stderr);
+  assert.match(cleanupDryRun.stdout, new RegExp(`would drop ${cleanupMarked}`));
+  assert.match(
+    cleanupDryRun.stdout,
+    new RegExp(`skip ${cleanupUnmarked}: Playground ownership marker is missing`),
+  );
+  assert.match(cleanupDryRun.stdout, /1 would drop, 0 dropped, 1 refused, 0 failed/);
+
+  const cleanupApplied = cleanupVisitorDatabases(['--apply']);
+  assert.equal(cleanupApplied.status, 1, 'apply must exit non-zero when a candidate is refused');
+  assert.match(cleanupApplied.stdout, new RegExp(`dropped ${cleanupMarked}`));
+  assert.equal(psql('postgres', `SELECT count(*) FROM pg_database WHERE datname = '${cleanupMarked}'`), '0');
+  assert.equal(psql('postgres', `SELECT count(*) FROM pg_database WHERE datname = '${cleanupUnmarked}'`), '1');
+
+  const cleanupRepeat = cleanupVisitorDatabases(['--apply']);
+  assert.equal(cleanupRepeat.status, 1, 'a repeat apply must still report the refused candidate');
+  assert.doesNotMatch(cleanupRepeat.stdout, /^dropped /m);
+  assert.match(cleanupRepeat.stdout, /0 dropped, 1 refused, 0 failed/);
+
+  psql('postgres', `DROP DATABASE ${cleanupUnmarked}`);
+  assert.equal(visitorDatabaseCount(), 0);
 
   const containerId = compose(['ps', '--quiet', 'playground']);
   compose(['stop', '--timeout', '15', 'playground']);
   assert.equal(run('docker', ['inspect', '--format', '{{.State.ExitCode}}', containerId]), '0');
   assert.equal(psql('postgres',
-    "SELECT count(*) FROM pg_stat_activity WHERE application_name IN ('agents-playground-server', 'agents-playground-naive')"), '0');
-  assert.deepEqual(visitorDatabases(), [], 'shutdown must drop visitor databases');
+    "SELECT count(*) FROM pg_stat_activity WHERE application_name IN ('agents-playground-control', 'agents-playground-direct', 'agents-playground-shared')"), '0');
+  assert.equal(visitorDatabaseCount(), 0, 'shutdown must leave no visitor database behind');
 
   cleanUp();
   compose(['up', '--detach', '--wait']);

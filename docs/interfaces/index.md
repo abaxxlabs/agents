@@ -8,7 +8,7 @@ sidebar_position: 1
 
 # Interfaces
 
-Agents++ exposes focused interfaces so consumers can select the boundary they need without importing every runtime dependency.
+Agents++ provides focused interfaces that allow users to select the boundary they require without importing every runtime dependency.
 
 ## TypeScript package surfaces
 

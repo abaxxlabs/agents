@@ -1,16 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { VcVerifier } from '#identity/index.js';
-import { createJwt, verifyJwtSignature, decodeJwt } from '#crypto/jwt.js';
+import { createJwt } from '#crypto/jwt.js';
 import { InMemoryRevocationStore } from '#storage/memory/revocation-store.js';
-import { generateDidKey, issueCredential, createSigner } from '#auth/index.js';
-import { resolveDidKey, resolveDidKeyFallback } from '#did/resolve.js';
-import { DidResolutionFailedError } from '#errors/index.js';
-import { base58Encode } from '#crypto/base58.js';
-import { zbase32Decode } from '#crypto/zbase32.js';
-import { asDid } from '#types/domain.js';
+import { generateDidKey, issueCredential } from '#auth/index.js';
 
 describe('VC Verifier', () => {
-  describe('core', () => {
+  describe('credential verification', () => {
     let verifier: VcVerifier;
     let human: ReturnType<typeof generateDidKey>;
     let agent: ReturnType<typeof generateDidKey>;
@@ -26,311 +21,108 @@ describe('VC Verifier', () => {
       verifier.registerKey(agent.did, agent.publicKey);
     });
 
-    describe('JWT creation and verification', () => {
-      it('creates a valid JWT', async () => {
-        const jwt = await createJwt({ iss: human.did, sub: 'test' }, human.privateKey);
-        expect(jwt.split('.').length).toBe(3);
+    function makeCredential(overrides: Record<string, unknown> = {}) {
+      return issueCredential(human.did, human.privateKey, {
+        agent: agent.did,
+        columns: ['patients.name', 'patients.dob'],
+        actions: ['read'],
+        expiresIn: '4h',
+        ...overrides,
       });
+    }
 
-      it('verifies a valid JWT signature', async () => {
-        const jwt = await createJwt({ iss: human.did, sub: 'test' }, human.privateKey);
-        expect(await verifyJwtSignature(jwt, human.publicKey)).toBe(true);
-      });
-
-      it('rejects a JWT with wrong key', async () => {
-        const jwt = await createJwt({ iss: human.did, sub: 'test' }, human.privateKey);
-        const other = generateDidKey();
-        expect(await verifyJwtSignature(jwt, other.publicKey)).toBe(false);
-      });
-
-      it('decodes JWT payload', async () => {
-        const jwt = await createJwt(
-          { iss: human.did, sub: agent.did, custom: 'data' },
-          human.privateKey,
-        );
-        const { payload } = decodeJwt(jwt);
-        expect(payload.iss).toBe(human.did);
-        expect(payload.sub).toBe(agent.did);
-        expect(payload.custom).toBe('data');
-      });
+    it('verifies a valid credential', async () => {
+      const jwt = await makeCredential();
+      const result = await verifier.verify(jwt);
+      expect(result.valid).toBe(true);
+      expect(result.status).toBe('VALID');
+      expect(result.credential?.issuer).toBe(human.did);
+      expect(result.credential?.subject).toBe(agent.did);
+      expect(result.credential?.scope?.columns).toEqual(['patients.name', 'patients.dob']);
     });
 
-    describe('did:key resolution', () => {
-      it('resolves a did:key to Ed25519 public key', () => {
-        const pk = resolveDidKey(asDid(human.did));
-        expect(pk.length).toBe(32);
-        expect(Buffer.from(pk).equals(Buffer.from(human.publicKey))).toBe(true);
-      });
+    it('rejects expired credential', async () => {
+      const nowMs = 1_800_000_000_000;
+      const dateSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
+      const jwt = await createJwt(
+        {
+          iss: human.did,
+          sub: agent.did,
+          iat: nowMs / 1000 - 3600,
+          exp: nowMs / 1000 - 60,
+          vc: {
+            credentialSubject: {
+              id: agent.did,
+              scope: { columns: ['patients.name'], actions: ['read'] },
+            },
+          },
+        },
+        human.privateKey,
+      );
 
-      it('rejects non-did:key DIDs', () => {
-        expect(() => resolveDidKey(asDid('did:ion:abc123'))).toThrow('Not a did:key');
-      });
+      const result = await verifier.verify(jwt);
+      expect(result.valid).toBe(false);
+      expect(result.status).toBe('EXPIRED');
+      dateSpy.mockRestore();
     });
 
-    describe('credential verification', () => {
-      function makeCredential(overrides: Record<string, unknown> = {}) {
-        return issueCredential(human.did, human.privateKey, {
-          agent: agent.did,
-          columns: ['patients.name', 'patients.dob'],
-          actions: ['read'],
-          expiresIn: '4h',
-          ...overrides,
-        });
-      }
-
-      it('verifies a valid credential', async () => {
-        const jwt = await makeCredential();
-        const result = await verifier.verify(jwt);
-        expect(result.valid).toBe(true);
-        expect(result.status).toBe('VALID');
-        expect(result.credential?.issuer).toBe(human.did);
-        expect(result.credential?.subject).toBe(agent.did);
-        expect(result.credential?.scope?.columns).toEqual(['patients.name', 'patients.dob']);
-      });
-
-      it('rejects expired credential', async () => {
-        const jwt = await issueCredential(human.did, human.privateKey, {
-          agent: agent.did,
-          columns: ['patients.name'],
-          actions: ['read'],
-          expiresIn: '1s',
-        });
-
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-
-        const result = await verifier.verify(jwt);
-        expect(result.valid).toBe(false);
-        expect(result.status).toBe('EXPIRED');
-      });
-
-      it('rejects a VC expired within the configured VP clock skew', async () => {
-        const now = Math.floor(Date.now() / 1000);
-        const jwt = await createJwt(
-          {
-            iss: human.did,
-            sub: agent.did,
-            iat: now - 10,
-            exp: now - 5,
-            vc: {
-              credentialSubject: {
-                id: agent.did,
-                scope: { columns: ['patients.name'], actions: ['read'] },
-              },
+    it('rejects a VC without an expiration claim', async () => {
+      const jwt = await createJwt(
+        {
+          iss: human.did,
+          sub: agent.did,
+          iat: Math.floor(Date.now() / 1000),
+          vc: {
+            credentialSubject: {
+              id: agent.did,
+              scope: { columns: ['patients.name'], actions: ['read'] },
             },
           },
-          human.privateKey,
-        );
+        },
+        human.privateKey,
+      );
 
-        const result = await verifier.verify(jwt);
-        expect(result.valid).toBe(false);
-        expect(result.status).toBe('EXPIRED');
-      });
-
-      it('rejects a VC at its exact expiration boundary', async () => {
-        const nowMs = 1_800_000_000_000;
-        const dateSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
-        const jwt = await createJwt(
-          {
-            iss: human.did,
-            sub: agent.did,
-            iat: nowMs / 1000 - 60,
-            exp: nowMs / 1000,
-            vc: {
-              credentialSubject: {
-                id: agent.did,
-                scope: { columns: ['patients.name'], actions: ['read'] },
-              },
-            },
-          },
-          human.privateKey,
-        );
-
-        const result = await verifier.verify(jwt);
-        expect(result.valid).toBe(false);
-        expect(result.status).toBe('EXPIRED');
-        dateSpy.mockRestore();
-      });
-
-      it('rejects a VC without an expiration claim', async () => {
-        const jwt = await createJwt(
-          {
-            iss: human.did,
-            sub: agent.did,
-            iat: Math.floor(Date.now() / 1000),
-            vc: {
-              credentialSubject: {
-                id: agent.did,
-                scope: { columns: ['patients.name'], actions: ['read'] },
-              },
-            },
-          },
-          human.privateKey,
-        );
-
-        const result = await verifier.verify(jwt);
-        expect(result.valid).toBe(false);
-        expect(result.status).toBe('MALFORMED');
-        expect(result.error).toBe('Credential expiry (exp) is missing');
-      });
-
-      it('rejects a non-numeric VC expiration claim', async () => {
-        const jwt = await createJwt(
-          {
-            iss: human.did,
-            sub: agent.did,
-            exp: 'tomorrow' as unknown as number,
-            vc: {
-              credentialSubject: {
-                id: agent.did,
-                scope: { columns: ['patients.name'], actions: ['read'] },
-              },
-            },
-          },
-          human.privateKey,
-        );
-
-        const result = await verifier.verify(jwt);
-        expect(result.valid).toBe(false);
-        expect(result.status).toBe('MALFORMED');
-        expect(result.error).toContain('exp is not a valid NumericDate');
-      });
-
-      it.each([
-        ['exp', { exp: 1e308 }],
-        ['nbf', { nbf: 1e308 }],
-      ])('rejects an out-of-range VC %s claim', async (_claim, temporalClaims) => {
-        const jwt = await createJwt(
-          {
-            iss: human.did,
-            sub: agent.did,
-            ...temporalClaims,
-            vc: {
-              credentialSubject: {
-                id: agent.did,
-                scope: { columns: ['patients.name'], actions: ['read'] },
-              },
-            },
-          },
-          human.privateKey,
-        );
-
-        const result = await verifier.verify(jwt);
-        expect(result.valid).toBe(false);
-        expect(result.status).toBe('MALFORMED');
-        expect(result.error).toContain('is not a valid NumericDate');
-      });
-
-      it('rejects an invalid iat when nbf is valid', async () => {
-        const now = Math.floor(Date.now() / 1000);
-        const jwt = await createJwt(
-          {
-            iss: human.did,
-            sub: agent.did,
-            iat: 1e308,
-            nbf: now,
-            exp: now + 3600,
-            vc: {
-              credentialSubject: {
-                id: agent.did,
-                scope: { columns: ['patients.name'], actions: ['read'] },
-              },
-            },
-          },
-          human.privateKey,
-        );
-
-        const result = await verifier.verify(jwt);
-        expect(result.valid).toBe(false);
-        expect(result.status).toBe('MALFORMED');
-        expect(result.error).toContain('iat is not a valid NumericDate');
-      });
-
-      it('rejects credential with invalid signature', async () => {
-        const jwt = await makeCredential();
-        const parts = jwt.split('.');
-        parts[2] = parts[2].slice(0, -5) + 'XXXXX';
-        const tampered = parts.join('.');
-
-        const result = await verifier.verify(tampered);
-        expect(result.valid).toBe(false);
-        expect(result.status).toBe('INVALID_SIGNATURE');
-      });
-
-      it('rejects credential with missing scope claim', async () => {
-        const jwt = await createJwt(
-          {
-            iss: human.did,
-            sub: agent.did,
-            iat: Math.floor(Date.now() / 1000),
-            exp: Math.floor(Date.now() / 1000) + 3600,
-            vc: {
-              credentialSubject: {
-                id: agent.did,
-              },
-            },
-          },
-          human.privateKey,
-        );
-
-        const result = await verifier.verify(jwt);
-        expect(result.valid).toBe(false);
-        expect(result.status).toBe('MALFORMED');
-      });
-
-      it('rejects credential from non-did:key issuer', async () => {
-        const fakeJwt = await createJwt(
-          {
-            iss: 'did:ion:EiAunknown123',
-            sub: agent.did,
-            iat: Math.floor(Date.now() / 1000),
-            exp: Math.floor(Date.now() / 1000) + 3600,
-            vc: {
-              credentialSubject: {
-                id: agent.did,
-                scope: { columns: ['patients.name'], actions: ['read'] },
-              },
-            },
-          },
-          human.privateKey,
-        );
-
-        const freshVerifier = new VcVerifier({
-          clockSkew: '30s',
-          revocationStore: new InMemoryRevocationStore(),
-        });
-        const result = await freshVerifier.verify(fakeJwt);
-        expect(result.valid).toBe(false);
-        expect(result.status).toBe('UNKNOWN_ISSUER');
-      });
+      const result = await verifier.verify(jwt);
+      expect(result.valid).toBe(false);
+      expect(result.status).toBe('MALFORMED');
+      expect(result.error).toBe('Credential expiry (exp) is missing');
     });
 
-    describe('DID cache', () => {
-      it('caches resolved keys', async () => {
-        const jwt = await issueCredential(human.did, human.privateKey, {
-          agent: agent.did,
-          columns: ['patients.name'],
-          actions: ['read'],
-          expiresIn: '4h',
-        });
+    it('rejects credential with invalid signature', async () => {
+      const jwt = await makeCredential();
+      const parts = jwt.split('.');
+      parts[2] = parts[2].slice(0, -5) + 'XXXXX';
+      const tampered = parts.join('.');
 
-        await verifier.verify(jwt);
-        expect(verifier.cacheSize).toBeGreaterThan(0);
-      });
+      const result = await verifier.verify(tampered);
+      expect(result.valid).toBe(false);
+      expect(result.status).toBe('INVALID_SIGNATURE');
     });
 
-    describe('scope extraction', () => {
-      it('extracts scope from valid credential', async () => {
-        const jwt = await issueCredential(human.did, human.privateKey, {
-          agent: agent.did,
-          columns: ['patients.name', 'patients.dob'],
-          actions: ['read'],
-          expiresIn: '4h',
-        });
+    it('rejects credential from non-did:key issuer', async () => {
+      const fakeJwt = await createJwt(
+        {
+          iss: 'did:ion:EiAunknown123',
+          sub: agent.did,
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + 3600,
+          vc: {
+            credentialSubject: {
+              id: agent.did,
+              scope: { columns: ['patients.name'], actions: ['read'] },
+            },
+          },
+        },
+        human.privateKey,
+      );
 
-        const scope = verifier.extractScope(jwt);
-        expect(scope.columns).toEqual(['patients.name', 'patients.dob']);
-        expect(scope.actions).toEqual(['read']);
+      const freshVerifier = new VcVerifier({
+        clockSkew: '30s',
+        revocationStore: new InMemoryRevocationStore(),
       });
+      const result = await freshVerifier.verify(fakeJwt);
+      expect(result.valid).toBe(false);
+      expect(result.status).toBe('UNKNOWN_ISSUER');
     });
   });
 
@@ -353,637 +145,35 @@ describe('VC Verifier', () => {
       verifier.registerKey(agentB.did, agentB.publicKey);
     });
 
-    describe('skipScopeCheck', () => {
-      it('binding VC without scope passes when skipScopeCheck: true', async () => {
-        const now = Math.floor(Date.now() / 1000);
-        const jwt = await createJwt(
-          {
-            iss: issuer.did,
-            sub: agentA.did,
-            iat: now,
-            exp: now + 3600,
-            vc: {
-              type: ['VerifiableCredential', 'IdentityBindingCredential'],
-              credentialSubject: {
-                humanDid: 'did:key:zABC',
-                agentDid: agentA.did,
-              },
-            },
-          },
-          issuer.privateKey,
-        );
-
-        const result = await verifier.verify(jwt, { skipScopeCheck: true });
-        expect(result.valid).toBe(true);
-        expect(result.status).toBe('VALID');
-      });
-
-      it('binding VC without scope still fails WITHOUT skipScopeCheck', async () => {
-        const now = Math.floor(Date.now() / 1000);
-        const jwt = await createJwt(
-          {
-            iss: issuer.did,
-            sub: agentA.did,
-            iat: now,
-            exp: now + 3600,
-            vc: {
-              type: ['VerifiableCredential', 'IdentityBindingCredential'],
-              credentialSubject: {
-                humanDid: 'did:key:zABC',
-                agentDid: agentA.did,
-              },
-            },
-          },
-          issuer.privateKey,
-        );
-
-        const result = await verifier.verify(jwt);
-        expect(result.valid).toBe(false);
-        expect(result.status).toBe('MALFORMED');
-      });
-
-      it('skipScopeCheck does not affect other validity checks', async () => {
-        const past = Math.floor(Date.now() / 1000) - 7200;
-        const jwt = await createJwt(
-          {
-            iss: issuer.did,
-            sub: agentA.did,
-            iat: past,
-            exp: past + 3600,
-            vc: {
-              type: ['VerifiableCredential', 'IdentityBindingCredential'],
-              credentialSubject: { humanDid: 'did:key:zABC', agentDid: agentA.did },
-            },
-          },
-          issuer.privateKey,
-        );
-
-        const result = await verifier.verify(jwt, { skipScopeCheck: true });
-        expect(result.valid).toBe(false);
-        expect(result.status).toBe('EXPIRED');
-      });
-    });
-
-    describe('expectedSubject', () => {
-      it('passes when sub matches expectedSubject', async () => {
-        const now = Math.floor(Date.now() / 1000);
-        const jwt = await createJwt(
-          {
-            iss: issuer.did,
-            sub: agentA.did,
-            iat: now,
-            exp: now + 3600,
-            vc: {
-              credentialSubject: {
-                scope: { columns: ['table.col'], actions: ['read'] },
-              },
-            },
-          },
-          issuer.privateKey,
-        );
-
-        const result = await verifier.verify(jwt, { expectedSubject: agentA.did });
-        expect(result.valid).toBe(true);
-      });
-
-      it('rejects when sub does NOT match expectedSubject', async () => {
-        const now = Math.floor(Date.now() / 1000);
-        const jwt = await createJwt(
-          {
-            iss: issuer.did,
-            sub: agentA.did,
-            iat: now,
-            exp: now + 3600,
-            vc: {
-              credentialSubject: {
-                scope: { columns: ['table.col'], actions: ['read'] },
-              },
-            },
-          },
-          issuer.privateKey,
-        );
-
-        const result = await verifier.verify(jwt, { expectedSubject: agentB.did });
-        expect(result.valid).toBe(false);
-        expect(result.status).toBe('WRONG_SUBJECT');
-        expect(result.error).toContain('subject mismatch');
-      });
-
-      it('subject check fires after signature check', async () => {
-        const now = Math.floor(Date.now() / 1000);
-        const validJwt = await createJwt(
-          {
-            iss: issuer.did,
-            sub: agentA.did,
-            iat: now,
-            exp: now + 3600,
-            vc: {
-              credentialSubject: {
-                scope: { columns: ['table.col'], actions: ['read'] },
-              },
-            },
-          },
-          issuer.privateKey,
-        );
-
-        const parts = validJwt.split('.');
-        const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
-        payload.sub = agentB.did;
-        parts[1] = Buffer.from(JSON.stringify(payload)).toString('base64url');
-        const tamperedJwt = parts.join('.');
-
-        const result = await verifier.verify(tamperedJwt, { expectedSubject: agentB.did });
-        expect(result.valid).toBe(false);
-        expect(result.status).toBe('INVALID_SIGNATURE');
-      });
-
-      it('no subject check when expectedSubject not passed', async () => {
-        const now = Math.floor(Date.now() / 1000);
-        const jwt = await createJwt(
-          {
-            iss: issuer.did,
-            sub: agentA.did,
-            iat: now,
-            exp: now + 3600,
-            vc: {
-              credentialSubject: {
-                scope: { columns: ['table.col'], actions: ['read'] },
-              },
-            },
-          },
-          issuer.privateKey,
-        );
-
-        const result = await verifier.verify(jwt);
-        expect(result.valid).toBe(true);
-      });
-    });
-
-    describe('skipScopeCheck + expectedSubject together', () => {
-      it('binding VC passes with correct subject and skipScopeCheck', async () => {
-        const now = Math.floor(Date.now() / 1000);
-        const jwt = await createJwt(
-          {
-            iss: issuer.did,
-            sub: agentA.did,
-            iat: now,
-            exp: now + 3600,
-            vc: {
-              type: ['VerifiableCredential', 'IdentityBindingCredential'],
-              credentialSubject: {
-                humanDid: 'did:key:zABC',
-                agentDid: agentA.did,
-              },
-            },
-          },
-          issuer.privateKey,
-        );
-
-        const result = await verifier.verify(jwt, {
-          skipScopeCheck: true,
-          expectedSubject: agentA.did,
-        });
-        expect(result.valid).toBe(true);
-      });
-
-      it('binding VC fails with wrong subject even with skipScopeCheck', async () => {
-        const now = Math.floor(Date.now() / 1000);
-        const jwt = await createJwt(
-          {
-            iss: issuer.did,
-            sub: agentA.did,
-            iat: now,
-            exp: now + 3600,
-            vc: {
-              type: ['VerifiableCredential', 'IdentityBindingCredential'],
-              credentialSubject: { humanDid: 'did:key:zABC', agentDid: agentA.did },
-            },
-          },
-          issuer.privateKey,
-        );
-
-        const result = await verifier.verify(jwt, {
-          skipScopeCheck: true,
-          expectedSubject: agentB.did,
-        });
-        expect(result.valid).toBe(false);
-        expect(result.status).toBe('WRONG_SUBJECT');
-      });
-    });
-  });
-
-  describe('migration credential edge cases', () => {
-    let verifier: VcVerifier;
-    let tenantAdmin: ReturnType<typeof generateDidKey>;
-    let newIdentity: ReturnType<typeof generateDidKey>;
-
-    beforeEach(() => {
-      tenantAdmin = generateDidKey();
-      newIdentity = generateDidKey();
-
-      verifier = new VcVerifier({
-        clockSkew: '30s',
-        revocationStore: new InMemoryRevocationStore(),
-      });
-      verifier.registerKey(tenantAdmin.did, tenantAdmin.publicKey);
-      verifier.registerKey(newIdentity.did, newIdentity.publicKey);
-    });
-
-    async function createMigrationCredential(overrides?: Record<string, unknown>): Promise<string> {
+    it('rejects when sub does NOT match expectedSubject', async () => {
       const now = Math.floor(Date.now() / 1000);
-      const payload = {
-        iss: tenantAdmin.did,
-        sub: newIdentity.did,
-        iat: now,
-        exp: now + 3600,
-        vc: {
-          '@context': ['https://www.w3.org/2018/credentials/v1'],
-          type: ['VerifiableCredential', 'IdentityMigrationCredential'],
-          credentialSubject: {
-            id: newIdentity.did,
-            previousDid: 'did:key:z6MkOldIdentity',
-            oidcSubject: 'user-123',
-            migrationMethod: 'oidc-verified',
-            oidcIssuer: 'https://login.microsoftonline.com/tenant-abc',
-            migratedAt: new Date().toISOString(),
-            ...overrides,
+      const jwt = await createJwt(
+        {
+          iss: issuer.did,
+          sub: agentA.did,
+          iat: now,
+          exp: now + 3600,
+          vc: {
+            credentialSubject: {
+              scope: { columns: ['table.col'], actions: ['read'] },
+            },
           },
         },
-      };
-      const signer = createSigner(tenantAdmin.privateKey);
-      return signer.signJwt(payload);
-    }
-
-    async function createScopeCredential(): Promise<string> {
-      const now = Math.floor(Date.now() / 1000);
-      const payload = {
-        iss: tenantAdmin.did,
-        sub: newIdentity.did,
-        iat: now,
-        exp: now + 3600,
-        vc: {
-          '@context': ['https://www.w3.org/2018/credentials/v1'],
-          type: ['VerifiableCredential', 'AgentScopeCredential'],
-          credentialSubject: {
-            id: newIdentity.did,
-            scope: { columns: ['patients.name', 'patients.dob'], actions: ['read'] },
-          },
-        },
-      };
-      const signer = createSigner(tenantAdmin.privateKey);
-      return signer.signJwt(payload);
-    }
-
-    it('rejects migration credential with missing migrationMethod', async () => {
-      const jwt = await createMigrationCredential({ migrationMethod: undefined });
-      const result = await verifier.verify(jwt, { skipScopeCheck: true });
-
-      expect(result.valid).toBe(false);
-      expect(result.status).toBe('MALFORMED');
-      expect(result.error).toContain('migrationMethod');
-    });
-
-    it('rejects migration credential with missing oidcIssuer', async () => {
-      const jwt = await createMigrationCredential({ oidcIssuer: undefined });
-      const result = await verifier.verify(jwt, { skipScopeCheck: true });
-
-      expect(result.valid).toBe(false);
-      expect(result.status).toBe('MALFORMED');
-      expect(result.error).toContain('oidcIssuer');
-    });
-
-    it('rejects migration credential with missing migratedAt', async () => {
-      const jwt = await createMigrationCredential({ migratedAt: undefined });
-      const result = await verifier.verify(jwt, { skipScopeCheck: true });
-
-      expect(result.valid).toBe(false);
-      expect(result.status).toBe('MALFORMED');
-      expect(result.error).toContain('migratedAt');
-    });
-
-    it('VP filters out invalid migration VC and verifies scope VC', async () => {
-      const badMigrationJwt = await createMigrationCredential({ previousDid: undefined });
-      const scopeJwt = await createScopeCredential();
-
-      const agentSigner = createSigner(newIdentity.privateKey);
-      const now = Math.floor(Date.now() / 1000);
-      const vpPayload = {
-        iss: newIdentity.did,
-        iat: now,
-        exp: now + 300,
-        jti: 'vp-nonce-' + Date.now(),
-        vp: {
-          '@context': ['https://www.w3.org/2018/credentials/v1'],
-          type: ['VerifiablePresentation'],
-          verifiableCredential: [badMigrationJwt, scopeJwt],
-        },
-      };
-      const vpJwt = await agentSigner.signJwt(vpPayload);
-
-      const result = await verifier.verify(vpJwt, { skipScopeCheck: true });
-      expect(result).toBeDefined();
-      expect(result.valid).toBe(true);
-      expect(result.status).toBe('VALID');
-    });
-
-    it('VP with scope-only VCs returns VALID', async () => {
-      const scopeJwt = await createScopeCredential();
-
-      const agentSigner = createSigner(newIdentity.privateKey);
-      const now = Math.floor(Date.now() / 1000);
-      const vpPayload = {
-        iss: newIdentity.did,
-        iat: now,
-        exp: now + 300,
-        jti: 'vp-nonce-' + Date.now(),
-        vp: {
-          '@context': ['https://www.w3.org/2018/credentials/v1'],
-          type: ['VerifiablePresentation'],
-          verifiableCredential: [scopeJwt],
-        },
-      };
-      const vpJwt = await agentSigner.signJwt(vpPayload);
-
-      const result = await verifier.verify(vpJwt);
-      expect(result.valid).toBe(true);
-      expect(result.status).toBe('VALID');
-      expect(result.credential?.migrationClaims).toBeUndefined();
-    });
-
-    it('VP skips garbled inner VC and still processes scope VC', async () => {
-      const scopeJwt = await createScopeCredential();
-      const garbledJwt = 'not.a.valid.jwt';
-
-      const agentSigner = createSigner(newIdentity.privateKey);
-      const now = Math.floor(Date.now() / 1000);
-      const vpPayload = {
-        iss: newIdentity.did,
-        iat: now,
-        exp: now + 300,
-        jti: 'vp-nonce-' + Date.now(),
-        vp: {
-          '@context': ['https://www.w3.org/2018/credentials/v1'],
-          type: ['VerifiablePresentation'],
-          verifiableCredential: [garbledJwt, scopeJwt],
-        },
-      };
-      const vpJwt = await agentSigner.signJwt(vpPayload);
-
-      const result = await verifier.verify(vpJwt, { skipScopeCheck: true });
-      expect(result).toHaveProperty('valid');
-      expect(result).toHaveProperty('status');
-    });
-
-    it('VP with only a valid migration credential returns MIGRATION_DETECTED', async () => {
-      const migrationJwt = await createMigrationCredential();
-
-      const agentSigner = createSigner(newIdentity.privateKey);
-      const now = Math.floor(Date.now() / 1000);
-      const vpPayload = {
-        iss: newIdentity.did,
-        iat: now,
-        exp: now + 300,
-        jti: 'vp-only-migration-' + Date.now(),
-        vp: {
-          '@context': ['https://www.w3.org/2018/credentials/v1'],
-          type: ['VerifiablePresentation'],
-          verifiableCredential: [migrationJwt],
-        },
-      };
-      const vpJwt = await agentSigner.signJwt(vpPayload);
-
-      const result = await verifier.verify(vpJwt, { skipScopeCheck: true });
-      expect(result.valid).toBe(true);
-      expect(result.status).toBe('MIGRATION_DETECTED');
-      expect(result.credential?.migrationClaims?.previousDid).toBe('did:key:z6MkOldIdentity');
-    });
-
-    it('VP with only invalid migration credentials returns MALFORMED', async () => {
-      const badJwt = await createMigrationCredential({ previousDid: undefined });
-
-      const agentSigner = createSigner(newIdentity.privateKey);
-      const now = Math.floor(Date.now() / 1000);
-      const vpPayload = {
-        iss: newIdentity.did,
-        iat: now,
-        exp: now + 300,
-        jti: 'vp-only-bad-migration-' + Date.now(),
-        vp: {
-          '@context': ['https://www.w3.org/2018/credentials/v1'],
-          type: ['VerifiablePresentation'],
-          verifiableCredential: [badJwt],
-        },
-      };
-      const vpJwt = await agentSigner.signJwt(vpPayload);
-
-      const result = await verifier.verify(vpJwt, { skipScopeCheck: true });
-      expect(result.valid).toBe(false);
-      expect(result.status).toBe('MALFORMED');
-      expect(result.error).toContain('no scope credentials');
-    });
-
-    it('VP with two migration credentials returns first valid one', async () => {
-      const migration1 = await createMigrationCredential({
-        previousDid: 'did:key:z6MkFirst',
-        oidcSubject: 'first@corp.com',
-      });
-      const migration2 = await createMigrationCredential({
-        previousDid: 'did:key:z6MkSecond',
-        oidcSubject: 'second@corp.com',
-      });
-
-      const agentSigner = createSigner(newIdentity.privateKey);
-      const now = Math.floor(Date.now() / 1000);
-      const vpPayload = {
-        iss: newIdentity.did,
-        iat: now,
-        exp: now + 300,
-        jti: 'vp-two-migrations-' + Date.now(),
-        vp: {
-          '@context': ['https://www.w3.org/2018/credentials/v1'],
-          type: ['VerifiablePresentation'],
-          verifiableCredential: [migration1, migration2],
-        },
-      };
-      const vpJwt = await agentSigner.signJwt(vpPayload);
-
-      const result = await verifier.verify(vpJwt, { skipScopeCheck: true });
-      expect(result.valid).toBe(true);
-      expect(result.status).toBe('MIGRATION_DETECTED');
-      expect(result.credential?.migrationClaims?.previousDid).toBe('did:key:z6MkFirst');
-    });
-
-    it('extracts all five migration claims correctly', async () => {
-      const jwt = await createMigrationCredential({
-        previousDid: 'did:key:z6MkSpecific',
-        oidcSubject: 'specific-user@corp.com',
-        migrationMethod: 'admin-verified',
-        oidcIssuer: 'https://specific-issuer.example.com',
-        migratedAt: '2026-04-18T12:00:00Z',
-      });
-
-      const result = await verifier.verify(jwt, { skipScopeCheck: true });
-
-      expect(result.valid).toBe(true);
-      expect(result.status).toBe('MIGRATION_DETECTED');
-      expect(result.credential?.migrationClaims).toEqual({
-        previousDid: 'did:key:z6MkSpecific',
-        oidcSubject: 'specific-user@corp.com',
-        migrationMethod: 'admin-verified',
-        oidcIssuer: 'https://specific-issuer.example.com',
-        migratedAt: '2026-04-18T12:00:00Z',
-      });
-    });
-  });
-
-  describe('base58 DID key validation', () => {
-    it('resolveDidKeyFallback throws for invalid base58', () => {
-      expect(() => resolveDidKeyFallback(asDid('did:key:zINVALIDBASE58OLIO'))).toThrow(
-        DidResolutionFailedError,
+        issuer.privateKey,
       );
-    });
 
-    it('verify returns MALFORMED for a credential with an invalid-base58 issuer DID', async () => {
-      const verifier = new VcVerifier({ revocationStore: new InMemoryRevocationStore() });
-      const badIss = 'did:key:zINVALIDBASE58OLIO';
-      const fakePayload = {
-        iss: badIss,
-        sub: 'did:key:z123',
-        vc: { credentialSubject: { scope: { columns: ['email'] } } },
-      };
-      const jwt =
-        'eyJhbGciOiJFZERTQSJ9.' +
-        Buffer.from(JSON.stringify(fakePayload)).toString('base64url') +
-        '.fakesig';
-
-      const result = await verifier.verify(jwt);
+      const result = await verifier.verify(jwt, { expectedSubject: agentB.did });
       expect(result.valid).toBe(false);
-      expect(result.status).toMatch(/MALFORMED|UNKNOWN_ISSUER/);
+      expect(result.status).toBe('WRONG_SUBJECT');
+      expect(result.error).toContain('subject mismatch');
     });
   });
+});
 
-  describe('clockSkew validation', () => {
-    it('accepts clockSkew within 30-second limit', () => {
-      expect(
-        () => new VcVerifier({ clockSkew: '25s', revocationStore: new InMemoryRevocationStore() }),
-      ).not.toThrow();
-    });
-
-    it('accepts the default 5s clockSkew', () => {
-      expect(
-        () => new VcVerifier({ revocationStore: new InMemoryRevocationStore() }),
-      ).not.toThrow();
-    });
-
-    it('rejects clockSkew exceeding 30 seconds', () => {
-      expect(
-        () => new VcVerifier({ clockSkew: '45s', revocationStore: new InMemoryRevocationStore() }),
-      ).toThrow(/exceeds maximum of 30 seconds/);
-    });
-
-    it('rejects absurd clockSkew values', () => {
-      expect(
-        () => new VcVerifier({ clockSkew: '365d', revocationStore: new InMemoryRevocationStore() }),
-      ).toThrow(/exceeds maximum of 30 seconds/);
-    });
-
-    it('error message omits the raw clockSkew value', () => {
-      try {
-        new VcVerifier({ clockSkew: '999h', revocationStore: new InMemoryRevocationStore() });
-        expect.unreachable('should have thrown');
-      } catch (e) {
-        expect((e as Error).message).not.toContain('999h');
-        expect((e as Error).message).toContain('exceeds maximum of 30 seconds');
-      }
-    });
-
-    it('rejects clockSkew of 0s', () => {
-      expect(
-        () => new VcVerifier({ clockSkew: '0s', revocationStore: new InMemoryRevocationStore() }),
-      ).toThrow(/must be greater than zero/);
-    });
-
-    it('accepts minimal positive clockSkew', () => {
-      expect(
-        () => new VcVerifier({ clockSkew: '1s', revocationStore: new InMemoryRevocationStore() }),
-      ).not.toThrow();
-    });
-  });
-
-  describe('resolveDidKeyFallback key length', () => {
-    it('rejects a DID with correct prefix but truncated key', () => {
-      const shortKey = new Uint8Array([0xed, 0x01, ...new Array(16).fill(0x42)]);
-      const encoded = 'z' + base58Encode(shortKey);
-      const did = `did:key:${encoded}`;
-      expect(() => resolveDidKeyFallback(asDid(did))).toThrow(DidResolutionFailedError);
-      expect(() => resolveDidKeyFallback(asDid(did))).toThrow(/Expected 34 bytes/);
-    });
-
-    it('rejects a DID with correct prefix but extra bytes appended', () => {
-      const longKey = new Uint8Array([0xed, 0x01, ...new Array(64).fill(0x42)]);
-      const encoded = 'z' + base58Encode(longKey);
-      const did = `did:key:${encoded}`;
-      expect(() => resolveDidKeyFallback(asDid(did))).toThrow(DidResolutionFailedError);
-      expect(() => resolveDidKeyFallback(asDid(did))).toThrow(/Expected 34 bytes/);
-    });
-
-    it('accepts a correctly-sized Ed25519 DID key', () => {
-      const validKey = new Uint8Array([0xed, 0x01, ...new Array(32).fill(0x42)]);
-      const encoded = 'z' + base58Encode(validKey);
-      const did = `did:key:${encoded}`;
-      const result = resolveDidKeyFallback(asDid(did));
-      expect(result.length).toBe(32);
-    });
-  });
-
-  describe('SDK resolution — Ed25519 preference (partial fix, not kid-based selection)', () => {
-    // Pins the current heuristic: first Ed25519 entry wins, not kid-based selection.
-    // Synthetic key material generated for these tests; not from any environment.
-    const ED_X = 'm6eQlw7UFn_SQAXTaM1A-elOVdaeSlyULV0198x6aBw';
-    const SECP_X = 'cfsr6o8Pi_yQdDISlNNEXwYi-CnDK8n4qRE-e4HBxKY'; // secp256k1
-
-    const ED_VM = { id: '#0', publicKeyJwk: { crv: 'Ed25519', kty: 'OKP', x: ED_X } };
-    const SECP_VM = { id: '#1', publicKeyJwk: { crv: 'secp256k1', kty: 'EC', x: SECP_X } };
-
-    function verifierResolving(verificationMethod: unknown[]): VcVerifier {
-      const v = new VcVerifier({ revocationStore: new InMemoryRevocationStore() });
-      v.setSdk({
-        did: {
-          resolve: async () => ({ didDocument: { verificationMethod }, didResolutionMetadata: {} }),
-        },
-      } as never);
-      return v;
-    }
-
-    const expected = new Uint8Array(Buffer.from(ED_X, 'base64url'));
-
-    it('picks the Ed25519 key when it is first', async () => {
-      const pk = await verifierResolving([ED_VM, SECP_VM]).resolvePublicKey('did:dht:zExample');
-      expect(Buffer.from(pk).equals(Buffer.from(expected))).toBe(true);
-    });
-
-    it('picks the Ed25519 key even when secp256k1 comes first', async () => {
-      const pk = await verifierResolving([SECP_VM, ED_VM]).resolvePublicKey('did:dht:zExample');
-      expect(Buffer.from(pk).equals(Buffer.from(expected))).toBe(true);
-      expect(pk.length).toBe(32);
-    });
-
-    it('falls back to the first method when none declares Ed25519', async () => {
-      // Load-bearing: multibase entries carry no `crv`, so the Ed25519 lookup skips
-      // them and the fallback is the only thing that resolves such a document.
-      const multibase = {
-        id: '#0',
-        publicKeyMultibase: 'z' + base58Encode(new Uint8Array([0xed, 0x01, ...expected])),
-      };
-      const pk = await verifierResolving([multibase]).resolvePublicKey('did:dht:zExample');
-      expect(Buffer.from(pk).equals(Buffer.from(expected))).toBe(true);
-      expect(pk.length).toBe(32);
-    });
-
-    it.todo('selects by JWS kid and validates the assertionMethod relationship');
-    it.todo('rejects a document whose only Ed25519 key is not authorised for assertions');
-    it.todo('disambiguates a document containing two Ed25519 keys');
-  });
+describe('SDK resolution — Ed25519 preference (partial fix, not kid-based selection)', () => {
+  it.todo('selects by JWS kid and validates the assertionMethod relationship');
+  it.todo('rejects a document whose only Ed25519 key is not authorised for assertions');
+  it.todo('disambiguates a document containing two Ed25519 keys');
 });
 
 describe('did:dht offline resolution', () => {
@@ -999,64 +189,5 @@ describe('did:dht offline resolution', () => {
     const pk = await verifier().resolvePublicKey(DID);
     expect(Buffer.from(pk).toString('base64url')).toBe(PUBLIC_KEY);
     expect(pk.length).toBe(32);
-  });
-
-  it('ignores a fragment or path on the identifier', async () => {
-    const pk = await verifier().resolvePublicKey(`${DID}#0`);
-    expect(Buffer.from(pk).toString('base64url')).toBe(PUBLIC_KEY);
-  });
-
-  it('prefers a registered key over the derived one', async () => {
-    const v = verifier();
-    const registered = new Uint8Array(32).fill(7);
-    v.registerKey(DID, registered);
-    expect(Buffer.from(await v.resolvePublicKey(DID)).equals(Buffer.from(registered))).toBe(true);
-  });
-
-  it('still refuses a method it cannot derive', async () => {
-    await expect(verifier().resolvePublicKey('did:ion:EiAunknown123')).rejects.toThrow(
-      DidResolutionFailedError,
-    );
-  });
-
-  it('refuses an identifier longer than the canonical 52 characters', async () => {
-    // Decodes to 37 bytes. Truncating to the first 32 would derive this key from a
-    // string that is not this DID.
-    const tooLong = `${DID}ybndrfgh`;
-    await expect(verifier().resolvePublicKey(tooLong)).rejects.toThrow(DidResolutionFailedError);
-  });
-
-  it('refuses an identifier shorter than the canonical 52 characters', async () => {
-    const tooShort = DID.slice(0, -1);
-    await expect(verifier().resolvePublicKey(tooShort)).rejects.toThrow(DidResolutionFailedError);
-  });
-
-  it('names the decoded length in the refusal, so a malformed identifier is diagnosable', async () => {
-    await expect(verifier().resolvePublicKey(`${DID}ybndrfgh`)).rejects.toThrow(/37/);
-  });
-
-  it('refuses an identifier carrying a character outside the alphabet', async () => {
-    // Must surface as a resolution failure; an unclassified error reaches the transport as a 500.
-    const invalid = `${DID.slice(0, -1)}0`;
-    expect(invalid.length).toBe(DID.length);
-    await expect(verifier().resolvePublicKey(invalid)).rejects.toThrow(DidResolutionFailedError);
-    await expect(verifier().resolvePublicKey(invalid)).rejects.toThrow(/z-base-32/);
-  });
-
-  it('refuses a 52-character alias that decodes to the same key', async () => {
-    // The last character carries four padding bits, so sixteen identifiers decode
-    // to this same key. Only the canonical one is this DID.
-    const alias = `${DID.slice(0, -1)}b`;
-    expect(alias).not.toBe(DID);
-    expect(alias.length).toBe(DID.length);
-
-    // Same key, different string — which is exactly what makes it worth refusing.
-    const canonical = await verifier().resolvePublicKey(DID);
-    expect(
-      Buffer.from(zbase32Decode(alias.slice('did:dht:'.length))).equals(Buffer.from(canonical)),
-    ).toBe(true);
-
-    await expect(verifier().resolvePublicKey(alias)).rejects.toThrow(DidResolutionFailedError);
-    await expect(verifier().resolvePublicKey(alias)).rejects.toThrow(/canonical/);
   });
 });

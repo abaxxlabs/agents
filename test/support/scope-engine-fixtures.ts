@@ -10,7 +10,7 @@ import type { RegisteredAgent } from '#types/index.js';
 import type { AgentStore } from '#storage/types.js';
 import { createMockAuditStore } from '../mocks/audit-store.js';
 
-export function createTestFixtures(auditOptions: Parameters<typeof createMockAuditStore>[0] = {}) {
+export function createTestFixtures() {
   const human = generateDidKey();
   const agentA = generateDidKey();
   const agentB = generateDidKey();
@@ -86,7 +86,7 @@ export function createTestFixtures(auditOptions: Parameters<typeof createMockAud
     ],
   ]);
 
-  const auditStore = createMockAuditStore(auditOptions);
+  const auditStore = createMockAuditStore();
   const auditLogger = new AuditLogger({
     auditStore,
     enabled: true,
@@ -117,7 +117,6 @@ export function createTestFixtures(auditOptions: Parameters<typeof createMockAud
     agentA,
     agentB,
     engine,
-    verifier,
     pool,
     columnKeys,
     encryptedColumns,

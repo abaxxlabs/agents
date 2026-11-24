@@ -8,54 +8,54 @@ sidebar_position: 3
 
 # Authorization flow
 
-Agents++ applies authorization before a business-data query reaches PostgreSQL. The central path is a read-only SQL flow, not a general-purpose policy engine for arbitrary APIs.
+Agents++ enforces authorization before a business-data query reaches PostgreSQL. Its primary workflow is a read-only SQL process, rather than a general-purpose policy engine for arbitrary APIs.
 
 ## 1. Establish human authority
 
-The application authenticates a human and receives an `AuthenticatedSession`. The session has a scope ceiling that limits what it may authorize for agents.
+The application authenticates a human and receives an `AuthenticatedSession`, whose scope ceiling limits what it can authorize agents to do.
 
 ## 2. Create an agent
 
-The application creates an agent identity and associates it with the human owner. The agent receives a DID and an Ed25519 keypair.
+The application creates an agent identity and associates it with its human owner. The agent is assigned a DID and an Ed25519 key pair.
 
 ## 3. Issue a credential
 
-The session issues a credential containing a bounded scope, such as:
+The session issues a credential with a bounded scope, such as:
 
 - Authorized columns.
 - Authorized actions.
 - Expiration time.
 - Delegation depth policy where applicable.
 
-Issuance validates the requested scope and lifetime against the session ceiling. The resulting credential cannot be wider than the authority that issued it.
+Issuance validates the requested scope and lifetime against the session ceiling. The resulting credential cannot exceed the authority of the issuer.
 
 ## 4. Present the authorization
 
-The agent presents its credential, or a Verifiable Presentation containing the credential, to the application boundary. Remote query paths can require a presentation bound to the server verifier DID.
+The agent presents its credential, or a Verifiable Presentation containing the credential, at the application boundary. Remote query paths may require a presentation bound to the server verifier DID.
 
 ## 5. Verify and enforce the query
 
 `ScopeEngine` performs the runtime checks:
 
-1. Verify credential or presentation signatures and validity.
-2. Check subject, owner, issuer, revocation, and delegation bindings.
-3. Parse the SQL statement with the PostgreSQL parser.
-4. Reject mutations and references outside the declared table or columns.
-5. Execute the original authorized `SELECT` statement.
-6. Decrypt only selected encrypted columns that the scope permits.
-7. Record an audit event when auditing is enabled.
+1. Verify the credential or presentation signatures and validity.
+2. Check the subject, owner, issuer, revocation, and delegation bindings.
+3. Parse the SQL statement using the PostgreSQL parser.
+4. Reject mutations and references to anything beyond the declared table or columns.
+5. Execute the original, authorized `SELECT` statement.
+6. Decrypt only the selected encrypted columns permitted by the scope.
+7. Record an audit event if auditing is enabled.
 
-The SQL is validated, not rewritten or sanitized. An out-of-scope query is rejected before execution.
+The SQL is validated but not rewritten or sanitized. Any out-of-scope query is rejected before execution.
 
 ## Delegation
 
-A supervisor can issue a narrower credential to a worker. The delegated credential may reduce columns, actions, lifetime, or delegation depth, but it cannot expand the source credential.
+A supervisor may issue a more narrowly scoped credential to a worker. The delegated credential may limit the permitted columns, actions, validity period, or delegation depth; however, it cannot exceed the scope of the source credential.
 
-The verifier checks the delegation chain and revocation state when the credential is used. Durable multi-instance revocation requires a suitable persistent store and deployment configuration.
+When the credential is used, the verifier checks the delegation chain and revocation status. Durable revocation across multiple instances requires an appropriate persistent store and deployment configuration.
 
 ## What the flow does not authorize
 
-- Database writes such as `INSERT`, `UPDATE`, or `DELETE` through the business-data query path.
+- Database writes, such as `INSERT`, `UPDATE`, or `DELETE`, through the business-data query path.
 - Direct PostgreSQL connections outside `ScopeEngine`.
-- Arbitrary external APIs or tools.
+- The use of arbitrary external APIs or tools.
 - Execution or orchestration of an AI model.
